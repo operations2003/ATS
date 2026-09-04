@@ -23,6 +23,11 @@ export interface CandidateRecord extends CandidateParsedProfile {
   uploadedBy?: string;
   createdBy?: string;
   isDuplicate?: boolean;
+  matchScore?: number;
+  atsScore?: number;
+  decision?: string;
+  matchLevel?: string;
+  mandatoryCompliance?: string;
 }
 
 // In-memory store for fast state sync and test resilience
@@ -203,6 +208,20 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
     uploadedAt: c.created_at ? c.created_at.toISOString() : new Date().toISOString(),
     uploadedBy: c.created_by,
     createdBy: c.created_by,
+    ...(() => {
+      const latestEval = Array.isArray(c.evaluations) && c.evaluations.length > 0 ? c.evaluations[0] : null;
+      const latestApp = Array.isArray(c.applications) && c.applications.length > 0 ? c.applications[0] : null;
+      const rawScore = c.matchScore ?? c.atsScore ?? latestEval?.score ?? latestEval?.atsScore ?? latestApp?.match_score;
+      const isSubmit = c.decision === 'SUBMIT' || c.decision === 'ACCEPT' || latestEval?.decision === 'SUBMIT' || latestEval?.decision === 'ACCEPT' || latestApp?.stage === 'SHORTLISTED' || (typeof rawScore === 'number' && rawScore >= 70);
+      const evalDecision = isSubmit ? 'SUBMIT' : 'DO NOT SUBMIT';
+      return {
+        matchScore: typeof rawScore === 'number' ? Math.round(rawScore) : undefined,
+        atsScore: typeof rawScore === 'number' ? Math.round(rawScore) : undefined,
+        decision: evalDecision,
+        matchLevel: c.matchLevel || latestEval?.matchLevel,
+        mandatoryCompliance: c.mandatoryCompliance || latestEval?.mandatoryCompliance,
+      };
+    })(),
   };
 }
 
@@ -238,6 +257,14 @@ export const getAllCandidates = async (req: AuthRequest, res: Response): Promise
           certifications: true,
           languages: true,
           projects: true,
+          evaluations: {
+            orderBy: { createdAt: 'desc' },
+            take: 1
+          },
+          applications: {
+            orderBy: { updated_at: 'desc' },
+            take: 1
+          }
         },
         orderBy: { created_at: 'desc' }
       });
@@ -352,6 +379,11 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
                 certifications: true,
                 languages: true,
                 projects: true,
+                evaluations: {
+                  where: { jobId },
+                  orderBy: { createdAt: 'desc' },
+                  take: 1
+                }
               }
             }
           },
@@ -367,6 +399,16 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
             certifications: true,
             languages: true,
             projects: true,
+            evaluations: {
+              where: { jobId },
+              orderBy: { createdAt: 'desc' },
+              take: 1
+            },
+            applications: {
+              where: { job_id: jobId },
+              orderBy: { updated_at: 'desc' },
+              take: 1
+            }
           },
           orderBy: { created_at: 'desc' }
         });
@@ -492,14 +534,19 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
         };
       }
 
+      const resolvedScore = typeof finalScore === 'number' ? Math.round(finalScore) : (typeof (c as any).matchScore === 'number' ? Math.round((c as any).matchScore) : undefined);
+      const isSubmit = decision === 'SUBMIT' || decision === 'ACCEPT' || (c as any).decision === 'SUBMIT' || (c as any).decision === 'ACCEPT' || (resolvedScore !== undefined && resolvedScore >= 70);
+      const resolvedDecision = isSubmit ? 'SUBMIT' : 'DO NOT SUBMIT';
+      const resolvedLevel = matchLevel || (c as any).matchLevel || (resolvedScore !== undefined ? (resolvedScore >= 70 ? 'STRONG MATCH' : 'LOW FIT') : undefined);
+
       return {
         ...c,
-        matchScore: finalScore ?? 75,
-        atsScore: finalScore ?? 75,
-        matchLevel: matchLevel || ((finalScore ?? 75) >= 80 ? 'STRONG MATCH' : (finalScore ?? 75) >= 60 ? 'GOOD MATCH' : 'LOW FIT'),
-        decision: decision || 'REVIEW',
-        recommendation: decision || 'REVIEW',
-        mandatoryCompliance: compliance || 'N/A'
+        matchScore: resolvedScore,
+        atsScore: resolvedScore,
+        matchLevel: resolvedLevel,
+        decision: resolvedDecision,
+        recommendation: resolvedDecision,
+        mandatoryCompliance: compliance || (c as any).mandatoryCompliance || 'N/A'
       };
     }));
 

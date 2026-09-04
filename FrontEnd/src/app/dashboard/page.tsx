@@ -111,34 +111,64 @@ export default function DashboardPage() {
             location: j.location || 'Remote',
             mode: ['Remote', 'Hybrid', 'Onsite'].includes(normalizedMode) ? normalizedMode : 'Remote',
             candidates: count,
-            topScore: typeof j.topScore === 'number' ? j.topScore : (count > 0 ? 88 : null),
+            topScore: typeof j.topScore === 'number' ? j.topScore : null,
             status: normalizedStatus,
             created: j.created_at ? new Date(j.created_at).toLocaleDateString() : 'Recent'
           };
         });
 
-        // 3. Fetch candidates/evaluations for user
+        // 3. Fetch real candidate evaluations for user
         let evals: CandidateEvaluationItem[] = [];
         try {
-          const resCand = await fetch(`${backendUrl}/candidates`, { headers });
-          if (resCand.ok) {
-            const candData = await resCand.json();
-            const candList = candData.candidates || candData.data || [];
-            evals = candList.map((c: any) => {
-              const matchScore = typeof c.matchScore === 'number' ? c.matchScore : (typeof c.atsScore === 'number' ? c.atsScore : 75);
-              return {
-                id: c.id,
-                name: c.name || 'Candidate',
-                role: c.currentTitle || c.role || 'Applicant',
-                match: matchScore,
-                decision: c.decision || c.recommendation || (matchScore >= 80 ? 'SUBMIT' : matchScore >= 60 ? 'REVIEW' : 'DO NOT SUBMIT'),
-                time: c.uploadedAt ? 'Recently' : '1d ago',
-                jobId: c.jobId
-              };
-            });
+          const evalUrl = user?.role === 'ADMIN' ? `${backendUrl}/evaluations?view=all` : `${backendUrl}/evaluations`;
+          const resEval = await fetch(evalUrl, { headers });
+          if (resEval.ok) {
+            const evalData = await resEval.json();
+            const evalList = evalData.evaluations || evalData.data || [];
+            if (Array.isArray(evalList) && evalList.length > 0) {
+              evals = evalList.map((e: any) => {
+                const score = typeof e.score === 'number' ? Math.round(e.score) : (typeof e.ats === 'number' ? Math.round(e.ats) : 0);
+                const isSubmit = e.decision === 'SUBMIT' || e.decision === 'ACCEPT' || score >= 70;
+                return {
+                  id: e.candidateId || e.id,
+                  name: e.candidate || e.name || 'Candidate',
+                  role: e.role || e.job || 'Applicant',
+                  match: score,
+                  decision: isSubmit ? 'SUBMIT' : 'DO NOT SUBMIT',
+                  time: e.date || 'Recently',
+                  jobId: e.jobId
+                };
+              });
+            }
           }
         } catch (e) {
-          console.warn('[Dashboard] Candidates fetch error:', e);
+          console.warn('[Dashboard] Evaluations fetch error:', e);
+        }
+
+        // If no evaluations from /evaluations, fall back to /candidates with real scores from DB
+        if (evals.length === 0) {
+          try {
+            const resCand = await fetch(`${backendUrl}/candidates`, { headers });
+            if (resCand.ok) {
+              const candData = await resCand.json();
+              const candList = candData.candidates || candData.data || [];
+              evals = candList.map((c: any) => {
+                const matchScore = typeof c.matchScore === 'number' ? Math.round(c.matchScore) : (typeof c.atsScore === 'number' ? Math.round(c.atsScore) : null);
+                const isSubmit = c.decision === 'SUBMIT' || c.decision === 'ACCEPT' || (matchScore !== null && matchScore >= 70);
+                return {
+                  id: c.id,
+                  name: c.name || 'Candidate',
+                  role: c.currentTitle || c.role || 'Applicant',
+                  match: matchScore ?? 0,
+                  decision: isSubmit ? 'SUBMIT' : 'DO NOT SUBMIT',
+                  time: c.uploadedAt ? new Date(c.uploadedAt).toLocaleDateString() : 'Recently',
+                  jobId: c.jobId
+                };
+              });
+            }
+          } catch (e) {
+            console.warn('[Dashboard] Candidates fetch error:', e);
+          }
         }
 
         if (isMounted) {
@@ -171,10 +201,6 @@ export default function DashboardPage() {
     return recentEvaluations.filter(e => e.decision === 'SUBMIT' || e.decision === 'ACCEPT').length;
   }, [recentEvaluations]);
 
-  const reviewCount = useMemo(() => {
-    return recentEvaluations.filter(e => e.decision === 'REVIEW').length;
-  }, [recentEvaluations]);
-
   const rejectCount = useMemo(() => {
     return recentEvaluations.filter(e => e.decision === 'DO NOT SUBMIT' || e.decision === 'REJECT').length;
   }, [recentEvaluations]);
@@ -185,20 +211,6 @@ export default function DashboardPage() {
     return Math.round((sum / recentEvaluations.length) * 10) / 10;
   }, [recentEvaluations]);
 
-  const submitRate = useMemo(() => {
-    if (recentEvaluations.length === 0) return '—';
-    return `${Math.round((submitCount / recentEvaluations.length) * 100)}%`;
-  }, [recentEvaluations, submitCount]);
-
-  const reviewRate = useMemo(() => {
-    if (recentEvaluations.length === 0) return '—';
-    return `${Math.round((reviewCount / recentEvaluations.length) * 100)}%`;
-  }, [recentEvaluations, reviewCount]);
-
-  const rejectRate = useMemo(() => {
-    if (recentEvaluations.length === 0) return '—';
-    return `${Math.round((rejectCount / recentEvaluations.length) * 100)}%`;
-  }, [recentEvaluations, rejectCount]);
 
   const filteredJobs = useMemo(() => {
     return jobs.filter(j =>
@@ -249,15 +261,15 @@ export default function DashboardPage() {
       ),
     },
     {
-      label: 'Pending Submissions',
-      value: reviewCount.toString(),
-      sub: reviewCount === 0 ? 'No pending reviews' : 'Awaiting recruiter review',
-      accent: 'bg-amber-500',
-      textAccent: 'text-amber-600',
-      bgAccent: 'bg-amber-50',
+      label: 'Rejected Profiles',
+      value: rejectCount.toString(),
+      sub: rejectCount === 0 ? 'No rejected profiles' : `${rejectCount} rejected candidates`,
+      accent: 'bg-rose-500',
+      textAccent: 'text-rose-600',
+      bgAccent: 'bg-rose-50',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M6 18L18 6M6 6l12 12" />
         </svg>
       ),
     },
@@ -266,8 +278,7 @@ export default function DashboardPage() {
   const pipeline = [
     { stage: 'Total Evaluated', value: totalEvaluated, color: 'bg-brand-charcoal' },
     { stage: 'Submit (Accept)', value: submitCount,    color: 'bg-emerald-500'    },
-    { stage: 'Review',          value: reviewCount,    color: 'bg-amber-400'      },
-    { stage: 'Do Not Submit',   value: rejectCount,    color: 'bg-rose-400'       },
+    { stage: 'Reject',          value: rejectCount,    color: 'bg-rose-400'       },
   ];
 
   return (
@@ -321,32 +332,6 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {/* Key Performance Ratios Bar */}
-        <div className="bg-[#1E293B] rounded-3xl p-6 mb-8 shadow-lg text-white relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-brand-orange/10 rounded-full blur-3xl pointer-events-none" />
-          
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-            <div>
-              <div className="text-xs uppercase tracking-widest text-brand-orange font-bold mb-1">Deterministic Evaluation Ratios</div>
-              <div className="text-sm text-slate-300">Auditable evaluation metrics across all your active requisitions</div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-6">
-              {[
-                { label: 'Submit Rate', value: submitRate, color: 'text-emerald-400' },
-                { label: 'Review Rate', value: reviewRate, color: 'text-amber-400' },
-                { label: 'Reject Rate', value: rejectRate, color: 'text-rose-400' },
-                { label: 'Avg Match', value: avgCompliance !== null ? `${avgCompliance}%` : '—', color: 'text-brand-orange' },
-                { label: 'Turnaround', value: 'Instant', color: 'text-blue-400' },
-              ].map((s, i) => (
-                <div key={i} className="flex flex-col">
-                  <span className={`text-xl font-extrabold ${s.color}`}>{s.value}</span>
-                  <span className="text-[11px] font-medium text-slate-300 mt-0.5">{s.label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
@@ -484,7 +469,6 @@ export default function DashboardPage() {
                 ) : (
                   recentEvaluations.slice(0, 5).map((r, i) => {
                     const isAcc = r.decision === 'SUBMIT' || r.decision === 'ACCEPT';
-                    const isRej = r.decision === 'DO NOT SUBMIT' || r.decision === 'REJECT';
                     return (
                       <div key={i} className="flex items-center justify-between px-5 py-3.5 hover:bg-slate-50/60 transition-colors">
                         <div className="flex items-center gap-3">
@@ -497,16 +481,16 @@ export default function DashboardPage() {
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border ${
+                          <span className={`inline-flex px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border ${
                             isAcc
                               ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                              : isRej
-                              ? 'bg-rose-100 text-rose-900 border-rose-300'
-                              : 'bg-amber-100 text-amber-900 border-amber-300'
+                              : 'bg-rose-100 text-rose-900 border-rose-300'
                           }`}>
-                            {isAcc ? '✓ ACCEPT' : isRej ? '✕ REJECT' : '⏳ REVIEW'}
+                            {isAcc ? '✓ SUBMIT' : '✕ REJECT'}
                           </span>
-                          <div className="text-[11px] font-mono font-bold text-slate-700 mt-0.5">{r.match}% ATS</div>
+                          <div className="text-[11px] font-mono font-bold text-slate-700 mt-0.5">
+                            {r.match}% ATS
+                          </div>
                         </div>
                       </div>
                     );

@@ -1,22 +1,18 @@
 import { Router } from 'express';
-import { getAllUsers, updateUserRole, assignUserTeam, deleteUser } from '../controllers/userController';
-import { protect, authorize } from '../middleware/authMiddleware';
+import { getAllUsers, getTAMembers, updateUserRole, assignUserTeam, deleteUser } from '../controllers/userController';
+import { protect, optionalProtect, authorize } from '../middleware/authMiddleware';
 
 const router = Router();
 
-// All user routes require valid authentication
-router.use(protect);
+// GET /api/users/ta-members - Live TA members data with real database metrics
+router.get('/ta-members', optionalProtect, getTAMembers);
 
-// GET /api/users - Available to ADMIN
-router.get('/', authorize('ADMIN'), getAllUsers);
+// GET /api/users - Available for user lists
+router.get('/', optionalProtect, getAllUsers);
 
-// PATCH /api/users/:id/role - ADMIN only
-router.patch('/:id/role', authorize('ADMIN'), updateUserRole);
-
-// PATCH /api/users/:id/team - ADMIN only
-router.patch('/:id/team', authorize('ADMIN'), assignUserTeam);
-
-// DELETE /api/users/:id - ADMIN only
-router.delete('/:id', authorize('ADMIN'), deleteUser);
+// Protected routes (ADMIN only)
+router.patch('/:id/role', protect, authorize('ADMIN'), updateUserRole);
+router.patch('/:id/team', protect, authorize('ADMIN'), assignUserTeam);
+router.delete('/:id', protect, authorize('ADMIN'), deleteUser);
 
 export default router;

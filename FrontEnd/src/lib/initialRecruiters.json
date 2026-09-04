@@ -1,0 +1,1286 @@
+[
+  {
+    "id": "9db7227e-ed85-40f3-bf94-869647955099",
+    "name": "Shubham Jamdar",
+    "email": "shubhamjamdar1009@gmail.com",
+    "role": "RECRUITER_MEMBER",
+    "team": "Sales & Growth Practice",
+    "activeJobs": 3,
+    "jdsUploaded": 3,
+    "resumesSeen": 8,
+    "screenedThisWeek": 4,
+    "tlApprovedCount": 2,
+    "avgMatchScore": 33,
+    "avgTimePerScreen": "2.8 min",
+    "avgTimePerResume": "1.6 min",
+    "todayHoursSpent": 7.6,
+    "totalHoursThisWeek": 37.2,
+    "capacity": "Optimal",
+    "lastActive": "Active now",
+    "strengths": [
+      "Sales Leadership",
+      "Talent Operations"
+    ],
+    "insightsSummary": "Shubham Jamdar has managed 3 requisitions and evaluated 8 candidates with an average match quality of 33% across Sales & Growth Practice.",
+    "topSkills": [
+      "Sales Leadership",
+      "Talent Operations"
+    ],
+    "efficiencyScore": 84,
+    "dailyTimeLogs": [
+      {
+        "day": "Mon",
+        "date": "Sep 01",
+        "hoursSpent": 7.9,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 3.2,
+        "screeningsCount": 1,
+        "screeningTimeHours": 2.1,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1
+      },
+      {
+        "day": "Tue",
+        "date": "Sep 02",
+        "hoursSpent": 8.1,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 3.4,
+        "screeningsCount": 1,
+        "screeningTimeHours": 2.2,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Wed",
+        "date": "Sep 03",
+        "hoursSpent": 7.5,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 3,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.9,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1.2
+      },
+      {
+        "day": "Thu",
+        "date": "Sep 04",
+        "hoursSpent": 7.3,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 2.8,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Fri",
+        "date": "Sep 05",
+        "hoursSpent": 7.6,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 2.9,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.8
+      }
+    ]
+  },
+  {
+    "id": "6ee58bef-7096-4f11-9366-696a074d4d49",
+    "name": "kishan",
+    "email": "kishan@gmail.com",
+    "role": "RECRUITER_MEMBER",
+    "team": "Cloud & Engineering Pod",
+    "activeJobs": 1,
+    "jdsUploaded": 1,
+    "resumesSeen": 2,
+    "screenedThisWeek": 1,
+    "tlApprovedCount": 0,
+    "avgMatchScore": 38,
+    "avgTimePerScreen": "2.8 min",
+    "avgTimePerResume": "1.6 min",
+    "todayHoursSpent": 5.1,
+    "totalHoursThisWeek": 25,
+    "capacity": "Optimal",
+    "lastActive": "Active now",
+    "strengths": [
+      "Windchill PLM"
+    ],
+    "insightsSummary": "kishan has managed 1 requisition and evaluated 2 candidates with an average match quality of 38% across Cloud & Engineering Pod.",
+    "topSkills": [
+      "Windchill PLM"
+    ],
+    "efficiencyScore": 84,
+    "dailyTimeLogs": [
+      {
+        "day": "Mon",
+        "date": "Sep 01",
+        "hoursSpent": 5.4,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 3.2,
+        "screeningsCount": 0,
+        "screeningTimeHours": 2.1,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1
+      },
+      {
+        "day": "Tue",
+        "date": "Sep 02",
+        "hoursSpent": 5.6,
+        "resumesReviewedCount": 0,
+        "resumesTimeHours": 3.4,
+        "screeningsCount": 0,
+        "screeningTimeHours": 2.2,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Wed",
+        "date": "Sep 03",
+        "hoursSpent": 5,
+        "resumesReviewedCount": 0,
+        "resumesTimeHours": 3,
+        "screeningsCount": 0,
+        "screeningTimeHours": 1.9,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1.2
+      },
+      {
+        "day": "Thu",
+        "date": "Sep 04",
+        "hoursSpent": 4.8,
+        "resumesReviewedCount": 0,
+        "resumesTimeHours": 2.8,
+        "screeningsCount": 0,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Fri",
+        "date": "Sep 05",
+        "hoursSpent": 5.1,
+        "resumesReviewedCount": 0,
+        "resumesTimeHours": 2.9,
+        "screeningsCount": 0,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.8
+      }
+    ]
+  },
+  {
+    "id": "512076cb-6b55-46b4-98d8-182156895927",
+    "name": "Shubham Jamdar",
+    "email": "jamdarshubham76@gmail.com",
+    "role": "RECRUITER_MEMBER",
+    "team": "Sales & Growth Practice",
+    "activeJobs": 3,
+    "jdsUploaded": 3,
+    "resumesSeen": 10,
+    "screenedThisWeek": 6,
+    "tlApprovedCount": 2,
+    "avgMatchScore": 15,
+    "avgTimePerScreen": "2.8 min",
+    "avgTimePerResume": "1.6 min",
+    "todayHoursSpent": 8.2,
+    "totalHoursThisWeek": 40.2,
+    "capacity": "Optimal",
+    "lastActive": "Active now",
+    "strengths": [
+      "Gen AI & ML",
+      "Sales Leadership"
+    ],
+    "insightsSummary": "Shubham Jamdar has managed 3 requisitions and evaluated 10 candidates with an average match quality of 15% across Sales & Growth Practice.",
+    "topSkills": [
+      "Gen AI & ML",
+      "Sales Leadership"
+    ],
+    "efficiencyScore": 84,
+    "dailyTimeLogs": [
+      {
+        "day": "Mon",
+        "date": "Sep 01",
+        "hoursSpent": 8.5,
+        "resumesReviewedCount": 3,
+        "resumesTimeHours": 3.2,
+        "screeningsCount": 2,
+        "screeningTimeHours": 2.1,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1
+      },
+      {
+        "day": "Tue",
+        "date": "Sep 02",
+        "hoursSpent": 8.7,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 3.4,
+        "screeningsCount": 1,
+        "screeningTimeHours": 2.2,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Wed",
+        "date": "Sep 03",
+        "hoursSpent": 8.1,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 3,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.9,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1.2
+      },
+      {
+        "day": "Thu",
+        "date": "Sep 04",
+        "hoursSpent": 7.9,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 2.8,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Fri",
+        "date": "Sep 05",
+        "hoursSpent": 8.2,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 2.9,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.8
+      }
+    ]
+  },
+  {
+    "id": "e906478e-496c-4a05-83f5-20635a5c9b19",
+    "name": "indresh",
+    "email": "indresh@gmail.com",
+    "role": "RECRUITER_MEMBER",
+    "team": "Cloud & Engineering Pod",
+    "activeJobs": 0,
+    "jdsUploaded": 0,
+    "resumesSeen": 4,
+    "screenedThisWeek": 1,
+    "tlApprovedCount": 1,
+    "avgMatchScore": 85,
+    "avgTimePerScreen": "2.8 min",
+    "avgTimePerResume": "1.6 min",
+    "todayHoursSpent": 4,
+    "totalHoursThisWeek": 19.6,
+    "capacity": "Available",
+    "lastActive": "Active now",
+    "strengths": [
+      "Technical Sourcing",
+      "ATS Evaluation",
+      "Candidate Screening"
+    ],
+    "insightsSummary": "indresh has managed 0 requisitions and evaluated 0 candidates with an average match quality of 85% across Cloud & Engineering Pod.",
+    "topSkills": [
+      "Technical Sourcing",
+      "ATS Evaluation",
+      "Candidate Screening"
+    ],
+    "efficiencyScore": 90,
+    "dailyTimeLogs": [
+      {
+        "day": "Mon",
+        "date": "Sep 01",
+        "hoursSpent": 4.3,
+        "resumesReviewedCount": 0,
+        "resumesTimeHours": 3.2,
+        "screeningsCount": 0,
+        "screeningTimeHours": 2.1,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 1
+      },
+      {
+        "day": "Tue",
+        "date": "Sep 02",
+        "hoursSpent": 4.5,
+        "resumesReviewedCount": 0,
+        "resumesTimeHours": 3.4,
+        "screeningsCount": 0,
+        "screeningTimeHours": 2.2,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Wed",
+        "date": "Sep 03",
+        "hoursSpent": 3.9,
+        "resumesReviewedCount": 0,
+        "resumesTimeHours": 3,
+        "screeningsCount": 0,
+        "screeningTimeHours": 1.9,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 1.2
+      },
+      {
+        "day": "Thu",
+        "date": "Sep 04",
+        "hoursSpent": 3.7,
+        "resumesReviewedCount": 0,
+        "resumesTimeHours": 2.8,
+        "screeningsCount": 0,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Fri",
+        "date": "Sep 05",
+        "hoursSpent": 4,
+        "resumesReviewedCount": 0,
+        "resumesTimeHours": 2.9,
+        "screeningsCount": 0,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.8
+      }
+    ]
+  },
+  {
+    "id": "b0310cf9-2ba4-4237-afca-4cc5187a4e6b",
+    "name": "rahul",
+    "email": "rahul@gmail.com",
+    "role": "RECRUITER_MEMBER",
+    "team": "Sales & Growth Practice",
+    "activeJobs": 2,
+    "jdsUploaded": 2,
+    "resumesSeen": 6,
+    "screenedThisWeek": 3,
+    "tlApprovedCount": 1,
+    "avgMatchScore": 32,
+    "avgTimePerScreen": "2.8 min",
+    "avgTimePerResume": "1.6 min",
+    "todayHoursSpent": 6.5,
+    "totalHoursThisWeek": 31.9,
+    "capacity": "Available",
+    "lastActive": "Active now",
+    "strengths": [
+      "Sales Leadership"
+    ],
+    "insightsSummary": "rahul has managed 2 requisitions and evaluated 6 candidates with an average match quality of 32% across Sales & Growth Practice.",
+    "topSkills": [
+      "Sales Leadership"
+    ],
+    "efficiencyScore": 84,
+    "dailyTimeLogs": [
+      {
+        "day": "Mon",
+        "date": "Sep 01",
+        "hoursSpent": 6.8,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 3.2,
+        "screeningsCount": 1,
+        "screeningTimeHours": 2.1,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1
+      },
+      {
+        "day": "Tue",
+        "date": "Sep 02",
+        "hoursSpent": 7,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 3.4,
+        "screeningsCount": 1,
+        "screeningTimeHours": 2.2,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Wed",
+        "date": "Sep 03",
+        "hoursSpent": 6.4,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 3,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.9,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1.2
+      },
+      {
+        "day": "Thu",
+        "date": "Sep 04",
+        "hoursSpent": 6.2,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 2.8,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Fri",
+        "date": "Sep 05",
+        "hoursSpent": 6.5,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 2.9,
+        "screeningsCount": 0,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.8
+      }
+    ]
+  },
+  {
+    "id": "f2c84de7-d28b-4a5f-a897-3ab00f8c6f2e",
+    "name": "Vijay",
+    "email": "vijay@tasknera.com",
+    "role": "RECRUITER_MEMBER",
+    "team": "Sales & Growth Practice",
+    "activeJobs": 1,
+    "jdsUploaded": 1,
+    "resumesSeen": 12,
+    "screenedThisWeek": 6,
+    "tlApprovedCount": 2,
+    "avgMatchScore": 30,
+    "avgTimePerScreen": "2.8 min",
+    "avgTimePerResume": "1.6 min",
+    "todayHoursSpent": 6.6,
+    "totalHoursThisWeek": 32.3,
+    "capacity": "Optimal",
+    "lastActive": "Active now",
+    "strengths": [
+      "Technical Sourcing",
+      "ATS Evaluation",
+      "Candidate Screening"
+    ],
+    "insightsSummary": "Vijay has managed 1 requisition and evaluated 12 candidates with an average match quality of 30% across Sales & Growth Practice.",
+    "topSkills": [
+      "Technical Sourcing",
+      "ATS Evaluation",
+      "Candidate Screening"
+    ],
+    "efficiencyScore": 84,
+    "dailyTimeLogs": [
+      {
+        "day": "Mon",
+        "date": "Sep 01",
+        "hoursSpent": 6.9,
+        "resumesReviewedCount": 3,
+        "resumesTimeHours": 3.2,
+        "screeningsCount": 2,
+        "screeningTimeHours": 2.1,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1
+      },
+      {
+        "day": "Tue",
+        "date": "Sep 02",
+        "hoursSpent": 7.1,
+        "resumesReviewedCount": 3,
+        "resumesTimeHours": 3.4,
+        "screeningsCount": 1,
+        "screeningTimeHours": 2.2,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Wed",
+        "date": "Sep 03",
+        "hoursSpent": 6.5,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 3,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.9,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1.2
+      },
+      {
+        "day": "Thu",
+        "date": "Sep 04",
+        "hoursSpent": 6.3,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 2.8,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Fri",
+        "date": "Sep 05",
+        "hoursSpent": 6.6,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 2.9,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.8
+      }
+    ]
+  },
+  {
+    "id": "26497bfb-2d04-452d-b84e-a0d71296412d",
+    "name": "surbhi",
+    "email": "surbhi@gmail.com",
+    "role": "RECRUITER_MEMBER",
+    "team": "Sales & Growth Practice",
+    "activeJobs": 3,
+    "jdsUploaded": 3,
+    "resumesSeen": 7,
+    "screenedThisWeek": 4,
+    "tlApprovedCount": 1,
+    "avgMatchScore": 28,
+    "avgTimePerScreen": "2.8 min",
+    "avgTimePerResume": "1.6 min",
+    "todayHoursSpent": 7.6,
+    "totalHoursThisWeek": 37.2,
+    "capacity": "Optimal",
+    "lastActive": "Active now",
+    "strengths": [
+      "Windchill PLM",
+      "Sales Leadership"
+    ],
+    "insightsSummary": "surbhi has managed 3 requisitions and evaluated 7 candidates with an average match quality of 28% across Sales & Growth Practice.",
+    "topSkills": [
+      "Windchill PLM",
+      "Sales Leadership"
+    ],
+    "efficiencyScore": 84,
+    "dailyTimeLogs": [
+      {
+        "day": "Mon",
+        "date": "Sep 01",
+        "hoursSpent": 7.9,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 3.2,
+        "screeningsCount": 1,
+        "screeningTimeHours": 2.1,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1
+      },
+      {
+        "day": "Tue",
+        "date": "Sep 02",
+        "hoursSpent": 8.1,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 3.4,
+        "screeningsCount": 1,
+        "screeningTimeHours": 2.2,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Wed",
+        "date": "Sep 03",
+        "hoursSpent": 7.5,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 3,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.9,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1.2
+      },
+      {
+        "day": "Thu",
+        "date": "Sep 04",
+        "hoursSpent": 7.3,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 2.8,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Fri",
+        "date": "Sep 05",
+        "hoursSpent": 7.6,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 2.9,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.8
+      }
+    ]
+  },
+  {
+    "id": "946f6700-bb12-4eef-98f0-853d44ee8434",
+    "name": "Soham",
+    "email": "soham@tasknera.com",
+    "role": "RECRUITER_MEMBER",
+    "team": "Sales & Growth Practice",
+    "activeJobs": 2,
+    "jdsUploaded": 2,
+    "resumesSeen": 8,
+    "screenedThisWeek": 4,
+    "tlApprovedCount": 2,
+    "avgMatchScore": 31,
+    "avgTimePerScreen": "2.8 min",
+    "avgTimePerResume": "1.6 min",
+    "todayHoursSpent": 6.8,
+    "totalHoursThisWeek": 33.3,
+    "capacity": "Optimal",
+    "lastActive": "Active now",
+    "strengths": [
+      "DevOps & CI/CD",
+      "Sales Leadership"
+    ],
+    "insightsSummary": "Soham has managed 2 requisitions and evaluated 8 candidates with an average match quality of 31% across Sales & Growth Practice.",
+    "topSkills": [
+      "DevOps & CI/CD",
+      "Sales Leadership"
+    ],
+    "efficiencyScore": 84,
+    "dailyTimeLogs": [
+      {
+        "day": "Mon",
+        "date": "Sep 01",
+        "hoursSpent": 7.1,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 3.2,
+        "screeningsCount": 1,
+        "screeningTimeHours": 2.1,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1
+      },
+      {
+        "day": "Tue",
+        "date": "Sep 02",
+        "hoursSpent": 7.3,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 3.4,
+        "screeningsCount": 1,
+        "screeningTimeHours": 2.2,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Wed",
+        "date": "Sep 03",
+        "hoursSpent": 6.7,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 3,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.9,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1.2
+      },
+      {
+        "day": "Thu",
+        "date": "Sep 04",
+        "hoursSpent": 6.5,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 2.8,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Fri",
+        "date": "Sep 05",
+        "hoursSpent": 6.8,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 2.9,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.8
+      }
+    ]
+  },
+  {
+    "id": "2692d297-fc9c-45b1-928f-443775a04b58",
+    "name": "sikha",
+    "email": "sikha@gmail.com",
+    "role": "RECRUITER_MEMBER",
+    "team": "Cloud & Engineering Pod",
+    "activeJobs": 2,
+    "jdsUploaded": 2,
+    "resumesSeen": 12,
+    "screenedThisWeek": 6,
+    "tlApprovedCount": 2,
+    "avgMatchScore": 45,
+    "avgTimePerScreen": "2.8 min",
+    "avgTimePerResume": "1.6 min",
+    "todayHoursSpent": 7.4,
+    "totalHoursThisWeek": 36.3,
+    "capacity": "Optimal",
+    "lastActive": "Active now",
+    "strengths": [
+      "Windchill PLM",
+      "DevOps & CI/CD"
+    ],
+    "insightsSummary": "sikha has managed 2 requisitions and evaluated 12 candidates with an average match quality of 45% across Cloud & Engineering Pod.",
+    "topSkills": [
+      "Windchill PLM",
+      "DevOps & CI/CD"
+    ],
+    "efficiencyScore": 84,
+    "dailyTimeLogs": [
+      {
+        "day": "Mon",
+        "date": "Sep 01",
+        "hoursSpent": 7.7,
+        "resumesReviewedCount": 3,
+        "resumesTimeHours": 3.2,
+        "screeningsCount": 2,
+        "screeningTimeHours": 2.1,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1
+      },
+      {
+        "day": "Tue",
+        "date": "Sep 02",
+        "hoursSpent": 7.9,
+        "resumesReviewedCount": 3,
+        "resumesTimeHours": 3.4,
+        "screeningsCount": 1,
+        "screeningTimeHours": 2.2,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Wed",
+        "date": "Sep 03",
+        "hoursSpent": 7.3,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 3,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.9,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1.2
+      },
+      {
+        "day": "Thu",
+        "date": "Sep 04",
+        "hoursSpent": 7.1,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 2.8,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Fri",
+        "date": "Sep 05",
+        "hoursSpent": 7.4,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 2.9,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.8
+      }
+    ]
+  },
+  {
+    "id": "8cfb71a9-6b3f-4af5-bdb2-1039363a1e75",
+    "name": "Shubham",
+    "email": "shubham@tasknera.com",
+    "role": "RECRUITER_MEMBER",
+    "team": "SAP & Enterprise Practice",
+    "activeJobs": 1,
+    "jdsUploaded": 1,
+    "resumesSeen": 4,
+    "screenedThisWeek": 2,
+    "tlApprovedCount": 1,
+    "avgMatchScore": 70,
+    "avgTimePerScreen": "2.8 min",
+    "avgTimePerResume": "1.6 min",
+    "todayHoursSpent": 5.4,
+    "totalHoursThisWeek": 26.5,
+    "capacity": "Optimal",
+    "lastActive": "Active now",
+    "strengths": [
+      "SAP S/4HANA"
+    ],
+    "insightsSummary": "Shubham has managed 1 requisition and evaluated 4 candidates with an average match quality of 70% across SAP & Enterprise Practice.",
+    "topSkills": [
+      "SAP S/4HANA"
+    ],
+    "efficiencyScore": 84,
+    "dailyTimeLogs": [
+      {
+        "day": "Mon",
+        "date": "Sep 01",
+        "hoursSpent": 5.7,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 3.2,
+        "screeningsCount": 1,
+        "screeningTimeHours": 2.1,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1
+      },
+      {
+        "day": "Tue",
+        "date": "Sep 02",
+        "hoursSpent": 5.9,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 3.4,
+        "screeningsCount": 0,
+        "screeningTimeHours": 2.2,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Wed",
+        "date": "Sep 03",
+        "hoursSpent": 5.3,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 3,
+        "screeningsCount": 0,
+        "screeningTimeHours": 1.9,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1.2
+      },
+      {
+        "day": "Thu",
+        "date": "Sep 04",
+        "hoursSpent": 5.1,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 2.8,
+        "screeningsCount": 0,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Fri",
+        "date": "Sep 05",
+        "hoursSpent": 5.4,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 2.9,
+        "screeningsCount": 0,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.8
+      }
+    ]
+  },
+  {
+    "id": "9278267a-c313-4297-a0a4-751b86d7fa4f",
+    "name": "vishal",
+    "email": "vishal@gmail.com",
+    "role": "RECRUITER_MEMBER",
+    "team": "Cloud & Engineering Pod",
+    "activeJobs": 1,
+    "jdsUploaded": 1,
+    "resumesSeen": 2,
+    "screenedThisWeek": 1,
+    "tlApprovedCount": 0,
+    "avgMatchScore": 32,
+    "avgTimePerScreen": "2.8 min",
+    "avgTimePerResume": "1.6 min",
+    "todayHoursSpent": 5.1,
+    "totalHoursThisWeek": 25,
+    "capacity": "Optimal",
+    "lastActive": "Active now",
+    "strengths": [
+      "DevOps & CI/CD"
+    ],
+    "insightsSummary": "vishal has managed 1 requisition and evaluated 2 candidates with an average match quality of 32% across Cloud & Engineering Pod.",
+    "topSkills": [
+      "DevOps & CI/CD"
+    ],
+    "efficiencyScore": 84,
+    "dailyTimeLogs": [
+      {
+        "day": "Mon",
+        "date": "Sep 01",
+        "hoursSpent": 5.4,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 3.2,
+        "screeningsCount": 0,
+        "screeningTimeHours": 2.1,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1
+      },
+      {
+        "day": "Tue",
+        "date": "Sep 02",
+        "hoursSpent": 5.6,
+        "resumesReviewedCount": 0,
+        "resumesTimeHours": 3.4,
+        "screeningsCount": 0,
+        "screeningTimeHours": 2.2,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Wed",
+        "date": "Sep 03",
+        "hoursSpent": 5,
+        "resumesReviewedCount": 0,
+        "resumesTimeHours": 3,
+        "screeningsCount": 0,
+        "screeningTimeHours": 1.9,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1.2
+      },
+      {
+        "day": "Thu",
+        "date": "Sep 04",
+        "hoursSpent": 4.8,
+        "resumesReviewedCount": 0,
+        "resumesTimeHours": 2.8,
+        "screeningsCount": 0,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Fri",
+        "date": "Sep 05",
+        "hoursSpent": 5.1,
+        "resumesReviewedCount": 0,
+        "resumesTimeHours": 2.9,
+        "screeningsCount": 0,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.8
+      }
+    ]
+  },
+  {
+    "id": "f54f533e-a6c3-4fe2-8fa3-4bd710cbd0a3",
+    "name": "vishal",
+    "email": "vishak@gmail.com",
+    "role": "RECRUITER_MEMBER",
+    "team": "Cloud & Engineering Pod",
+    "activeJobs": 2,
+    "jdsUploaded": 2,
+    "resumesSeen": 10,
+    "screenedThisWeek": 5,
+    "tlApprovedCount": 2,
+    "avgMatchScore": 65,
+    "avgTimePerScreen": "2.8 min",
+    "avgTimePerResume": "1.6 min",
+    "todayHoursSpent": 7.1,
+    "totalHoursThisWeek": 34.8,
+    "capacity": "Optimal",
+    "lastActive": "Active now",
+    "strengths": [
+      "Python & FastAPI",
+      "Windchill PLM"
+    ],
+    "insightsSummary": "vishal has managed 2 requisitions and evaluated 10 candidates with an average match quality of 65% across Cloud & Engineering Pod.",
+    "topSkills": [
+      "Python & FastAPI",
+      "Windchill PLM"
+    ],
+    "efficiencyScore": 84,
+    "dailyTimeLogs": [
+      {
+        "day": "Mon",
+        "date": "Sep 01",
+        "hoursSpent": 7.4,
+        "resumesReviewedCount": 3,
+        "resumesTimeHours": 3.2,
+        "screeningsCount": 1,
+        "screeningTimeHours": 2.1,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1
+      },
+      {
+        "day": "Tue",
+        "date": "Sep 02",
+        "hoursSpent": 7.6,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 3.4,
+        "screeningsCount": 1,
+        "screeningTimeHours": 2.2,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Wed",
+        "date": "Sep 03",
+        "hoursSpent": 7,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 3,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.9,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1.2
+      },
+      {
+        "day": "Thu",
+        "date": "Sep 04",
+        "hoursSpent": 6.8,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 2.8,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Fri",
+        "date": "Sep 05",
+        "hoursSpent": 7.1,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 2.9,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.8
+      }
+    ]
+  },
+  {
+    "id": "0f8a82ce-076a-48eb-b406-00fb7a6ca979",
+    "name": "User Two",
+    "email": "user2_test@tasknera.com",
+    "role": "RECRUITER_MEMBER",
+    "team": "Cloud & Engineering Pod",
+    "activeJobs": 3,
+    "jdsUploaded": 3,
+    "resumesSeen": 6,
+    "screenedThisWeek": 4,
+    "tlApprovedCount": 4,
+    "avgMatchScore": 95,
+    "avgTimePerScreen": "2.8 min",
+    "avgTimePerResume": "1.6 min",
+    "todayHoursSpent": 7.6,
+    "totalHoursThisWeek": 37.2,
+    "capacity": "Optimal",
+    "lastActive": "Active now",
+    "strengths": [
+      "Python & FastAPI"
+    ],
+    "insightsSummary": "User Two has managed 3 requisitions and evaluated 6 candidates with an average match quality of 95% across Cloud & Engineering Pod.",
+    "topSkills": [
+      "Python & FastAPI"
+    ],
+    "efficiencyScore": 95,
+    "dailyTimeLogs": [
+      {
+        "day": "Mon",
+        "date": "Sep 01",
+        "hoursSpent": 7.9,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 3.2,
+        "screeningsCount": 1,
+        "screeningTimeHours": 2.1,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1
+      },
+      {
+        "day": "Tue",
+        "date": "Sep 02",
+        "hoursSpent": 8.1,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 3.4,
+        "screeningsCount": 1,
+        "screeningTimeHours": 2.2,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Wed",
+        "date": "Sep 03",
+        "hoursSpent": 7.5,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 3,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.9,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1.2
+      },
+      {
+        "day": "Thu",
+        "date": "Sep 04",
+        "hoursSpent": 7.3,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 2.8,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Fri",
+        "date": "Sep 05",
+        "hoursSpent": 7.6,
+        "resumesReviewedCount": 1,
+        "resumesTimeHours": 2.9,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.8
+      }
+    ]
+  },
+  {
+    "id": "4329b3a6-9a30-4e8c-9d55-45b7ed7e563e",
+    "name": "User One",
+    "email": "user1_test@tasknera.com",
+    "role": "RECRUITER_MEMBER",
+    "team": "Cloud & Engineering Pod",
+    "activeJobs": 5,
+    "jdsUploaded": 5,
+    "resumesSeen": 10,
+    "screenedThisWeek": 6,
+    "tlApprovedCount": 5,
+    "avgMatchScore": 78,
+    "avgTimePerScreen": "2.8 min",
+    "avgTimePerResume": "1.6 min",
+    "todayHoursSpent": 8.5,
+    "totalHoursThisWeek": 41.7,
+    "capacity": "High Load",
+    "lastActive": "Active now",
+    "strengths": [
+      "React & Next.js"
+    ],
+    "insightsSummary": "User One has managed 5 requisitions and evaluated 10 candidates with an average match quality of 78% across Cloud & Engineering Pod.",
+    "topSkills": [
+      "React & Next.js"
+    ],
+    "efficiencyScore": 87,
+    "dailyTimeLogs": [
+      {
+        "day": "Mon",
+        "date": "Sep 01",
+        "hoursSpent": 8.8,
+        "resumesReviewedCount": 3,
+        "resumesTimeHours": 3.2,
+        "screeningsCount": 2,
+        "screeningTimeHours": 2.1,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1
+      },
+      {
+        "day": "Tue",
+        "date": "Sep 02",
+        "hoursSpent": 9,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 3.4,
+        "screeningsCount": 1,
+        "screeningTimeHours": 2.2,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Wed",
+        "date": "Sep 03",
+        "hoursSpent": 8.4,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 3,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.9,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1.2
+      },
+      {
+        "day": "Thu",
+        "date": "Sep 04",
+        "hoursSpent": 8.2,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 2.8,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Fri",
+        "date": "Sep 05",
+        "hoursSpent": 8.5,
+        "resumesReviewedCount": 2,
+        "resumesTimeHours": 2.9,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.8
+      }
+    ]
+  },
+  {
+    "id": "0197ec24-3ef0-474c-be20-f0a810aa6854",
+    "name": "Tasknera Recruiter",
+    "email": "recruiter@tasknera.com",
+    "role": "ADMIN",
+    "team": "Executive & TA Leadership",
+    "activeJobs": 1,
+    "jdsUploaded": 1,
+    "resumesSeen": 17,
+    "screenedThisWeek": 5,
+    "tlApprovedCount": 3,
+    "avgMatchScore": 51,
+    "avgTimePerScreen": "2.8 min",
+    "avgTimePerResume": "1.6 min",
+    "todayHoursSpent": 6.3,
+    "totalHoursThisWeek": 30.9,
+    "capacity": "Optimal",
+    "lastActive": "Active now",
+    "strengths": [
+      "AI Resume Analysis",
+      "Talent Engagement",
+      "Fast Evaluation"
+    ],
+    "insightsSummary": "Tasknera Recruiter is actively engaged in executive requisition oversight and governance with strong evaluation velocity.",
+    "topSkills": [
+      "AI Resume Analysis",
+      "Talent Engagement",
+      "Fast Evaluation"
+    ],
+    "efficiencyScore": 84,
+    "dailyTimeLogs": [
+      {
+        "day": "Mon",
+        "date": "Sep 01",
+        "hoursSpent": 6.6,
+        "resumesReviewedCount": 4,
+        "resumesTimeHours": 3.2,
+        "screeningsCount": 1,
+        "screeningTimeHours": 2.1,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1
+      },
+      {
+        "day": "Tue",
+        "date": "Sep 02",
+        "hoursSpent": 6.8,
+        "resumesReviewedCount": 4,
+        "resumesTimeHours": 3.4,
+        "screeningsCount": 1,
+        "screeningTimeHours": 2.2,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Wed",
+        "date": "Sep 03",
+        "hoursSpent": 6.2,
+        "resumesReviewedCount": 3,
+        "resumesTimeHours": 3,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.9,
+        "jdsUploadedCount": 1,
+        "jdTimeHours": 1.2
+      },
+      {
+        "day": "Thu",
+        "date": "Sep 04",
+        "hoursSpent": 6,
+        "resumesReviewedCount": 3,
+        "resumesTimeHours": 2.8,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.5
+      },
+      {
+        "day": "Fri",
+        "date": "Sep 05",
+        "hoursSpent": 6.3,
+        "resumesReviewedCount": 3,
+        "resumesTimeHours": 2.9,
+        "screeningsCount": 1,
+        "screeningTimeHours": 1.8,
+        "jdsUploadedCount": 0,
+        "jdTimeHours": 0.8
+      }
+    ]
+  }
+]

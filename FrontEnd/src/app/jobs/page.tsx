@@ -102,13 +102,10 @@ function WorkedByMembers({ workers = [], isCompact = false }: { workers: JobWork
           {getInitials(w.name)}
         </div>
         <div className="min-w-0">
-          <div className="text-xs font-bold text-slate-800 truncate max-w-[130px] flex items-center gap-1.5">
-            <span>{w.name}</span>
-            {w.isCreator && (
-              <span className="inline-flex items-center text-[9px] px-1.5 py-0.5 bg-amber-100 text-amber-700 border border-amber-200 rounded-md font-bold shrink-0 leading-tight">Own</span>
-            )}
+          <div className="text-xs font-bold text-slate-800 truncate max-w-[170px]">
+            {w.name}
           </div>
-          <div className="text-[10px] text-slate-400 font-medium truncate max-w-[130px]">
+          <div className="text-[10px] text-slate-400 font-medium truncate max-w-[170px]">
             {w.action === 'Created Requisition' ? 'Requisition Owner' : (w.action || (w.role === 'ADMIN' ? 'Administrator' : 'Recruiter'))}
           </div>
         </div>

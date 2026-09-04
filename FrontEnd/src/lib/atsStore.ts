@@ -1,4 +1,5 @@
 // In-House Tasknera ATS Unified Store (Local State + LocalStorage Synchronization)
+import initialRecruitersData from './initialRecruiters.json';
 
 export type CandidateStageStatus = 
   | 'SOURCED'
@@ -446,181 +447,7 @@ const INITIAL_AUDIT_EVENTS: AuditEvent[] = [
   }
 ];
 
-const INITIAL_RECRUITERS: RecruiterMetric[] = [
-  {
-    id: 'rec-1',
-    name: 'Sarah Mitchell',
-    email: 'sarah.m@tasknera.com',
-    role: 'RECRUITER_MEMBER',
-    team: 'SAP & Enterprise Practice',
-    activeJobs: 4,
-    jdsUploaded: 6,
-    resumesSeen: 184,
-    screenedThisWeek: 48,
-    tlApprovedCount: 19,
-    avgMatchScore: 88,
-    avgTimePerScreen: '3.1 min',
-    avgTimePerResume: '1.8 min',
-    todayHoursSpent: 6.4,
-    totalHoursThisWeek: 32.8,
-    capacity: 'Normal',
-    lastActive: 'Active now',
-    strengths: ['SAP S/4HANA Talent', 'High Shortlist Quality', 'Precision Sourcing'],
-    insightsSummary: 'Sarah is the highest-converting SAP recruiter with a 94% interview pass rate. She averaged 6.4 hours today evaluating S/4HANA candidates with exceptional 1.8 min/CV parsing speed.',
-    topSkills: ['SAP CO', 'S/4HANA 2020', 'Material Ledger', 'Product Costing (CO-PC)'],
-    efficiencyScore: 94,
-    dailyTimeLogs: [
-      { day: 'Mon', date: 'Aug 28', hoursSpent: 6.8, resumesReviewedCount: 38, resumesTimeHours: 3.4, screeningsCount: 10, screeningTimeHours: 2.2, jdsUploadedCount: 1, jdTimeHours: 1.2 },
-      { day: 'Tue', date: 'Aug 29', hoursSpent: 7.2, resumesReviewedCount: 42, resumesTimeHours: 3.8, screeningsCount: 12, screeningTimeHours: 2.4, jdsUploadedCount: 2, jdTimeHours: 1.0 },
-      { day: 'Wed', date: 'Aug 30', hoursSpent: 6.5, resumesReviewedCount: 36, resumesTimeHours: 3.2, screeningsCount: 9, screeningTimeHours: 2.1, jdsUploadedCount: 1, jdTimeHours: 1.2 },
-      { day: 'Thu', date: 'Aug 31', hoursSpent: 5.9, resumesReviewedCount: 34, resumesTimeHours: 3.0, screeningsCount: 8, screeningTimeHours: 1.9, jdsUploadedCount: 1, jdTimeHours: 1.0 },
-      { day: 'Fri', date: 'Sep 01', hoursSpent: 6.4, resumesReviewedCount: 34, resumesTimeHours: 3.1, screeningsCount: 9, screeningTimeHours: 2.1, jdsUploadedCount: 1, jdTimeHours: 1.2 },
-    ],
-    recentActivity: [
-      'Uploaded 32 resumes for SAP CO Lead Consultant (Took 1.2 hrs)',
-      'Screened Michael Chen (76% fit - 18 min call)',
-      'Shortlisted Sarah Jenkins (94% fit - direct client match)',
-    ],
-  },
-  {
-    id: 'rec-2',
-    name: 'Priya Sharma',
-    email: 'priya.s@tasknera.com',
-    role: 'RECRUITER_MEMBER',
-    team: 'Cloud & Engineering Pod',
-    activeJobs: 5,
-    jdsUploaded: 8,
-    resumesSeen: 215,
-    screenedThisWeek: 56,
-    tlApprovedCount: 24,
-    avgMatchScore: 86,
-    avgTimePerScreen: '2.8 min',
-    avgTimePerResume: '1.5 min',
-    todayHoursSpent: 7.1,
-    totalHoursThisWeek: 35.6,
-    capacity: 'Optimal',
-    lastActive: '15 min ago',
-    strengths: ['Distributed Systems', 'Rapid CV Processing', 'Top Screen Volume'],
-    insightsSummary: 'Priya leads the team in total resumes evaluated (215 CVs this week) and maintains the highest review velocity at 1.5 min per resume with 42 candidates screened.',
-    topSkills: ['Golang', 'Node.js', 'Distributed Systems', 'PostgreSQL', 'Microservices'],
-    efficiencyScore: 96,
-    dailyTimeLogs: [
-      { day: 'Mon', date: 'Aug 28', hoursSpent: 7.4, resumesReviewedCount: 46, resumesTimeHours: 3.9, screeningsCount: 12, screeningTimeHours: 2.3, jdsUploadedCount: 2, jdTimeHours: 1.2 },
-      { day: 'Tue', date: 'Aug 29', hoursSpent: 7.0, resumesReviewedCount: 42, resumesTimeHours: 3.6, screeningsCount: 11, screeningTimeHours: 2.2, jdsUploadedCount: 1, jdTimeHours: 1.2 },
-      { day: 'Wed', date: 'Aug 30', hoursSpent: 7.2, resumesReviewedCount: 45, resumesTimeHours: 3.8, screeningsCount: 11, screeningTimeHours: 2.2, jdsUploadedCount: 2, jdTimeHours: 1.2 },
-      { day: 'Thu', date: 'Aug 31', hoursSpent: 6.9, resumesReviewedCount: 40, resumesTimeHours: 3.4, screeningsCount: 11, screeningTimeHours: 2.2, jdsUploadedCount: 1, jdTimeHours: 1.3 },
-      { day: 'Fri', date: 'Sep 01', hoursSpent: 7.1, resumesReviewedCount: 42, resumesTimeHours: 3.6, screeningsCount: 11, screeningTimeHours: 2.3, jdsUploadedCount: 2, jdTimeHours: 1.2 },
-    ],
-    recentActivity: [
-      'Created JD: Senior Backend Engineer (Go/Node) (Took 45 min)',
-      'Parsed & evaluated 45 CVs with AI matcher (Took 1.8 hrs)',
-      'Screened Marcus Vance (91% fit - 22 min call)',
-    ],
-  },
-  {
-    id: 'rec-3',
-    name: 'David Park',
-    email: 'david.p@tasknera.com',
-    role: 'RECRUITER_MEMBER',
-    team: 'Cloud & Engineering Pod',
-    activeJobs: 3,
-    jdsUploaded: 4,
-    resumesSeen: 128,
-    screenedThisWeek: 32,
-    tlApprovedCount: 14,
-    avgMatchScore: 82,
-    avgTimePerScreen: '3.6 min',
-    avgTimePerResume: '2.2 min',
-    todayHoursSpent: 5.4,
-    totalHoursThisWeek: 26.2,
-    capacity: 'Available',
-    lastActive: '1 hour ago',
-    strengths: ['Cloud Infrastructure', 'Deep Technical Screening', 'Available Capacity'],
-    insightsSummary: 'David specializes in high-bar Cloud DevOps SRE assessments. He has available capacity (5.4h logged today) and is ready for new engineering requisition assignments.',
-    topSkills: ['Kubernetes', 'AWS Architecture', 'Terraform', 'CI/CD Pipelines'],
-    efficiencyScore: 88,
-    dailyTimeLogs: [
-      { day: 'Mon', date: 'Aug 28', hoursSpent: 5.2, resumesReviewedCount: 24, resumesTimeHours: 2.6, screeningsCount: 6, screeningTimeHours: 1.6, jdsUploadedCount: 1, jdTimeHours: 1.0 },
-      { day: 'Tue', date: 'Aug 29', hoursSpent: 5.6, resumesReviewedCount: 28, resumesTimeHours: 2.8, screeningsCount: 7, screeningTimeHours: 1.8, jdsUploadedCount: 1, jdTimeHours: 1.0 },
-      { day: 'Wed', date: 'Aug 30', hoursSpent: 5.0, resumesReviewedCount: 25, resumesTimeHours: 2.5, screeningsCount: 6, screeningTimeHours: 1.5, jdsUploadedCount: 1, jdTimeHours: 1.0 },
-      { day: 'Thu', date: 'Aug 31', hoursSpent: 5.0, resumesReviewedCount: 25, resumesTimeHours: 2.5, screeningsCount: 6, screeningTimeHours: 1.5, jdsUploadedCount: 0, jdTimeHours: 1.0 },
-      { day: 'Fri', date: 'Sep 01', hoursSpent: 5.4, resumesReviewedCount: 26, resumesTimeHours: 2.7, screeningsCount: 7, screeningTimeHours: 1.7, jdsUploadedCount: 1, jdTimeHours: 1.0 },
-    ],
-    recentActivity: [
-      'Uploaded 20 resumes for DevOps SRE (Took 1.1 hrs)',
-      'Screened James Wilson (79% fit - 15 min call)',
-    ],
-  },
-  {
-    id: 'rec-4',
-    name: 'John Reynolds',
-    email: 'john.r@tasknera.com',
-    role: 'TEAM_LEAD',
-    team: 'SAP & Enterprise Practice',
-    activeJobs: 6,
-    jdsUploaded: 9,
-    resumesSeen: 240,
-    screenedThisWeek: 42,
-    tlApprovedCount: 38,
-    avgMatchScore: 91,
-    avgTimePerScreen: '2.4 min',
-    avgTimePerResume: '1.4 min',
-    todayHoursSpent: 7.5,
-    totalHoursThisWeek: 37.0,
-    capacity: 'Optimal',
-    lastActive: 'Active now',
-    strengths: ['Requisition Architecture', 'Team Mentorship', 'Client Stakeholder Mgmt'],
-    insightsSummary: 'John leads the SAP pod, managing 6 active enterprise requisitions and delivering 38 shortlists with a 91% candidate match rating and rapid review velocity.',
-    topSkills: ['Enterprise Architecture', 'SAP Advisory', 'JD Structuring', 'Client Delivery'],
-    efficiencyScore: 98,
-    dailyTimeLogs: [
-      { day: 'Mon', date: 'Aug 28', hoursSpent: 7.8, resumesReviewedCount: 52, resumesTimeHours: 4.0, screeningsCount: 9, screeningTimeHours: 1.8, jdsUploadedCount: 2, jdTimeHours: 2.0 },
-      { day: 'Tue', date: 'Aug 29', hoursSpent: 7.5, resumesReviewedCount: 48, resumesTimeHours: 3.8, screeningsCount: 9, screeningTimeHours: 1.8, jdsUploadedCount: 2, jdTimeHours: 1.9 },
-      { day: 'Wed', date: 'Aug 30', hoursSpent: 7.2, resumesReviewedCount: 46, resumesTimeHours: 3.6, screeningsCount: 8, screeningTimeHours: 1.7, jdsUploadedCount: 2, jdTimeHours: 1.9 },
-      { day: 'Thu', date: 'Aug 31', hoursSpent: 7.0, resumesReviewedCount: 46, resumesTimeHours: 3.6, screeningsCount: 8, screeningTimeHours: 1.7, jdsUploadedCount: 1, jdTimeHours: 1.7 },
-      { day: 'Fri', date: 'Sep 01', hoursSpent: 7.5, resumesReviewedCount: 48, resumesTimeHours: 3.8, screeningsCount: 8, screeningTimeHours: 1.7, jdsUploadedCount: 2, jdTimeHours: 2.0 },
-    ],
-    recentActivity: [
-      'Created JD: SAP CO Lead Consultant (Took 1.2 hrs)',
-      'Approved 5 candidate submissions for client interview',
-      'Reassigned S/4HANA requisition to Sarah',
-    ],
-  },
-  {
-    id: 'rec-5',
-    name: 'Alex Morales',
-    email: 'alex.m@tasknera.com',
-    role: 'TEAM_LEAD',
-    team: 'Cloud & Engineering Pod',
-    activeJobs: 5,
-    jdsUploaded: 7,
-    resumesSeen: 195,
-    screenedThisWeek: 39,
-    tlApprovedCount: 41,
-    avgMatchScore: 89,
-    avgTimePerScreen: '2.5 min',
-    avgTimePerResume: '1.6 min',
-    todayHoursSpent: 7.0,
-    totalHoursThisWeek: 34.5,
-    capacity: 'Optimal',
-    lastActive: 'Active now',
-    strengths: ['Score Calibration', 'Technical QA Signoff', 'Pipeline Optimization'],
-    insightsSummary: 'Alex oversees technical calibration for Cloud & Engineering. Reviewed 39 candidate score edge cases this week and approved 41 candidates for final client rounds.',
-    topSkills: ['Full-Stack Systems', 'Cloud DevOps', 'ATS Algorithm Calibration'],
-    efficiencyScore: 95,
-    dailyTimeLogs: [
-      { day: 'Mon', date: 'Aug 28', hoursSpent: 7.0, resumesReviewedCount: 40, resumesTimeHours: 3.4, screeningsCount: 8, screeningTimeHours: 1.8, jdsUploadedCount: 1, jdTimeHours: 1.8 },
-      { day: 'Tue', date: 'Aug 29', hoursSpent: 7.2, resumesReviewedCount: 42, resumesTimeHours: 3.6, screeningsCount: 8, screeningTimeHours: 1.8, jdsUploadedCount: 2, jdTimeHours: 1.8 },
-      { day: 'Wed', date: 'Aug 30', hoursSpent: 6.8, resumesReviewedCount: 38, resumesTimeHours: 3.2, screeningsCount: 7, screeningTimeHours: 1.6, jdsUploadedCount: 1, jdTimeHours: 2.0 },
-      { day: 'Thu', date: 'Aug 31', hoursSpent: 6.5, resumesReviewedCount: 36, resumesTimeHours: 3.0, screeningsCount: 8, screeningTimeHours: 1.8, jdsUploadedCount: 1, jdTimeHours: 1.7 },
-      { day: 'Fri', date: 'Sep 01', hoursSpent: 7.0, resumesReviewedCount: 39, resumesTimeHours: 3.3, screeningsCount: 8, screeningTimeHours: 1.8, jdsUploadedCount: 2, jdTimeHours: 1.9 },
-    ],
-    recentActivity: [
-      'Calibrated score for Marcus Vance to 91%',
-      'Reviewed 12 borderline AI match candidates (Took 1.1 hrs)',
-    ],
-  }
-];
+const INITIAL_RECRUITERS: RecruiterMetric[] = ((initialRecruitersData as any[]) || []).filter(r => r.email?.toLowerCase().trim() !== 'admin123@gmail.com' && r.role !== 'ADMIN');
 
 class ATSStore {
   private jobs: JobItem[] = [];
@@ -652,27 +479,29 @@ class ATSStore {
       this.auditEvents = storedAudits ? JSON.parse(storedAudits) : INITIAL_AUDIT_EVENTS;
       
       if (storedRecruiters) {
-        const parsed = JSON.parse(storedRecruiters) as RecruiterMetric[];
-        // Merge enriched metadata into any cached stored recruiters
-        this.recruiters = parsed.map(pr => {
-          const init = INITIAL_RECRUITERS.find(ir => ir.id === pr.id || ir.email.toLowerCase() === pr.email.toLowerCase());
-          if (init) {
-            return {
-              ...init,
-              ...pr,
-              strengths: pr.strengths?.length ? pr.strengths : init.strengths,
-              insightsSummary: pr.insightsSummary || init.insightsSummary,
-              topSkills: pr.topSkills?.length ? pr.topSkills : init.topSkills,
-              efficiencyScore: pr.efficiencyScore || init.efficiencyScore,
-            };
-          }
-          return pr;
-        });
+        let parsed = JSON.parse(storedRecruiters) as RecruiterMetric[];
+        // Filter out legacy dummy mock recruiters (Sarah Mitchell, etc.) as well as the system admin account
+        const dummyEmails = [
+          'sarah.m@tasknera.com',
+          'priya.s@tasknera.com',
+          'david.p@tasknera.com',
+          'marcus.v@tasknera.com',
+          'elena.r@tasknera.com',
+          'john.r@tasknera.com',
+          'alex.m@tasknera.com',
+          'alex.c@tasknera.com'
+        ];
+        parsed = parsed.filter(p => !dummyEmails.includes(p.email?.toLowerCase()) && p.email?.toLowerCase().trim() !== 'admin123@gmail.com' && p.role !== 'ADMIN');
 
-        // Ensure all default initial recruiters are always present
-        for (const ir of INITIAL_RECRUITERS) {
-          if (!this.recruiters.some(r => r.id === ir.id || r.email.toLowerCase() === ir.email.toLowerCase())) {
-            this.recruiters.push(ir);
+        if (parsed.length === 0) {
+          this.recruiters = INITIAL_RECRUITERS;
+        } else {
+          this.recruiters = parsed;
+          // Ensure all real database initial recruiters are present
+          for (const ir of INITIAL_RECRUITERS) {
+            if (!this.recruiters.some(r => r.id === ir.id || r.email.toLowerCase() === ir.email.toLowerCase())) {
+              this.recruiters.push(ir);
+            }
           }
         }
       } else {
@@ -738,8 +567,14 @@ class ATSStore {
     return this.auditEvents;
   }
 
+  public setRecruitersFromDatabase(members: RecruiterMetric[]): void {
+    if (!Array.isArray(members) || members.length === 0) return;
+    this.recruiters = members.filter(m => m.email?.toLowerCase().trim() !== 'admin123@gmail.com' && m.role !== 'ADMIN');
+    this.saveToStorage();
+  }
+
   public getRecruiters(): RecruiterMetric[] {
-    return this.recruiters;
+    return this.recruiters.filter(r => r.email?.toLowerCase().trim() !== 'admin123@gmail.com' && r.role !== 'ADMIN');
   }
 
   public getRecruiter(id: string): RecruiterMetric | undefined {
@@ -749,14 +584,11 @@ class ATSStore {
   public ensureMember(user: { id?: string; name?: string | null; email?: string; role?: string }): RecruiterMetric | null {
     if (!user || !user.email) return null;
     const cleanEmail = user.email.toLowerCase().trim();
+    if (cleanEmail === 'admin123@gmail.com' || user.role === 'ADMIN') return null;
     const cleanName = user.name?.trim() || cleanEmail.split('@')[0].replace('.', ' ').replace(/\b\w/g, l => l.toUpperCase());
 
     const existing = this.recruiters.find(r => r.email.toLowerCase() === cleanEmail || r.name.toLowerCase() === cleanName.toLowerCase());
     if (existing) {
-      if (user.role && (user.role === 'ADMIN' || user.role.toUpperCase().includes('ADMIN')) && existing.role !== 'ADMIN') {
-        existing.role = 'ADMIN';
-        this.saveToStorage();
-      }
       return existing;
     }
 

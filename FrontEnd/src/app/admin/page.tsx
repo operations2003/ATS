@@ -7,32 +7,14 @@ import Footer from '@/components/Footer';
 import { useAuth } from '@/context/AuthContext';
 import { UserRole } from '@/lib/api';
 import { atsStore, AuditEvent, RecruiterMetric, JobItem, CandidateItem } from '@/lib/atsStore';
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  AreaChart,
-  Area,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  CartesianGrid
-} from 'recharts';
+
 
 export default function AdminPage() {
   const { user, setRole, signin } = useAuth();
   const [mounted, setMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState<'members' | 'overview' | 'timetracking' | 'requisitions' | 'audit' | 'governance'>('members');
-  const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month' | 'all'>('week');
   const [podFilter, setPodFilter] = useState<string>('All');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [searchRecruiter, setSearchRecruiter] = useState('');
-  const [searchJob, setSearchJob] = useState('');
-  const [searchAudit, setSearchAudit] = useState('');
 
   // Designated Admin Login State
   const [adminLoginEmail, setAdminLoginEmail] = useState('admin123@gmail.com');
@@ -52,44 +34,61 @@ export default function AdminPage() {
   const [newMemberRole, setNewMemberRole] = useState<'RECRUITER_MEMBER' | 'TEAM_LEAD'>('RECRUITER_MEMBER');
   const [newMemberSkills, setNewMemberSkills] = useState('');
 
-  // Governance settings
-  const [autoSubmitThreshold, setAutoSubmitThreshold] = useState(85);
-  const [strictMandatoryMode, setStrictMandatoryMode] = useState(true);
-
   // Live state from Store
   const [recruiters, setRecruiters] = useState<RecruiterMetric[]>([]);
   const [jobs, setJobs] = useState<JobItem[]>([]);
   const [candidates, setCandidates] = useState<CandidateItem[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
 
+  const [loadingMembers, setLoadingMembers] = useState(false);
+
   const syncData = () => {
-    setRecruiters(atsStore.getRecruiters());
+    setRecruiters(atsStore.getRecruiters().filter(r => r.email?.toLowerCase().trim() !== 'admin123@gmail.com' && r.role !== 'ADMIN'));
     setJobs(atsStore.getJobs());
     setCandidates(atsStore.getCandidates());
     setAuditEvents(atsStore.getAuditEvents());
   };
 
+  const fetchLiveTAMembers = async () => {
+    try {
+      setLoadingMembers(true);
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
+      const res = await fetch(`${backendUrl}/users/ta-members`, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.members) && data.members.length > 0) {
+          const nonAdmin = data.members.filter((m: any) => m.email?.toLowerCase().trim() !== 'admin123@gmail.com' && m.role !== 'ADMIN');
+          atsStore.setRecruitersFromDatabase(nonAdmin);
+          setRecruiters(nonAdmin);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to fetch live TA members from database:', err);
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
+
   useEffect(() => {
     setMounted(true);
     syncData();
+    fetchLiveTAMembers();
     const unsubscribe = atsStore.subscribe(syncData);
     return () => unsubscribe();
   }, []);
 
   const stats = atsStore.getAdminOverviewStats();
-  const weeklyTrends = atsStore.getWeeklyEvaluationTrends();
-  const podAnalytics = atsStore.getPodAnalytics();
-  const scoreTiers = atsStore.getScoreTierDistribution();
-
-  // Activity time breakdown data (Resume Review, Shortlisting, and JD Setup)
-  const activityTimeDistribution = [
-    { name: 'Resume Review & Evaluation', value: 60, color: '#3B82F6', hours: '99.6 hrs' },
-    { name: 'Candidate Shortlisting', value: 25, color: '#10B981', hours: '41.5 hrs' },
-    { name: 'JD Creation & Setup', value: 15, color: '#FF6B00', hours: '25.0 hrs' },
-  ];
 
   // Filtered recruiters
   const filteredRecruiters = recruiters.filter(r => {
+    if (r.email?.toLowerCase().trim() === 'admin123@gmail.com' || r.role === 'ADMIN' || r.name?.toLowerCase().trim() === 'admin') {
+      return false;
+    }
     const q = searchRecruiter.toLowerCase();
     const matchesSearch = r.name.toLowerCase().includes(q) ||
                           r.email.toLowerCase().includes(q) ||
@@ -103,26 +102,6 @@ export default function AdminPage() {
       (statusFilter === 'Available' && r.capacity === 'Available');
     return matchesSearch && matchesPod && matchesStatus;
   });
-
-  // Filtered jobs
-  const filteredJobs = jobs.filter(j => {
-    const matchesSearch = j.title.toLowerCase().includes(searchJob.toLowerCase()) ||
-                          j.client.toLowerCase().includes(searchJob.toLowerCase()) ||
-                          j.assignedRecruiter.toLowerCase().includes(searchJob.toLowerCase());
-    const matchesPod = podFilter === 'All' || j.pod === podFilter;
-    return matchesSearch && matchesPod;
-  });
-
-  // Filtered audit events
-  const filteredAudit = auditEvents.filter(e =>
-    e.user.toLowerCase().includes(searchAudit.toLowerCase()) ||
-    e.action.toLowerCase().includes(searchAudit.toLowerCase()) ||
-    e.detail.toLowerCase().includes(searchAudit.toLowerCase()) ||
-    e.target.toLowerCase().includes(searchAudit.toLowerCase())
-  );
-
-  const totalTeamHoursToday = recruiters.reduce((sum, r) => sum + (r.todayHoursSpent || 0), 0);
-  const totalTeamHoursThisWeek = recruiters.reduce((sum, r) => sum + (r.totalHoursThisWeek || 0), 0);
 
   const handleAddMember = (e: React.FormEvent) => {
     e.preventDefault();
@@ -320,39 +299,11 @@ export default function AdminPage() {
                 Track how much time each team member spends daily reviewing resumes, creating JDs, and shortlisting candidates.
               </p>
             </div>
-
-            {/* Top Right Controls: Time Range & Add Member */}
-            <div className="flex items-center gap-3 flex-wrap">
-              <button
-                onClick={() => setShowAddMemberModal(true)}
-                className="px-4 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-black rounded-2xl shadow-orange transition-all cursor-pointer flex items-center gap-1.5"
-              >
-                <span>+</span>
-                <span>Add Team Member</span>
-              </button>
-
-              {/* Time selector */}
-              <div className="bg-slate-900/80 border border-violet-500/30 p-1 rounded-2xl flex items-center gap-1 text-xs font-bold">
-                {(['today', 'week', 'month', 'all'] as const).map(t => (
-                  <button
-                    key={t}
-                    onClick={() => setTimeRange(t)}
-                    className={`px-3 py-1.5 rounded-xl transition-all capitalize cursor-pointer ${
-                      timeRange === t
-                        ? 'bg-violet-600 text-white shadow-xs'
-                        : 'text-violet-300/70 hover:text-white hover:bg-white/5'
-                    }`}
-                  >
-                    {t === 'today' ? 'Today' : t === 'week' ? 'This Week' : t === 'month' ? 'This Month' : 'All Time'}
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
         </div>
 
         {/* ── EXECUTIVE KPI METRIC CARDS ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5 mb-8">
           {/* Metric 1: Active Team Members */}
           <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
             <div className="flex items-center justify-between mb-3">
@@ -371,24 +322,7 @@ export default function AdminPage() {
             </div>
           </div>
 
-          {/* Metric 2: Team Time Spent Today & This Week */}
-          <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider">Team Time Spent Today</span>
-              <span className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 border border-purple-200 flex items-center justify-center font-bold text-xs">
-                ⏱️
-              </span>
-            </div>
-            <div className="text-3xl font-black text-purple-700 tracking-tight">
-              {totalTeamHoursToday.toFixed(1)} hrs
-            </div>
-            <div className="flex items-center justify-between text-xs text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100">
-              <span className="text-purple-600 font-bold">{totalTeamHoursThisWeek.toFixed(1)} hrs this week</span>
-              <span className="font-semibold text-slate-700">Avg 6.7h / member</span>
-            </div>
-          </div>
-
-          {/* Metric 3: Resumes Seen & Evaluated */}
+          {/* Metric 2: Resumes Seen & Evaluated */}
           <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
             <div className="flex items-center justify-between mb-3">
               <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider">Resumes Evaluated</span>
@@ -426,564 +360,34 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* ── TAB NAVIGATION ── */}
-        <div className="flex items-center gap-2 mb-6 border-b border-slate-200/80 pb-3 overflow-x-auto">
-          {[
-            { id: 'members', label: '👥 Team Members & Insights', count: recruiters.length },
-            { id: 'timetracking', label: '⏱️ Daily Time Tracking & Hours Spent' },
-            { id: 'overview', label: '📊 ATS Match Quality & Volume Analytics' },
-            { id: 'requisitions', label: '🎯 Requisitions Oversight Radar', count: jobs.length },
-            { id: 'audit', label: '📋 Live Team Audit Stream', count: auditEvents.length },
-            { id: 'governance', label: '⚙️ ATS Rules & User Governance' },
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
-                activeTab === tab.id
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200/90'
-              }`}
-            >
-              <span>{tab.label}</span>
-              {tab.count !== undefined && (
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                  activeTab === tab.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
-                }`}>
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* ── TAB 1: VISUAL PERFORMANCE & VOLUME ANALYTICS ── */}
-        {activeTab === 'overview' && (
-          <div className="space-y-6">
-            {/* ATS Score Quality Breakdown (Circle Donut Chart) */}
-            <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-sm">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6 pb-4 border-b border-slate-100">
-                <div>
-                  <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
-                    ATS Score Quality Breakdown
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Distribution of candidate match scores evaluated across all active requisitions
-                  </p>
-                </div>
-                <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 self-start sm:self-auto">
-                  Quality Fit Metrics
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-                {/* Circle / Donut Chart */}
-                <div className="md:col-span-5 flex flex-col items-center justify-center">
-                  {mounted && (
-                    <div className="h-[230px] w-full max-w-[270px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={scoreTiers}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={60}
-                            outerRadius={90}
-                            paddingAngle={5}
-                            dataKey="value"
-                          >
-                            {scoreTiers.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip
-                            contentStyle={{ backgroundColor: '#1E293B', borderRadius: '12px', border: 'none', color: '#fff', fontSize: '12px' }}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-                </div>
-
-                {/* Score Tier Legend Cards */}
-                <div className="md:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {scoreTiers.map((tier, idx) => (
-                    <div key={idx} className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col justify-between hover:border-slate-300 transition-all">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: tier.color }} />
-                          <span className="font-extrabold text-slate-800 text-sm">{tier.name}</span>
-                        </div>
-                        <span className="text-base font-black text-slate-900">{tier.value}%</span>
-                      </div>
-                      <span className="text-xs text-slate-500 font-semibold">{tier.label}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+        {/* ── RECRUITER PERFORMANCE TABLE ── */}
+        <div className="bg-white border border-slate-200/90 rounded-3xl shadow-sm overflow-hidden mb-8">
+          <div className="p-5 sm:px-6 sm:py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/70">
+            <div>
+              <h3 className="text-base font-extrabold text-slate-900">
+                Comprehensive Recruiter Performance Log
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Compare evaluation speed, candidate volume, and shortlisting conversion across all team members
+              </p>
             </div>
-
-            {/* Pod Delivery Performance Grid */}
-            <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-sm">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-                <div>
-                  <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
-                    Talent Acquisition Pod Sourcing &amp; Upload Performance
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    JD creation velocity, resumes processed, and shortlist delivery by functional team pod
-                  </p>
-                </div>
-                <span className="text-xs font-bold text-violet-700 bg-violet-50 px-3 py-1 rounded-full border border-violet-200 self-start sm:self-auto">
-                  3 Delivery Pods Active
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                {podAnalytics.map((pod, i) => (
-                  <div key={i} className="p-5 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col justify-between hover:border-slate-300 transition-all">
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] font-black text-violet-700 bg-violet-100/70 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                          TA Practice Pod
-                        </span>
-                        <span className="text-xs font-black text-emerald-600">Mean Fit: {pod.avgScore}%</span>
-                      </div>
-                      <h4 className="text-sm font-black text-slate-900">{pod.name}</h4>
-                      <p className="text-xs text-slate-500 mt-0.5">Pod Lead: <strong>{pod.lead}</strong></p>
-
-                      <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-200/60 text-xs">
-                        <div className="bg-white p-2.5 rounded-xl border border-slate-200">
-                          <span className="text-[10px] text-slate-400 font-bold block">JDs UPLOADED</span>
-                          <span className="text-base font-black text-slate-800">{pod.jds} Positions</span>
-                        </div>
-                        <div className="bg-white p-2.5 rounded-xl border border-slate-200">
-                          <span className="text-[10px] text-slate-400 font-bold block">RESUMES SEEN</span>
-                          <span className="text-base font-black text-blue-600">{pod.resumes} CVs</span>
-                        </div>
-                        <div className="bg-white p-2.5 rounded-xl border border-slate-200">
-                          <span className="text-[10px] text-slate-400 font-bold block">AVG MATCH FIT</span>
-                          <span className="text-base font-black text-amber-600">{pod.avgScore}% Fit</span>
-                        </div>
-                        <div className="bg-white p-2.5 rounded-xl border border-slate-200">
-                          <span className="text-[10px] text-slate-400 font-bold block">SHORTLISTED</span>
-                          <span className="text-base font-black text-emerald-600">{pod.shortlists} Ready</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <span className="text-xs text-slate-500 font-bold">{filteredRecruiters.length} Recruiter Profiles Active</span>
           </div>
-        )}
 
-        {/* ── TAB 2: TIME TRACKING & DAILY ENGAGEMENT ── */}
-        {activeTab === 'timetracking' && (
-          <div className="space-y-6">
-            {/* Top Cards for Time Tracking */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-              <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-sm">
-                <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider block mb-1">Total Team Hours Today</span>
-                <div className="text-3xl font-black text-purple-700">{totalTeamHoursToday.toFixed(1)} Hours</div>
-                <p className="text-xs text-slate-500 mt-2">Active resume scoring &amp; shortlisting sessions across team members</p>
-              </div>
-
-              <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-sm">
-                <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider block mb-1">Weekly Active Workload</span>
-                <div className="text-3xl font-black text-slate-900">{totalTeamHoursThisWeek.toFixed(1)} Hours</div>
-                <p className="text-xs text-slate-500 mt-2">Team averaging 6.8 hours daily active engagement on ATS</p>
-              </div>
-
-              <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-sm">
-                <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider block mb-1">Average Review Speed</span>
-                <div className="text-3xl font-black text-emerald-600">1.7 min / CV</div>
-                <p className="text-xs text-slate-500 mt-2">From raw resume drop to deterministic ATS score calculation</p>
-              </div>
-            </div>
-
-            {/* Recruiter Time Allocation Breakdown (Circular Donut Chart) */}
-            <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-sm">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6 pb-4 border-b border-slate-100">
-                <div>
-                  <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
-                    Recruiter Time Allocation Breakdown
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    How the team splits their daily hours across ATS operations
-                  </p>
-                </div>
-                <span className="text-xs font-bold text-purple-700 bg-purple-50 px-3 py-1 rounded-full border border-purple-200 self-start sm:self-auto">
-                  Weekly Operational Split
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-                {/* Circle / Donut Chart */}
-                <div className="md:col-span-5 flex flex-col items-center justify-center">
-                  {mounted && (
-                    <div className="h-[230px] w-full max-w-[270px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={activityTimeDistribution}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={60}
-                            outerRadius={90}
-                            paddingAngle={5}
-                            dataKey="value"
-                          >
-                            {activityTimeDistribution.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip
-                            contentStyle={{ backgroundColor: '#1E293B', borderRadius: '12px', border: 'none', color: '#fff', fontSize: '12px' }}
-                            formatter={(value: any, name: any, entry: any) => [`${value}% (${entry.payload.hours})`, entry.payload.name]}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-                </div>
-
-                {/* Allocation Legend Cards */}
-                <div className="md:col-span-7 grid grid-cols-1 gap-3">
-                  {activityTimeDistribution.map((item, idx) => (
-                    <div key={idx} className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between hover:border-slate-300 transition-all">
-                      <div className="flex items-center gap-3">
-                        <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                        <div>
-                          <span className="font-extrabold text-slate-800 text-sm block">{item.name}</span>
-                          <span className="text-xs text-slate-500 font-medium">Logged: {item.hours} this week</span>
-                        </div>
-                      </div>
-                      <span className="text-base font-black text-slate-900 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
-                        {item.value}%
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Recruiter Daily Hours & Speed Table */}
-            <div className="bg-white border border-slate-200/90 rounded-3xl shadow-sm overflow-hidden">
-              <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
-                <h3 className="text-base font-extrabold text-slate-900">Individual Recruiter Daily Time Log</h3>
-                <span className="text-xs font-bold text-slate-500">Live Time Tracking Active</span>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs min-w-[900px]">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-[#F1F5F9] text-[11px] font-black text-slate-500 uppercase tracking-wider">
-                      <th className="px-6 py-4 min-w-[200px]">Recruiter</th>
-                      <th className="px-4 py-4 text-center whitespace-nowrap">Time Spent Today</th>
-                      <th className="px-4 py-4 text-center whitespace-nowrap">Hours This Week</th>
-                      <th className="px-4 py-4 text-center whitespace-nowrap">Avg Time / Resume</th>
-                      <th className="px-4 py-4 text-center whitespace-nowrap">Candidates Shortlisted</th>
-                      <th className="px-4 py-4 text-center whitespace-nowrap">Resumes Seen / Hr</th>
-                      <th className="px-6 py-4 text-right whitespace-nowrap">Daily Breakdown</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {recruiters.map(r => (
-                      <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="font-extrabold text-slate-900 text-sm">{r.name}</div>
-                          <div className="text-slate-500 text-[11px]">{r.team}</div>
-                        </td>
-
-                        <td className="px-4 py-4 text-center whitespace-nowrap">
-                          <span className="px-3 py-1 rounded-full text-xs font-black bg-purple-50 text-purple-700 border border-purple-200">
-                            ⏱️ {r.todayHoursSpent} hrs
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-4 text-center font-black text-slate-900 text-sm whitespace-nowrap">
-                          {r.totalHoursThisWeek} hrs
-                        </td>
-
-                        <td className="px-4 py-4 text-center font-bold text-blue-600 whitespace-nowrap">
-                          {r.avgTimePerResume || '1.8 min'}
-                        </td>
-
-                        <td className="px-4 py-4 text-center font-black text-emerald-600 text-sm whitespace-nowrap">
-                          {r.tlApprovedCount} Shortlisted
-                        </td>
-
-                        <td className="px-4 py-4 text-center font-black text-slate-700 whitespace-nowrap">
-                          ~{Math.round(r.resumesSeen / (r.totalHoursThisWeek || 30))} CVs/hr
-                        </td>
-
-                        <td className="px-6 py-4 text-right whitespace-nowrap">
-                          <button
-                            onClick={() => {
-                              setSelectedRecruiter(r);
-                              setShowRecruiterModal(true);
-                            }}
-                            className="px-3.5 py-1.5 bg-slate-900 text-white text-xs font-bold rounded-xl shadow-xs hover:bg-brand-orange transition-all cursor-pointer"
-                          >
-                            View Day-by-Day Log →
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── TAB 1: TEAM MEMBERS & PERFORMANCE INSIGHTS ── */}
-        {activeTab === 'members' && (
-          <div className="space-y-6">
-            {/* Search & Filter Toolbar */}
-            <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-sm">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
-                      Active Team Members &amp; Recruiter Insights
-                    </h3>
-                    <span className="text-[10px] px-2.5 py-0.5 rounded-full font-black bg-violet-100 text-violet-800 border border-violet-200">
-                      {filteredRecruiters.length} Members
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Individual recruiter hours logged, resume review velocity, candidate match quality, and hiring strengths
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3 flex-wrap">
-                  {/* Search */}
-                  <div className="relative flex-1 sm:w-72">
-                    <input
-                      type="text"
-                      placeholder="Search member name, email, pod, or skill..."
-                      value={searchRecruiter}
-                      onChange={e => setSearchRecruiter(e.target.value)}
-                      className="w-full pl-9 pr-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 transition-all"
-                    />
-                    <svg className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                  </div>
-
-                  {/* Pod filter */}
-                  <select
-                    value={podFilter}
-                    onChange={e => setPodFilter(e.target.value)}
-                    className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 cursor-pointer"
-                  >
-                    <option value="All">All Practice Pods</option>
-                    <option value="SAP & Enterprise Practice">SAP &amp; Enterprise Practice</option>
-                    <option value="Cloud & Engineering Pod">Cloud &amp; Engineering Pod</option>
-                    <option value="Finance & Operations TA">Finance &amp; Operations TA</option>
-                  </select>
-
-                  {/* Status filter */}
-                  <select
-                    value={statusFilter}
-                    onChange={e => setStatusFilter(e.target.value)}
-                    className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 cursor-pointer"
-                  >
-                    <option value="All">All Statuses</option>
-                    <option value="Active">Active Now</option>
-                    <option value="Optimal">Optimal Capacity</option>
-                    <option value="Available">Available Capacity</option>
-                  </select>
-
-                  <button
-                    onClick={() => setShowAddMemberModal(true)}
-                    className="px-4 py-2 bg-slate-900 hover:bg-brand-orange text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs flex items-center gap-1.5"
-                  >
-                    <span>+</span>
-                    <span>Add Member</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* ── SECTION A: MEMBER SPOTLIGHT & INSIGHT CARDS (NAMES PROMINENTLY VISIBLE) ── */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {filteredRecruiters.map(r => {
-                const initial = r.name.charAt(0).toUpperCase();
-                const colors = [
-                  'from-violet-600 to-indigo-600',
-                  'from-blue-600 to-cyan-600',
-                  'from-amber-600 to-orange-600',
-                  'from-emerald-600 to-teal-600',
-                  'from-rose-600 to-pink-600'
-                ];
-                const charCode = r.name.charCodeAt(0) || 0;
-                const gradient = colors[charCode % colors.length];
-
-                return (
-                  <div
-                    key={r.id}
-                    className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-sm hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between group relative overflow-hidden"
-                  >
-                    {/* Decorative subtle top edge glow */}
-                    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-violet-500 via-brand-orange to-indigo-500 opacity-60" />
-
-                    <div>
-                      {/* Header row: Avatar + Name + Badges */}
-                      <div className="flex items-start justify-between gap-3 mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${gradient} text-white font-black text-lg flex items-center justify-center shadow-sm shrink-0`}>
-                            {initial}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h4 className="text-base font-black text-slate-900 leading-tight">
-                                {r.name}
-                              </h4>
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-                                r.role === 'ADMIN' ? 'bg-violet-100 text-violet-800' :
-                                r.role === 'TEAM_LEAD' ? 'bg-amber-100 text-amber-800' :
-                                'bg-slate-100 text-slate-700'
-                              }`}>
-                                {r.role === 'ADMIN' ? '👑 Admin' : r.role === 'TEAM_LEAD' ? '🎖️ Team Lead' : '👤 TA Member'}
-                              </span>
-                            </div>
-                            <span className="text-xs font-semibold text-slate-500 block mt-0.5">
-                              {r.team}
-                            </span>
-                            <span className="text-[11px] text-slate-400 block truncate max-w-[200px]">
-                              {r.email}
-                            </span>
-                          </div>
-                        </div>
-
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                          {r.lastActive.includes('Active') ? 'Active' : r.lastActive}
-                        </span>
-                      </div>
-
-                      {/* 🌟 AI Qualitative Insight Quote Box */}
-                      <div className="p-3.5 rounded-2xl bg-gradient-to-br from-violet-50/70 via-slate-50 to-indigo-50/40 border border-violet-100/90 my-3.5">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className="text-xs">💡</span>
-                          <span className="text-[10px] font-black text-violet-800 uppercase tracking-wider">
-                            Executive Insight
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-700 leading-relaxed font-medium">
-                          &ldquo;{r.insightsSummary || `${r.name} maintains strong candidate sourcing precision with high evaluation pacing on assigned requisitions.`}&rdquo;
-                        </p>
-                      </div>
-
-                      {/* Domain Strengths */}
-                      <div className="mb-4">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1.5">
-                          Specialized Competencies
-                        </span>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {(r.strengths || ['Talent Sourcing', 'ATS Evaluation', 'Candidate Screening']).map((st, idx) => (
-                            <span
-                              key={idx}
-                              className="px-2.5 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200/80"
-                            >
-                              {st}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* 4 Metric Stats Grid */}
-                      <div className="grid grid-cols-2 gap-2.5 pt-3 border-t border-slate-100 text-xs">
-                        <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70">
-                          <span className="text-[10px] font-black text-slate-400 uppercase block">TODAY&apos;S TIME</span>
-                          <span className="text-sm font-black text-purple-700">{r.todayHoursSpent} Hours</span>
-                          <span className="text-[10px] text-slate-400 block">{r.totalHoursThisWeek}h this week</span>
-                        </div>
-
-                        <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70">
-                          <span className="text-[10px] font-black text-slate-400 uppercase block">RESUMES SEEN</span>
-                          <span className="text-sm font-black text-blue-600">{r.resumesSeen} CVs</span>
-                          <span className="text-[10px] text-slate-400 block">{r.avgTimePerResume || '1.8 min'} / CV</span>
-                        </div>
-
-                        <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70">
-                          <span className="text-[10px] font-black text-slate-400 uppercase block">SHORTLISTED</span>
-                          <span className="text-sm font-black text-emerald-600">{r.tlApprovedCount} Ready</span>
-                          <span className="text-[10px] text-slate-400 block">
-                            {Math.round((r.tlApprovedCount / (r.resumesSeen || 1)) * 100)}% shortlist rate
-                          </span>
-                        </div>
-
-                        <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70">
-                          <span className="text-[10px] font-black text-slate-400 uppercase block">AVG MATCH FIT</span>
-                          <span className="text-sm font-black text-amber-600">{r.avgMatchScore}% Fit</span>
-                          <span className="text-[10px] text-slate-400 block">High Accuracy</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Card Footer */}
-                    <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs">⚡</span>
-                        <span className="text-xs font-extrabold text-slate-800">
-                          {r.efficiencyScore || 94}%
-                        </span>
-                        <span className="text-[10px] font-semibold text-slate-400">Score</span>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          setSelectedRecruiter(r);
-                          setShowRecruiterModal(true);
-                        }}
-                        className="px-3.5 py-1.5 bg-slate-900 hover:bg-brand-orange text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1"
-                      >
-                        <span>Deep-Dive Insights</span>
-                        <span>→</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* ── SECTION B: DETAILED RECRUITER PERFORMANCE & DAILY HOURS TABLE ── */}
-            <div className="bg-white border border-slate-200/90 rounded-3xl shadow-sm overflow-hidden mt-8">
-              <div className="p-5 sm:px-6 sm:py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/70">
-                <div>
-                  <h3 className="text-base font-extrabold text-slate-900">
-                    Comprehensive Recruiter Performance &amp; Hours Log
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Compare daily hours logged, evaluation speed, and shortlisting conversion across all team members
-                  </p>
-                </div>
-                <span className="text-xs text-slate-500 font-bold">{filteredRecruiters.length} Recruiter Profiles Active</span>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs min-w-[1040px]">
+          <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs min-w-[850px]">
                   <thead>
                     <tr className="border-b border-slate-200 bg-[#F1F5F9] text-[11px] font-black text-slate-500 uppercase tracking-wider">
                       <th className="px-6 py-4 min-w-[240px]">Recruiter / Member</th>
                       <th className="px-4 py-4 min-w-[170px]">Assigned Pod</th>
-                      <th className="px-4 py-4 text-center whitespace-nowrap">Hours Today</th>
-                      <th className="px-4 py-4 text-center whitespace-nowrap">Total This Week</th>
-                      <th className="px-4 py-4 text-center whitespace-nowrap">Avg Time / Resume</th>
                       <th className="px-4 py-4 text-center whitespace-nowrap">Resumes Seen</th>
                       <th className="px-4 py-4 text-center whitespace-nowrap">Shortlists</th>
                       <th className="px-4 py-4 text-center whitespace-nowrap">Shortlist Rate</th>
-                      <th className="px-4 py-4 text-center whitespace-nowrap">Avg Match Fit</th>
-                      <th className="px-6 py-4 text-right whitespace-nowrap">Action</th>
+                      <th className="px-6 py-4 text-center whitespace-nowrap">Avg Match Fit</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredRecruiters.map(r => {
-                      const hoursPercent = Math.min(100, Math.round((r.todayHoursSpent / 8) * 100));
                       return (
                         <tr key={r.id} className="hover:bg-slate-50/80 transition-colors group">
                           <td className="px-6 py-4">
@@ -1009,28 +413,6 @@ export default function AdminPage() {
 
                           <td className="px-4 py-4 font-semibold text-slate-700 whitespace-nowrap">{r.team}</td>
 
-                          <td className="px-4 py-4 text-center whitespace-nowrap">
-                            <div className="inline-flex flex-col items-center">
-                              <span className="px-2.5 py-1 rounded-lg text-xs font-black bg-purple-50 text-purple-700 border border-purple-200">
-                                ⏱️ {r.todayHoursSpent} hrs
-                              </span>
-                              <div className="w-16 h-1.5 bg-slate-100 rounded-full mt-1.5 overflow-hidden">
-                                <div
-                                  className="h-full bg-purple-600 rounded-full"
-                                  style={{ width: `${hoursPercent}%` }}
-                                />
-                              </div>
-                            </div>
-                          </td>
-
-                          <td className="px-4 py-4 text-center font-black text-slate-900 text-sm whitespace-nowrap">
-                            {r.totalHoursThisWeek} hrs
-                          </td>
-
-                          <td className="px-4 py-4 text-center font-bold text-blue-600 whitespace-nowrap">
-                            {r.avgTimePerResume || '1.8 min'}
-                          </td>
-
                           <td className="px-4 py-4 text-center font-black text-slate-800 text-sm whitespace-nowrap">
                             {r.resumesSeen} CVs
                           </td>
@@ -1043,23 +425,10 @@ export default function AdminPage() {
                             {Math.round((r.tlApprovedCount / (r.resumesSeen || 1)) * 100)}%
                           </td>
 
-                          <td className="px-4 py-4 text-center whitespace-nowrap">
+                          <td className="px-6 py-4 text-center whitespace-nowrap">
                             <span className="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
                               {r.avgMatchScore}% Fit
                             </span>
-                          </td>
-
-                          <td className="px-6 py-4 text-right whitespace-nowrap">
-                            <button
-                              onClick={() => {
-                                setSelectedRecruiter(r);
-                                setShowRecruiterModal(true);
-                              }}
-                              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-100 hover:bg-slate-900 hover:text-white text-slate-700 text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
-                            >
-                              <span>View Insights</span>
-                              <span>→</span>
-                            </button>
                           </td>
                         </tr>
                       );
@@ -1068,306 +437,6 @@ export default function AdminPage() {
                 </table>
               </div>
             </div>
-          </div>
-        )}
-
-        {/* ── TAB 4: REQUISITIONS OVERSIGHT RADAR ── */}
-        {activeTab === 'requisitions' && (
-          <div className="bg-white border border-slate-200/90 rounded-3xl shadow-sm overflow-hidden">
-            <div className="p-5 sm:px-6 sm:py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/70">
-              <div>
-                <h3 className="text-base font-extrabold text-slate-900">All Company Requisitions Radar</h3>
-                <p className="text-xs text-slate-500 mt-0.5">Track every uploaded job description, candidate resume volume, and aging status</p>
-              </div>
-
-              <input
-                type="text"
-                placeholder="Search job requisitions or assigned recruiters..."
-                value={searchJob}
-                onChange={e => setSearchJob(e.target.value)}
-                className="px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 w-full sm:w-80"
-              />
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs min-w-[760px]">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    <th className="pl-6 pr-4 py-3.5">Position &amp; Client</th>
-                    <th className="px-4 py-3.5">Assigned TA Member</th>
-                    <th className="px-4 py-3.5">Assigned Pod</th>
-                    <th className="px-4 py-3.5 text-center">Resumes</th>
-                    <th className="px-4 py-3.5 text-center">Top Score</th>
-                    <th className="px-4 py-3.5 text-center whitespace-nowrap">Status</th>
-                    <th className="pl-4 pr-6 py-3.5 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredJobs.map(job => {
-                    const cleanLocation = job.location?.toLowerCase().includes(job.mode?.toLowerCase())
-                      ? job.location
-                      : `${job.location} (${job.mode})`;
-
-                    return (
-                      <tr key={job.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="pl-6 pr-4 py-4 max-w-[320px]">
-                          <Link href={`/jobs/${job.id}`} className="font-bold text-slate-900 hover:text-brand-orange text-sm leading-snug block transition-colors">
-                            {job.title}
-                          </Link>
-                          <div className="text-slate-500 text-xs mt-0.5 flex items-center gap-1.5 flex-wrap">
-                            <span className="font-semibold text-slate-700">{job.client}</span>
-                            <span className="text-slate-300">•</span>
-                            <span className="truncate">{cleanLocation}</span>
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-4">
-                          {job.workedBy && job.workedBy.length > 1 ? (
-                            <div className="relative group/team inline-block">
-                              <div className="flex items-center gap-2 cursor-pointer py-1 px-1.5 rounded-xl hover:bg-slate-100/90 transition-all">
-                                <div className="flex -space-x-2 overflow-hidden items-center">
-                                  {job.workedBy.slice(0, 3).map((w, idx) => {
-                                    const initials = w.name.split(' ').map(p => p[0]).join('').toUpperCase().slice(0, 2) || 'TA';
-                                    const colors = ['bg-indigo-600', 'bg-emerald-600', 'bg-amber-600', 'bg-blue-600', 'bg-rose-600'];
-                                    return (
-                                      <div
-                                        key={w.id || idx}
-                                        title={`${w.name} (${w.action || w.role || 'Member'})`}
-                                        className={`w-6 h-6 rounded-full ring-2 ring-white flex items-center justify-center text-[9px] font-black text-white shadow-xs shrink-0 ${colors[idx % colors.length]}`}
-                                      >
-                                        {initials}
-                                      </div>
-                                    );
-                                  })}
-                                  {job.workedBy.length > 3 && (
-                                    <div className="w-6 h-6 rounded-full ring-2 ring-white bg-slate-800 text-white flex items-center justify-center text-[9px] font-bold shadow-xs shrink-0">
-                                      +{job.workedBy.length - 3}
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="text-left">
-                                  <div className="text-xs font-bold text-slate-800 leading-tight">
-                                    {job.workedBy[0].name.split(' ')[0]} <span className="text-slate-400 font-semibold">& {job.workedBy.length - 1} more</span>
-                                  </div>
-                                  <div className="text-[10px] font-semibold text-brand-orange">
-                                    {job.workedBy.length} Assigned
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Dropdown Popover on Hover */}
-                              <div className="absolute left-0 bottom-full mb-2 hidden group-hover/team:block z-50 w-64 bg-slate-900 text-white rounded-2xl p-3 shadow-2xl border border-slate-700 pointer-events-none">
-                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 border-b border-slate-800 pb-1 flex justify-between">
-                                  <span>Assigned TA Team</span>
-                                  <span className="text-brand-orange font-bold">{job.workedBy.length} Members</span>
-                                </div>
-                                <div className="space-y-2 max-h-48 overflow-y-auto">
-                                  {job.workedBy.map((w, idx) => (
-                                    <div key={w.id || idx} className="flex items-center gap-2">
-                                      <div className="w-6 h-6 rounded-full bg-slate-700 text-white flex items-center justify-center text-[9px] font-bold shrink-0">
-                                        {w.name.slice(0, 2).toUpperCase()}
-                                      </div>
-                                      <div className="min-w-0 flex-1">
-                                        <div className="text-xs font-bold text-white truncate flex items-center gap-1">
-                                          <span>{w.name}</span>
-                                          {w.isCreator && <span className="text-[8px] px-1 py-0.2 bg-amber-500/20 text-amber-300 rounded">Owner</span>}
-                                        </div>
-                                        <div className="text-[10px] text-slate-400 truncate">{w.action || w.role}</div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-[9px] font-black shrink-0 shadow-xs">
-                                {(job.assignedRecruiter || 'TA').slice(0, 2).toUpperCase()}
-                              </div>
-                              <span className="font-semibold text-slate-800 text-xs truncate max-w-[130px]">{job.assignedRecruiter}</span>
-                            </div>
-                          )}
-                        </td>
-
-                        <td className="px-4 py-4 text-slate-600 font-medium whitespace-nowrap">
-                          {job.pod}
-                        </td>
-
-                        <td className="px-4 py-4 text-center font-bold text-blue-600 text-xs whitespace-nowrap">
-                          {job.candidates} CVs
-                        </td>
-
-                        <td className="px-4 py-4 text-center whitespace-nowrap">
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            {job.topScore}% Fit
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-4 text-center whitespace-nowrap">
-                          <div className="relative inline-block">
-                            <select
-                              value={job.status}
-                              onChange={(e) => {
-                                const newStatus = e.target.value as 'Active' | 'Draft' | 'Closed';
-                                atsStore.updateJobStatus(job.id, newStatus, user?.name || 'Administrator', user?.role || 'ADMIN');
-                              }}
-                              className={`text-xs font-bold px-2.5 py-1 rounded-full border cursor-pointer appearance-none pr-6 transition-all focus:outline-none focus:ring-2 focus:ring-brand-orange/30 shadow-2xs ${
-                                job.status === 'Active'
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
-                                  : job.status === 'Draft'
-                                  ? 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
-                                  : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
-                              }`}
-                            >
-                              <option value="Active">● Active</option>
-                              <option value="Draft">● Draft</option>
-                              <option value="Closed">● Closed</option>
-                            </select>
-                            <svg className="w-3 h-3 text-current absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-                            </svg>
-                          </div>
-                        </td>
-
-                        <td className="pl-4 pr-6 py-4 text-right whitespace-nowrap">
-                          <Link
-                            href={`/jobs/${job.id}/candidates`}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-brand-orange hover:text-white rounded-xl transition-all shadow-xs group/btn cursor-pointer"
-                          >
-                            <span>View Candidates</span>
-                            <span className="transition-transform group-hover/btn:translate-x-0.5">→</span>
-                          </Link>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* ── TAB 5: LIVE COMPLIANCE & AUDIT STREAM ── */}
-        {activeTab === 'audit' && (
-          <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-sm">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-100">
-              <div>
-                <h3 className="text-base font-extrabold text-slate-900">Real-Time Team Activity &amp; Audit Trail</h3>
-                <p className="text-xs text-slate-500 mt-0.5">Tamper-evident system event log capturing JD creation, candidate uploads, score checks, and shortlisting decisions</p>
-              </div>
-
-              <input
-                type="text"
-                placeholder="Filter audit events..."
-                value={searchAudit}
-                onChange={e => setSearchAudit(e.target.value)}
-                className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 w-full sm:w-64"
-              />
-            </div>
-
-            <div className="divide-y divide-slate-100">
-              {filteredAudit.map(evt => (
-                <div key={evt.id} className="py-4 flex flex-col sm:flex-row sm:items-start justify-between gap-3 text-xs hover:bg-slate-50/60 rounded-xl px-2 transition-colors">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2.5 flex-wrap">
-                      <span className="font-black text-slate-900 text-sm">{evt.user}</span>
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                        evt.action === 'JOB_CREATED' ? 'bg-orange-50 text-brand-orange border border-orange-200' :
-                        evt.action === 'RESUMES_UPLOADED' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                        evt.action === 'TL_APPROVED' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                        'bg-violet-50 text-violet-700 border border-violet-200'
-                      }`}>
-                        {evt.action.replace(/_/g, ' ')}
-                      </span>
-                    </div>
-                    <p className="text-slate-700 font-medium">{evt.detail}</p>
-                    <span className="text-[11px] text-slate-400 font-semibold block">Target: {evt.target}</span>
-                  </div>
-                  <span className="text-[11px] text-slate-400 font-bold whitespace-nowrap sm:self-start bg-slate-100 px-2.5 py-1 rounded-lg">
-                    {evt.time}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── TAB 6: ATS RULES & GOVERNANCE ── */}
-        {activeTab === 'governance' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Global ATS Quality Parameters */}
-            <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-7 shadow-sm space-y-6">
-              <div>
-                <h3 className="text-base font-extrabold text-slate-900">Organization-Wide Evaluation Rules</h3>
-                <p className="text-xs text-slate-500 mt-1">Configure global quality thresholds and mandatory rule compliance parameters</p>
-              </div>
-
-              <div className="space-y-4 text-xs">
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                  <label className="block font-bold text-slate-800 mb-1">
-                    Automatic Client Submission Threshold: <strong className="text-brand-orange">{autoSubmitThreshold}%</strong>
-                  </label>
-                  <p className="text-slate-500 mb-3 text-[11px]">
-                    Candidates scoring above this threshold are marked &quot;SUBMIT&quot; and ready for interview without requiring mandatory Team Lead escalation.
-                  </p>
-                  <input
-                    type="range"
-                    min="70"
-                    max="95"
-                    value={autoSubmitThreshold}
-                    onChange={e => setAutoSubmitThreshold(parseInt(e.target.value))}
-                    className="w-full accent-brand-orange cursor-pointer"
-                  />
-                </div>
-
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between gap-4">
-                  <div>
-                    <h4 className="font-bold text-slate-800">Strict Mandatory Criteria Gate</h4>
-                    <p className="text-slate-500 text-[11px] mt-0.5">
-                      When enabled, any candidate failing even 1 mandatory criterion automatically triggers Team Lead QA review.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setStrictMandatoryMode(v => !v)}
-                    className={`w-12 h-6 rounded-full p-1 transition-colors cursor-pointer ${strictMandatoryMode ? 'bg-brand-orange' : 'bg-slate-300'}`}
-                  >
-                    <div className={`w-4 h-4 rounded-full bg-white transition-transform ${strictMandatoryMode ? 'translate-x-6' : 'translate-x-0'}`} />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Role & Access Governance */}
-            <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-7 shadow-sm">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4 border-b border-slate-100">
-                <div>
-                  <h3 className="text-base font-extrabold text-slate-900">Pre-Defined Team Members &amp; Roles</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Database-provisioned team accounts authorized to log in and access the ATS</p>
-                </div>
-                <span className="text-xs font-bold text-slate-600 bg-slate-100 px-3.5 py-1.5 rounded-xl border border-slate-200 self-start sm:self-auto">
-                  {recruiters.length} Authorized Team Members
-                </span>
-              </div>
-
-              <div className="space-y-3">
-                {recruiters.map(r => (
-                  <div key={r.id} className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between text-xs">
-                    <div>
-                      <span className="font-bold text-slate-900 block">{r.name}</span>
-                      <span className="text-[11px] text-slate-500">{r.email} • {r.team}</span>
-                    </div>
-                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold ${
-                      r.role === 'ADMIN' ? 'bg-violet-100 text-violet-800' : 'bg-blue-100 text-blue-800'
-                    }`}>
-                      {r.role === 'ADMIN' ? '👑 Admin' : '👤 TA Member'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* ── MODAL: RECRUITER ACTIVITY & TIME DRILL-DOWN ── */}
         {showRecruiterModal && selectedRecruiter && (

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import prisma from '../config/prisma';
 import { AuthRequest, UserRole } from '../middleware/authMiddleware';
@@ -31,7 +32,7 @@ const IN_MEMORY_USERS: Map<string, InMemoryUser> = new Map([
   [
     DESIGNATED_ADMIN_EMAIL,
     {
-      id: 'usr_admin_master',
+      id: 'f88258ff-d283-4cd7-ace2-21a81fb88f39',
       name: 'Admin',
       email: DESIGNATED_ADMIN_EMAIL,
       password: bcrypt.hashSync('admin12345', 10),
@@ -180,7 +181,7 @@ export const signin = async (req: Request, res: Response): Promise<void> => {
         const hashedPassword = await bcrypt.hash(password, salt);
         const isAdmin = cleanEmail.includes('admin') || cleanEmail === 'admin@tasknera.com';
         memUser = {
-          id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          id: randomUUID(),
           name: cleanEmail.split('@')[0].replace('.', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
           email: cleanEmail,
           password: hashedPassword,
@@ -234,20 +235,39 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
     }
 
     let user: any = null;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.user.userId || '');
     try {
-      user = await prisma.user.findUnique({
-        where: { id: req.user.userId },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-          teamId: true,
-          organizationId: true,
-          createdAt: true,
-          updatedAt: true
-        }
-      });
+      if (isUuid) {
+        user = await prisma.user.findUnique({
+          where: { id: req.user.userId },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            teamId: true,
+            organizationId: true,
+            createdAt: true,
+            updatedAt: true
+          }
+        });
+      }
+
+      if (!user && req.user.email) {
+        user = await prisma.user.findUnique({
+          where: { email: req.user.email.toLowerCase().trim() },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            teamId: true,
+            organizationId: true,
+            createdAt: true,
+            updatedAt: true
+          }
+        });
+      }
     } catch (dbErr) {
       console.warn('[AuthController] DB getMe failed, checking memory:', dbErr);
     }

@@ -645,13 +645,21 @@ export const getAllEvaluations = async (req: AuthRequest, res: Response): Promis
     // User B logs in -> User B does NOT see them.
     // Even if User B created the JD, belongs to the same team, is admin/recruiter,
     // or the candidate belongs to the same client.
+    const scope = (req.query.scope as string) || (req.query.view === 'all' ? 'all' : 'mine');
+    const isAdmin = user.role === 'ADMIN';
+
     const whereClause: any = {
       organizationId: orgId,
-      OR: [
-        { evaluatedBy: user.userId },
-        { createdByUserId: user.userId }
-      ]
     };
+
+    if (!isAdmin || scope !== 'all') {
+      whereClause.OR = [
+        { evaluatedBy: user.userId },
+        { createdByUserId: user.userId },
+        { candidate: { created_by: user.userId } },
+        { job: { created_by: user.userId } },
+      ];
+    }
 
     const dbEvaluations = await prisma.evaluation.findMany({
       where: whereClause,
