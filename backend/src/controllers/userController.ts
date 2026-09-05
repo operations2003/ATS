@@ -195,7 +195,7 @@ export const getTAMembers = async (req: AuthRequest, res: Response): Promise<voi
       const evalScores = user.createdEvaluations.map(e => e.score || e.atsScore || 0).filter(s => s > 0);
       const avgMatchScore = evalScores.length ? Math.round(evalScores.reduce((a, b) => a + b, 0) / evalScores.length) : 85;
       
-      const resumesSeen = Math.max(user.candidates.length + user.createdEvaluations.length, user.jobs.length * 2);
+      const resumesSeen = user.candidates.length > 0 ? user.candidates.length : user.createdEvaluations.length;
       const screenedThisWeek = user.createdEvaluations.length;
       const tlApprovedCount = user.createdEvaluations.filter(e => e.decision === 'SUBMIT' || e.score >= 70).length;
 

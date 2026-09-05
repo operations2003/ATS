@@ -9,6 +9,7 @@ import { useAuth } from '@/context/AuthContext';
 import MatchBadge from '@/components/evaluation/MatchBadge';
 import ScoreCard from '@/components/evaluation/ScoreCard';
 import RequirementTable from '@/components/evaluation/RequirementTable';
+import DecisionTagDropdown from '@/components/evaluation/DecisionTagDropdown';
 import {
   computeComprehensiveMatchScore,
   ComprehensiveMatchResult,
@@ -99,6 +100,7 @@ export interface CandidateRecord {
   fileHash?: string;
   isDuplicate?: boolean;
   uploadedAt: string;
+  decision?: 'REVIEW' | 'SUBMIT' | 'REJECT' | string;
 }
 
 export interface UploadQueueItem {
@@ -537,6 +539,9 @@ export default function JobCandidatesPage() {
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
+  // Manual Candidate Decision Tags ('REVIEW' | 'SUBMIT' | 'REJECT')
+  const [candidateDecisions, setCandidateDecisions] = useState<Record<string, 'REVIEW' | 'SUBMIT' | 'REJECT'>>({});
+
   // Inline Company & Position editing states
   const [isEditingCompany, setIsEditingCompany] = useState(false);
   const [editCompanyInput, setEditCompanyInput] = useState('');
@@ -562,6 +567,54 @@ export default function JobCandidatesPage() {
   }, [selectedCandidate]);
 
   const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+
+  // Helper to get effective decision tag for a candidate ('REVIEW' | 'SUBMIT' | 'REJECT')
+  const getCandidateDecision = useCallback((c: any): 'REVIEW' | 'SUBMIT' | 'REJECT' => {
+    if (!c) return 'REVIEW';
+    if (c.id && candidateDecisions[c.id]) return candidateDecisions[c.id];
+    if (typeof window !== 'undefined' && c.id) {
+      try {
+        const stored = localStorage.getItem(`tasknera_decision_${jobId}_${c.id}`) || localStorage.getItem(`tasknera_decision_${c.id}`);
+        if (stored && ['REVIEW', 'SUBMIT', 'REJECT'].includes(stored)) {
+          return stored as 'REVIEW' | 'SUBMIT' | 'REJECT';
+        }
+      } catch {}
+    }
+    const raw = String(c.decision || c.recommendation || '').toUpperCase();
+    if (raw === 'ACCEPT' || raw === 'SUBMIT') return 'SUBMIT';
+    if (raw === 'REJECT' || raw === 'DO NOT SUBMIT') return 'REJECT';
+    return 'REVIEW';
+  }, [candidateDecisions, jobId]);
+
+  // Handler to update candidate decision tag manually via dropdown
+  const handleUpdateDecision = async (candidateId: string, newDecision: 'REVIEW' | 'SUBMIT' | 'REJECT') => {
+    setCandidateDecisions(prev => ({ ...prev, [candidateId]: newDecision }));
+    setCandidates(prev => prev.map(cand => (cand.id === candidateId ? { ...cand, decision: newDecision } : cand)));
+    if (selectedCandidate?.id === candidateId) {
+      setSelectedCandidate((prev: any) => (prev ? { ...prev, decision: newDecision } : null));
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`tasknera_decision_${jobId}_${candidateId}`, newDecision);
+        localStorage.setItem(`tasknera_decision_${candidateId}`, newDecision);
+      } catch {}
+    }
+
+    try {
+      const authToken = token || (typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null);
+      await fetch(`${backendUrl}/jobs/${jobId}/candidates/${candidateId}/decision`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+        },
+        body: JSON.stringify({ decision: newDecision })
+      });
+    } catch (e) {
+      console.warn('Could not persist decision to backend:', e);
+    }
+  };
 
   // Handler to persist edited company name
   const handleSaveCompany = async (newCompany: string) => {
@@ -1660,7 +1713,8 @@ export default function JobCandidatesPage() {
                     <th className="px-6 py-3.5">Candidate Profile</th>
                     <th className="px-6 py-3.5">Experience & History</th>
                     <th className="px-6 py-3.5 hidden lg:table-cell">Current Role</th>
-                    <th className="px-6 py-3.5 text-center">ATS Score & Decision</th>
+                    <th className="px-6 py-3.5 text-center">ATS Score</th>
+                    <th className="px-6 py-3.5 text-center">Decision Tag</th>
                     <th className="px-6 py-3.5 text-center">Status</th>
                     <th className="px-6 py-3.5 text-right">Action</th>
                   </tr>
@@ -1725,38 +1779,37 @@ export default function JobCandidatesPage() {
                           <div className="text-slate-500 text-[11px] font-medium mt-0.5">{c.currentCompany || '—'}</div>
                         </td>
 
-                        {/* ATS Score & Direct Accept/Reject Decision */}
+                        {/* ATS Score (Not auto deciding the decision tag) */}
                         <td className="px-6 py-4 text-center">
                           {(() => {
                             const score = Math.round(c.matchScore ?? (c as any).atsScore ?? 0);
-                            const isAccept = score >= 70;
-                            const isReject = score < 50;
+                            const isHigh = score >= 70;
+                            const isLow = score < 50;
                             return (
-                              <div className="inline-flex flex-col items-center gap-1.5">
+                              <div className="inline-flex items-center justify-center">
                                 <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black font-mono border shadow-2xs ${
-                                  isAccept
+                                  isHigh
                                     ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                    : isReject
+                                    : isLow
                                     ? 'bg-rose-50 text-rose-800 border-rose-300'
                                     : 'bg-amber-50 text-amber-800 border-amber-300'
                                 }`}>
                                   <span className={`w-2 h-2 rounded-full ${
-                                    isAccept ? 'bg-emerald-500' : isReject ? 'bg-rose-500' : 'bg-amber-500'
+                                    isHigh ? 'bg-emerald-500' : isLow ? 'bg-rose-500' : 'bg-amber-500'
                                   }`} />
                                   {score}% ATS
-                                </span>
-                                <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border ${
-                                  isAccept
-                                    ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                                    : isReject
-                                    ? 'bg-rose-100 text-rose-900 border-rose-300'
-                                    : 'bg-amber-100 text-amber-900 border-amber-300'
-                                }`}>
-                                  {isAccept ? '✓ ACCEPT' : isReject ? '✕ REJECT' : '⏳ REVIEW'}
                                 </span>
                               </div>
                             );
                           })()}
+                        </td>
+
+                        {/* Manual Decision Tag Dropdown: Review, Submit, Reject */}
+                        <td className="px-6 py-4 text-center">
+                          <DecisionTagDropdown
+                            value={getCandidateDecision(c)}
+                            onChange={(newVal) => handleUpdateDecision(c.id, newVal)}
+                          />
                         </td>
 
                         {/* Parsing Status */}
@@ -1861,25 +1914,25 @@ export default function JobCandidatesPage() {
                   <div className="flex items-center gap-2.5 flex-shrink-0">
                     {(() => {
                       const modalScore = Math.round(selectedCandidate.matchScore ?? selectedCandidate.atsScore ?? 0);
-                      const isModalAccept = modalScore >= 70;
-                      const isModalReject = modalScore < 50;
+                      const isModalHigh = modalScore >= 70;
+                      const isModalLow = modalScore < 50;
+
                       return (
-                        <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900 text-white border border-slate-800 shadow-xs">
-                          <span className="text-xs text-slate-400 font-medium">ATS Score:</span>
-                          <span className={`text-sm font-black font-mono ${
-                            isModalAccept ? 'text-emerald-400' : isModalReject ? 'text-rose-400' : 'text-amber-400'
-                          }`}>
-                            {modalScore}%
-                          </span>
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${
-                            isModalAccept
-                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                              : isModalReject
-                              ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                              : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                          }`}>
-                            {isModalAccept ? '✓ ACCEPT' : isModalReject ? '✕ REJECT' : '⏳ REVIEW'}
-                          </span>
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900 text-white border border-slate-800 shadow-xs">
+                            <span className="text-xs text-slate-400 font-medium">ATS:</span>
+                            <span className={`text-sm font-black font-mono ${
+                              isModalHigh ? 'text-emerald-400' : isModalLow ? 'text-rose-400' : 'text-amber-400'
+                            }`}>
+                              {modalScore}%
+                            </span>
+                          </div>
+
+                          {/* Decision Tag Dropdown */}
+                          <DecisionTagDropdown
+                            value={getCandidateDecision(selectedCandidate)}
+                            onChange={(newVal) => handleUpdateDecision(selectedCandidate.id, newVal)}
+                          />
                         </div>
                       );
                     })()}

@@ -34,7 +34,8 @@ import {
   getCandidatesForJob,
   getCandidateById,
   retryCandidateParsing,
-  deleteCandidate
+  deleteCandidate,
+  updateCandidateDecision
 } from '../controllers/candidateController';
 
 // Available Jobs for Candidate Evaluation & Matching (Entry Point 2)
@@ -60,6 +61,7 @@ import { getCandidateEvaluation, evaluateCandidateController } from '../controll
 router.post('/:jobId/candidates/upload', optionalProtect, upload.any(), uploadCandidateCVs);
 router.get('/:jobId/candidates', optionalProtect, getCandidatesForJob);
 router.get('/:jobId/candidates/:candidateId', optionalProtect, getCandidateById);
+router.patch('/:jobId/candidates/:candidateId/decision', optionalProtect, updateCandidateDecision);
 router.get('/:jobId/candidates/:candidateId/evaluation', optionalProtect, getCandidateEvaluation);
 router.post('/:jobId/candidates/:candidateId/evaluate', protect, evaluateCandidateController);
 router.post('/:jobId/candidates/:candidateId/retry', retryCandidateParsing);

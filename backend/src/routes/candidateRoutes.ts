@@ -4,7 +4,8 @@ import {
   getAllCandidates,
   getCandidateById,
   deleteCandidate,
-  uploadCandidateCVs
+  uploadCandidateCVs,
+  updateCandidateDecision
 } from '../controllers/candidateController';
 import {
   matchCandidateWithJobController,
@@ -44,8 +45,9 @@ router.post('/:candidateId/match-with-job', protect, matchCandidateWithJobContro
 // Candidate evaluation history across multiple jobs
 router.get('/:candidateId/evaluations', protect, getCandidateEvaluationHistoryController);
 
-// Single candidate lookup & delete
+// Single candidate lookup, decision update & delete
 router.get('/:candidateId', getCandidateById);
+router.patch('/:candidateId/decision', optionalProtect, updateCandidateDecision);
 router.delete('/:candidateId', deleteCandidate);
 
 export default router;

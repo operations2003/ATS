@@ -45,7 +45,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
           const userRole: UserRole = isDesignatedAdmin ? 'ADMIN' : (data.user.role || 'MEMBER');
           const fullUser = { 
             ...data.user, 
-            name: isDesignatedAdmin ? 'Shubham Jamdar' : (data.user.name || data.user.email.split('@')[0]),
+            name: isDesignatedAdmin ? 'Sheetal Bedi' : (data.user.name || data.user.email.split('@')[0]),
             role: userRole 
           };
           setUser(fullUser);
@@ -101,7 +101,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
     const isDesignatedAdmin = cleanEmail === DESIGNATED_ADMIN_EMAIL || data.user?.role === 'ADMIN';
     const userRole: UserRole = isDesignatedAdmin ? 'ADMIN' : (data.user?.role || 'MEMBER');
     const resolvedUserId = data.user?.id;
-    const resolvedName = isDesignatedAdmin ? 'Shubham Jamdar' : (data.user?.name || cleanEmail.split('@')[0]);
+    const resolvedName = isDesignatedAdmin ? 'Sheetal Bedi' : (data.user?.name || cleanEmail.split('@')[0]);
 
     localStorage.setItem('tasknera_token', data.token);
     localStorage.setItem('tasknera_role', userRole);

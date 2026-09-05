@@ -32,7 +32,7 @@ export default function AdminPage() {
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [newMemberPassword, setNewMemberPassword] = useState('');
   const [showNewMemberPassword, setShowNewMemberPassword] = useState(false);
-  const [newMemberTeam, setNewMemberTeam] = useState('SAP & Enterprise Practice');
+  const [newMemberTeam, setNewMemberTeam] = useState('Talent Acquisition');
   const [newMemberRole, setNewMemberRole] = useState<'RECRUITER_MEMBER' | 'TEAM_LEAD'>('RECRUITER_MEMBER');
   const [newMemberSkills, setNewMemberSkills] = useState('');
   const [addMemberLoading, setAddMemberLoading] = useState(false);
@@ -119,7 +119,7 @@ export default function AdminPage() {
     }
 
     if (!newMemberPassword || newMemberPassword.length < 8) {
-      setAddMemberError('Temporary password must be at least 8 characters long.');
+      setAddMemberError('Password must be at least 8 characters long.');
       return;
     }
 
@@ -797,7 +797,7 @@ export default function AdminPage() {
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block font-bold text-slate-700">Temporary Password</label>
+                    <label className="block font-bold text-slate-700">Password</label>
                     <span className="text-[10px] text-slate-400">Min 8 characters</span>
                   </div>
                   <div className="relative">
@@ -805,7 +805,7 @@ export default function AdminPage() {
                       type={showNewMemberPassword ? 'text' : 'password'}
                       required
                       minLength={8}
-                      placeholder="e.g. TemporaryPass123!"
+                      placeholder="e.g. Password123!"
                       value={newMemberPassword}
                       onChange={e => setNewMemberPassword(e.target.value)}
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 pr-10"
@@ -820,44 +820,16 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Assigned Practice Pod</label>
-                    <select
-                      value={newMemberTeam}
-                      onChange={e => setNewMemberTeam(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 cursor-pointer"
-                    >
-                      <option value="SAP & Enterprise Practice">SAP &amp; Enterprise</option>
-                      <option value="Cloud & Engineering Pod">Cloud &amp; Engineering</option>
-                      <option value="Finance & Operations TA">Finance &amp; Operations</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Role / Authority</label>
-                    <select
-                      value={newMemberRole}
-                      onChange={e => setNewMemberRole(e.target.value as any)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 cursor-pointer"
-                    >
-                      <option value="RECRUITER_MEMBER">TA Team Member (MEMBER)</option>
-                      <option value="TEAM_LEAD">Team Lead</option>
-                    </select>
-                  </div>
-                </div>
-
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Specialized Competencies (Comma-separated)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. S/4HANA, Kubernetes, Fast Sourcing"
-                    value={newMemberSkills}
-                    onChange={e => setNewMemberSkills(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
-                  />
+                  <label className="block font-bold text-slate-700 mb-1">Role / Authority</label>
+                  <select
+                    value={newMemberRole}
+                    onChange={e => setNewMemberRole(e.target.value as any)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 cursor-pointer"
+                  >
+                    <option value="RECRUITER_MEMBER">TA Team Member (MEMBER)</option>
+                    <option value="TEAM_LEAD">Team Lead</option>
+                  </select>
                 </div>
 
                 <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 mt-5">

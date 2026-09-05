@@ -197,6 +197,18 @@ export default function JobsPage() {
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
       const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
 
+      const isBadJob = (j: any) => {
+        const id = String(j?.id || '');
+        const title = String(j?.position || j?.title || '').toLowerCase();
+        const client = String(j?.client || j?.company || '').toLowerCase();
+        return id === 'b069cc8a-8e5d-47e4-8444-1c9ed2a0258b' ||
+               id.includes('1788597184624') ||
+               id.startsWith('jd-') ||
+               title.includes('xoxoday') ||
+               title.includes('1788597184624') ||
+               client.includes('xoxoday');
+      };
+
       let localCreatedJobs: any[] = [];
       if (typeof window !== 'undefined') {
         try {
@@ -205,7 +217,24 @@ export default function JobsPage() {
           const currentUserEmail = user?.email?.toLowerCase();
           const isAdmin = user?.role === 'ADMIN';
 
+          // Clean legacy bad jobs out of localStorage permanently
+          if (Array.isArray(raw)) {
+            const cleaned = raw.filter((j: any) => !isBadJob(j));
+            if (cleaned.length !== raw.length) {
+              localStorage.setItem('tasknera_created_jobs', JSON.stringify(cleaned));
+            }
+          }
+
+          const rawAll = JSON.parse(localStorage.getItem('tasknera_all_jobs') || '[]');
+          if (Array.isArray(rawAll)) {
+            const cleanedAll = rawAll.filter((j: any) => !isBadJob(j));
+            if (cleanedAll.length !== rawAll.length) {
+              localStorage.setItem('tasknera_all_jobs', JSON.stringify(cleanedAll));
+            }
+          }
+
           localCreatedJobs = (Array.isArray(raw) ? raw : []).filter((j: any) => {
+            if (isBadJob(j)) return false;
             if (isAdmin) return true;
             if (!currentUserId && !currentUserEmail) return false;
             const jUserId = j.created_by || j.createdBy;
@@ -237,10 +266,12 @@ export default function JobsPage() {
       // Merge live API jobs with any un-synced local jobs cleanly
       const combinedMap = new Map<string, any>();
       for (const item of fetchedRaw) {
-        combinedMap.set(String(item.id), item);
+        if (!isBadJob(item)) {
+          combinedMap.set(String(item.id), item);
+        }
       }
       for (const local of localCreatedJobs) {
-        if (!combinedMap.has(String(local.id))) {
+        if (!isBadJob(local) && !combinedMap.has(String(local.id))) {
           // Avoid duplicate entry if a job with the same client and position title already exists
           const localTitle = (local.position || local.title || '').trim().toLowerCase();
           const localClient = (local.client || '').trim().toLowerCase();

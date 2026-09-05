@@ -608,8 +608,9 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
       }
 
       const resolvedScore = typeof finalScore === 'number' ? Math.round(finalScore) : (typeof (c as any).matchScore === 'number' ? Math.round((c as any).matchScore) : undefined);
-      const isSubmit = decision === 'SUBMIT' || decision === 'ACCEPT' || (c as any).decision === 'SUBMIT' || (c as any).decision === 'ACCEPT' || (resolvedScore !== undefined && resolvedScore >= 65);
-      const resolvedDecision = isSubmit ? 'SUBMIT' : (decision === 'REVIEW' || (c as any).decision === 'REVIEW' ? 'REVIEW' : 'DO NOT SUBMIT');
+      const manualDecision = (c as any).decision || (c as any).recommendation;
+      const normalizedManual = manualDecision ? (manualDecision === 'DO NOT SUBMIT' ? 'REJECT' : manualDecision === 'ACCEPT' ? 'SUBMIT' : manualDecision) : undefined;
+      const resolvedDecision = normalizedManual || (decision ? (decision === 'DO NOT SUBMIT' ? 'REJECT' : decision === 'ACCEPT' ? 'SUBMIT' : decision) : 'REVIEW');
       const resolvedLevel = matchLevel || (c as any).matchLevel || (resolvedScore !== undefined ? (resolvedScore >= 65 ? 'STRONG MATCH' : 'LOW FIT') : undefined);
 
       return {
@@ -1816,6 +1817,89 @@ export const deleteCandidate = async (req: Request, res: Response): Promise<void
   } catch (error: any) {
     console.error('Error deleting candidate:', error);
     res.status(500).json({ error: 'Failed to delete candidate' });
+  }
+};
+
+/**
+ * Update candidate decision tag (REVIEW, SUBMIT, REJECT)
+ * PATCH /api/jobs/:jobId/candidates/:candidateId/decision
+ * PATCH /api/candidates/:candidateId/decision
+ */
+export const updateCandidateDecision = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const candidateId = String(req.params.candidateId || '');
+    const jobId = String(req.params.jobId || '');
+    const rawDecision = String(req.body.decision || '').trim().toUpperCase();
+
+    if (!candidateId) {
+      res.status(400).json({ error: 'Candidate ID is required' });
+      return;
+    }
+
+    if (!['REVIEW', 'SUBMIT', 'REJECT', 'DO NOT SUBMIT', 'ACCEPT'].includes(rawDecision)) {
+      res.status(400).json({ error: 'Invalid decision. Must be REVIEW, SUBMIT, or REJECT.' });
+      return;
+    }
+
+    const standardDecision: 'REVIEW' | 'SUBMIT' | 'REJECT' =
+      (rawDecision === 'ACCEPT' || rawDecision === 'SUBMIT') ? 'SUBMIT' :
+      (rawDecision === 'DO NOT SUBMIT' || rawDecision === 'REJECT') ? 'REJECT' : 'REVIEW';
+
+    // 1. Update in-memory stores
+    if (jobId && CANDIDATE_STORE.has(jobId)) {
+      const list = CANDIDATE_STORE.get(jobId) || [];
+      for (const c of list) {
+        if (c.id === candidateId) {
+          (c as any).decision = standardDecision;
+          (c as any).recommendation = standardDecision;
+        }
+      }
+    }
+    for (const [jId, list] of CANDIDATE_STORE.entries()) {
+      for (const c of list) {
+        if (c.id === candidateId) {
+          (c as any).decision = standardDecision;
+          (c as any).recommendation = standardDecision;
+        }
+      }
+    }
+    if (GLOBAL_CANDIDATES.has(candidateId)) {
+      const c = GLOBAL_CANDIDATES.get(candidateId);
+      if (c) {
+        (c as any).decision = standardDecision;
+        (c as any).recommendation = standardDecision;
+      }
+    }
+
+    // 2. Persist to Prisma database if UUID
+    const isCandUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidateId);
+    if (isCandUuid) {
+      try {
+        const dbDecision = standardDecision === 'REJECT' ? 'DO NOT SUBMIT' : standardDecision;
+        await prisma.evaluation.updateMany({
+          where: { candidateId, ...(jobId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId) ? { jobId } : {}) },
+          data: { decision: dbDecision, updatedAt: new Date() }
+        });
+
+        const stage = standardDecision === 'SUBMIT' ? 'SHORTLISTED' : standardDecision === 'REJECT' ? 'REJECTED' : 'REVIEW';
+        await prisma.candidateApplication.updateMany({
+          where: { candidate_id: candidateId, ...(jobId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId) ? { job_id: jobId } : {}) },
+          data: { stage }
+        });
+      } catch (dbErr) {
+        console.warn('[updateCandidateDecision] DB persistence non-fatal error:', dbErr);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Candidate decision tag updated to ${standardDecision}`,
+      candidateId,
+      decision: standardDecision
+    });
+  } catch (error: any) {
+    console.error('Error updating candidate decision:', error);
+    res.status(500).json({ error: error.message || 'Failed to update candidate decision' });
   }
 };
 
