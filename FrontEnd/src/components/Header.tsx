@@ -159,14 +159,13 @@ const Header: React.FC = () => {
               </>
             ) : (
               <>
-                <button onClick={() => { setAuthMode('signin'); setAuthOpen(true); }}
-                  className="px-4 py-2 text-xs font-bold text-slate-700 hover:text-brand-orange transition-colors cursor-pointer">
-                  Sign In
-                </button>
-                <button onClick={() => { setAuthMode('signup'); setAuthOpen(true); }}
-                  className="px-4 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange hover:shadow-orange-lg cursor-pointer">
-                  Get Started
-                </button>
+                <Link
+                  href="/signin"
+                  className="px-5 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-black rounded-xl transition-all shadow-orange hover:shadow-orange-lg cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>Sign In</span>
+                  <span>→</span>
+                </Link>
               </>
             )}
           </div>
@@ -212,16 +211,13 @@ const Header: React.FC = () => {
                   <span>Sign Out / Switch Account</span>
                 </button>
               ) : (
-                <>
-                  <button onClick={() => { setMobileOpen(false); setAuthMode('signin'); setAuthOpen(true); }}
-                    className="block w-full text-left px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer">
-                    Sign In
-                  </button>
-                  <button onClick={() => { setMobileOpen(false); setAuthMode('signup'); setAuthOpen(true); }}
-                    className="block w-full text-center px-4 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white rounded-xl text-xs font-bold shadow-orange transition-all cursor-pointer">
-                    Get Started
-                  </button>
-                </>
+                <Link
+                  href="/signin"
+                  onClick={() => setMobileOpen(false)}
+                  className="block w-full text-center px-4 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white rounded-xl text-xs font-black shadow-orange transition-all cursor-pointer"
+                >
+                  Sign In to Account →
+                </Link>
               )}
             </div>
           </div>

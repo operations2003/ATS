@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { useAuth } from '@/context/AuthContext';
+import { computeComprehensiveMatchScore } from '@/utils/requirementUtils';
 
 interface JobItem {
   id: string;
@@ -32,6 +33,36 @@ const scoreColor = (n: number | null) => {
   if (n === null || n === undefined) return 'text-slate-400';
   return n >= 80 ? 'text-emerald-600' : n >= 65 ? 'text-amber-500' : 'text-rose-500';
 };
+
+function getEffectiveSkills(candidate: any, jobReqs?: any[]): string[] {
+  const matched = new Set<string>();
+  if (Array.isArray(candidate.skills)) {
+    for (const s of candidate.skills) {
+      if (typeof s === 'string' && s.trim()) matched.add(s.trim());
+    }
+  }
+  const text = (candidate.rawText || candidate.summary || candidate.professionalSummary || '').toLowerCase();
+  if (jobReqs && jobReqs.length > 0) {
+    for (const r of jobReqs) {
+      const phrase = (r.requirement || r.text || '').trim();
+      if (phrase.length > 2) {
+        const clean = phrase.replace(/(\d+\+?\s*years?|experience|minimum|required|hands-on|relevant|professional|industry|proven|in|with|of|for|and|to)/gi, ' ').trim();
+        const tokens = clean.split(/[\s,;/()\[\]{}*+?^$|\\]+/).filter((t: string) => t.length > 2);
+        for (const tok of tokens) {
+          if (tok.length >= 3) {
+            try {
+              const escTok = tok.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&');
+              if (new RegExp(`(?:^|[^a-zA-Z0-9_])${escTok}(?:[^a-zA-Z0-9_]|$)`, 'i').test(text)) {
+                matched.add(tok);
+              }
+            } catch (err) {}
+          }
+        }
+      }
+    }
+  }
+  return Array.from(matched);
+}
 
 export default function DashboardPage() {
   const { user, token } = useAuth();
@@ -117,8 +148,10 @@ export default function DashboardPage() {
           };
         });
 
-        // 3. Fetch real candidate evaluations for user
+        // 3. Fetch candidate evaluations and scores across user's active jobs
         let evals: CandidateEvaluationItem[] = [];
+
+        // 3a. First check direct /evaluations API
         try {
           const evalUrl = user?.role === 'ADMIN' ? `${backendUrl}/evaluations?view=all` : `${backendUrl}/evaluations`;
           const resEval = await fetch(evalUrl, { headers });
@@ -126,54 +159,191 @@ export default function DashboardPage() {
             const evalData = await resEval.json();
             const evalList = evalData.evaluations || evalData.data || [];
             if (Array.isArray(evalList) && evalList.length > 0) {
-              evals = evalList.map((e: any) => {
-                const score = typeof e.score === 'number' ? Math.round(e.score) : (typeof e.ats === 'number' ? Math.round(e.ats) : 0);
-                const isSubmit = e.decision === 'SUBMIT' || e.decision === 'ACCEPT' || score >= 70;
-                return {
-                  id: e.candidateId || e.id,
-                  name: e.candidate || e.name || 'Candidate',
-                  role: e.role || e.job || 'Applicant',
-                  match: score,
-                  decision: isSubmit ? 'SUBMIT' : 'DO NOT SUBMIT',
-                  time: e.date || 'Recently',
-                  jobId: e.jobId
-                };
-              });
+              for (const e of evalList) {
+                const rawVal = e.score ?? e.atsScore ?? e.ats ?? e.match;
+                if (typeof rawVal === 'number' && rawVal > 0) {
+                  const score = Math.round(rawVal);
+                  const isSubmit = e.decision === 'SUBMIT' || e.decision === 'ACCEPT' || e.decision === 'REVIEW' || score >= 65;
+                  const candId = String(e.candidateId || e.id || '');
+                  const candName = String(e.candidate || e.name || '').trim().toLowerCase();
+
+                  const existingIdx = evals.findIndex(ex =>
+                    (candId && ex.id === candId) ||
+                    (candName && ex.name && ex.name.trim().toLowerCase() === candName)
+                  );
+
+                  const evalItem: CandidateEvaluationItem = {
+                    id: candId || `eval-${evals.length + 1}`,
+                    name: e.candidate || e.name || 'Candidate',
+                    role: e.role || e.job || 'Applicant',
+                    match: score,
+                    decision: isSubmit ? 'SUBMIT' : 'DO NOT SUBMIT',
+                    time: e.date || 'Recently',
+                    jobId: e.jobId
+                  };
+
+                  if (existingIdx >= 0) {
+                    evals[existingIdx] = evalItem;
+                  } else {
+                    evals.push(evalItem);
+                  }
+                }
+              }
             }
           }
         } catch (e) {
           console.warn('[Dashboard] Evaluations fetch error:', e);
         }
 
-        // If no evaluations from /evaluations, fall back to /candidates with real scores from DB
+        // 3b. Fetch candidates for each job that has applicants to compute real ATS scores
+        for (const j of mergedJobs) {
+          if (j.candidates > 0) {
+            try {
+              let jobCands: any[] = [];
+              if (typeof window !== 'undefined') {
+                try {
+                  jobCands = JSON.parse(localStorage.getItem(`tasknera_candidates_${j.id}`) || '[]');
+                } catch {}
+              }
+
+              try {
+                const res = await fetch(`${backendUrl}/jobs/${j.id}/candidates`, { headers });
+                if (res.ok) {
+                  const data = await res.json();
+                  const apiCands = Array.isArray(data.candidates) ? data.candidates : [];
+                  if (apiCands.length > 0) {
+                    jobCands = apiCands;
+                  }
+                }
+              } catch (e) {
+                console.warn(`[Dashboard] Could not fetch candidates for job ${j.id}:`, e);
+              }
+
+              if (Array.isArray(jobCands) && jobCands.length > 0) {
+                const rawJob = jobMap.get(j.id) || {};
+                const reqs = rawJob.requirements || [];
+
+                let maxJobScore = j.topScore;
+
+                for (const c of jobCands) {
+                  let score: number | null = null;
+                  if (typeof c.matchScore === 'number' && c.matchScore > 0) {
+                    score = Math.round(c.matchScore);
+                  } else if (typeof c.atsScore === 'number' && c.atsScore > 0) {
+                    score = Math.round(c.atsScore);
+                  }
+
+                  // Compute with comprehensive match score (matching candidates page exactly)
+                  try {
+                    const effectiveSkills = getEffectiveSkills(c, reqs);
+                    const comp = computeComprehensiveMatchScore(
+                      {
+                        skills: effectiveSkills.length > 0 ? effectiveSkills : (Array.isArray(c.skills) ? c.skills : []),
+                        totalExperience: c.totalExperience || c.totalExperienceYears,
+                        totalExperienceYears: c.totalExperienceYears,
+                        education: c.education || [],
+                        rawText: c.rawText || '',
+                        summary: c.summary || c.professionalSummary || '',
+                        currentTitle: c.currentTitle || '',
+                      },
+                      {
+                        position: j.title,
+                        jd_text: rawJob.jd_text || j.title,
+                        requirements: reqs,
+                      }
+                    );
+                    if (comp && typeof comp.overallScore === 'number' && comp.overallScore > 0) {
+                      score = Math.round(comp.overallScore);
+                    }
+                  } catch (e) {}
+
+                  if (score !== null && score > 0) {
+                    if (maxJobScore === null || score > maxJobScore) {
+                      maxJobScore = score;
+                    }
+                    const isSubmit = score >= 65 || c.decision === 'SUBMIT' || c.decision === 'ACCEPT' || c.decision === 'REVIEW';
+                    const existingIdx = evals.findIndex(e => e.id === c.id || (e.name && c.name && e.name.toLowerCase() === c.name.toLowerCase()));
+                    const evalItem: CandidateEvaluationItem = {
+                      id: c.id,
+                      name: c.name || 'Candidate',
+                      role: c.currentTitle || j.title || 'Applicant',
+                      match: score,
+                      decision: isSubmit ? 'SUBMIT' : 'DO NOT SUBMIT',
+                      time: c.uploadedAt ? new Date(c.uploadedAt).toLocaleDateString() : 'Recently',
+                      jobId: j.id,
+                    };
+
+                    if (existingIdx >= 0) {
+                      evals[existingIdx] = evalItem;
+                    } else {
+                      evals.push(evalItem);
+                    }
+                  }
+                }
+
+                j.topScore = maxJobScore;
+              }
+            } catch (err) {
+              console.warn(`[Dashboard] Error processing candidates for job ${j.id}:`, err);
+            }
+          }
+        }
+
+        // 3c. Fall back to /candidates if evals is still empty
         if (evals.length === 0) {
           try {
             const resCand = await fetch(`${backendUrl}/candidates`, { headers });
             if (resCand.ok) {
               const candData = await resCand.json();
               const candList = candData.candidates || candData.data || [];
-              evals = candList.map((c: any) => {
-                const matchScore = typeof c.matchScore === 'number' ? Math.round(c.matchScore) : (typeof c.atsScore === 'number' ? Math.round(c.atsScore) : null);
-                const isSubmit = c.decision === 'SUBMIT' || c.decision === 'ACCEPT' || (matchScore !== null && matchScore >= 70);
-                return {
-                  id: c.id,
-                  name: c.name || 'Candidate',
-                  role: c.currentTitle || c.role || 'Applicant',
-                  match: matchScore ?? 0,
-                  decision: isSubmit ? 'SUBMIT' : 'DO NOT SUBMIT',
-                  time: c.uploadedAt ? new Date(c.uploadedAt).toLocaleDateString() : 'Recently',
-                  jobId: c.jobId
-                };
-              });
+              for (const c of candList) {
+                const rawVal = c.matchScore ?? c.atsScore;
+                if (typeof rawVal === 'number' && rawVal > 0) {
+                  const matchScore = Math.round(rawVal);
+                  const isSubmit = c.decision === 'SUBMIT' || c.decision === 'ACCEPT' || matchScore >= 70;
+                  evals.push({
+                    id: c.id,
+                    name: c.name || 'Candidate',
+                    role: c.currentTitle || c.role || 'Applicant',
+                    match: matchScore,
+                    decision: isSubmit ? 'SUBMIT' : 'DO NOT SUBMIT',
+                    time: c.uploadedAt ? new Date(c.uploadedAt).toLocaleDateString() : 'Recently',
+                    jobId: c.jobId
+                  });
+                }
+              }
             }
           } catch (e) {
             console.warn('[Dashboard] Candidates fetch error:', e);
           }
         }
 
+        // 3d. Strict deduplication (guarantee exactly 1 evaluation item per candidate)
+        const dedupedEvalsMap = new Map<string, CandidateEvaluationItem>();
+        for (const ev of evals) {
+          const key = (ev.name || '').trim().toLowerCase() || ev.id;
+          if (!dedupedEvalsMap.has(key)) {
+            dedupedEvalsMap.set(key, ev);
+          } else {
+            const existing = dedupedEvalsMap.get(key)!;
+            if (ev.match > existing.match) {
+              dedupedEvalsMap.set(key, ev);
+            }
+          }
+        }
+        const finalEvals = Array.from(dedupedEvalsMap.values());
+
+        // Update topScore on each job from finalEvals
+        for (const j of mergedJobs) {
+          const jobEvals = finalEvals.filter(ev => ev.jobId === j.id || (j.candidates > 0 && finalEvals.length === 1));
+          if (jobEvals.length > 0) {
+            j.topScore = Math.max(...jobEvals.map(ev => ev.match));
+          }
+        }
+
         if (isMounted) {
           setJobs(mergedJobs);
-          setRecentEvaluations(evals);
+          setRecentEvaluations(finalEvals);
         }
       } catch (err) {
         console.error('[Dashboard] Error loading dashboard data:', err);
@@ -198,11 +368,11 @@ export default function DashboardPage() {
   }, [recentEvaluations, jobs]);
 
   const submitCount = useMemo(() => {
-    return recentEvaluations.filter(e => e.decision === 'SUBMIT' || e.decision === 'ACCEPT').length;
+    return recentEvaluations.filter(e => e.decision === 'SUBMIT' || e.decision === 'ACCEPT' || e.match >= 65).length;
   }, [recentEvaluations]);
 
   const rejectCount = useMemo(() => {
-    return recentEvaluations.filter(e => e.decision === 'DO NOT SUBMIT' || e.decision === 'REJECT').length;
+    return recentEvaluations.filter(e => (e.decision === 'DO NOT SUBMIT' || e.decision === 'REJECT') && e.match < 50).length;
   }, [recentEvaluations]);
 
   const avgCompliance = useMemo(() => {
@@ -396,7 +566,6 @@ export default function DashboardPage() {
                     <tr className="border-b border-slate-100 bg-[#F1F5F9] text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                       <th className="px-6 py-3.5">Position & Client</th>
                       <th className="px-4 py-3.5 text-center">Applicants</th>
-                      <th className="px-4 py-3.5 text-center">Top Match</th>
                       <th className="px-4 py-3.5 text-center">Mode</th>
                       <th className="px-6 py-3.5 text-right">Action</th>
                     </tr>
@@ -412,16 +581,6 @@ export default function DashboardPage() {
                         </td>
                         <td className="px-4 py-4 text-center">
                           <span className="font-bold text-[#1E293B]">{j.candidates}</span>
-                        </td>
-                        <td className="px-4 py-4 text-center">
-                          {j.topScore !== null ? (
-                            <>
-                              <span className={`font-extrabold ${scoreColor(j.topScore)}`}>{j.topScore}</span>
-                              <span className="text-xs text-slate-400 font-semibold">/100</span>
-                            </>
-                          ) : (
-                            <span className="text-xs text-slate-400">—</span>
-                          )}
                         </td>
                         <td className="px-4 py-4 text-center">
                           <span className="inline-flex px-2.5 py-0.5 bg-slate-100 border border-slate-200 rounded-full text-xs font-semibold text-slate-700">
@@ -468,7 +627,7 @@ export default function DashboardPage() {
                   </div>
                 ) : (
                   recentEvaluations.slice(0, 5).map((r, i) => {
-                    const isAcc = r.decision === 'SUBMIT' || r.decision === 'ACCEPT';
+                    const isAcc = r.decision === 'SUBMIT' || r.decision === 'ACCEPT' || r.match >= 65;
                     return (
                       <div key={i} className="flex items-center justify-between px-5 py-3.5 hover:bg-slate-50/60 transition-colors">
                         <div className="flex items-center gap-3">
@@ -486,7 +645,7 @@ export default function DashboardPage() {
                               ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
                               : 'bg-rose-100 text-rose-900 border-rose-300'
                           }`}>
-                            {isAcc ? '✓ SUBMIT' : '✕ REJECT'}
+                            {isAcc ? '✓ ACCEPT' : '✕ REJECT'}
                           </span>
                           <div className="text-[11px] font-mono font-bold text-slate-700 mt-0.5">
                             {r.match}% ATS

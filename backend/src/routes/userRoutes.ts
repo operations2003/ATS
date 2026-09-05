@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getAllUsers, getTAMembers, updateUserRole, assignUserTeam, deleteUser } from '../controllers/userController';
+import { getAllUsers, getTAMembers, createMember, updateUserRole, assignUserTeam, deleteUser } from '../controllers/userController';
 import { protect, optionalProtect, authorize } from '../middleware/authMiddleware';
 
 const router = Router();
@@ -11,6 +11,8 @@ router.get('/ta-members', optionalProtect, getTAMembers);
 router.get('/', optionalProtect, getAllUsers);
 
 // Protected routes (ADMIN only)
+router.post('/create-member', protect, authorize('ADMIN'), createMember);
+router.post('/', protect, authorize('ADMIN'), createMember);
 router.patch('/:id/role', protect, authorize('ADMIN'), updateUserRole);
 router.patch('/:id/team', protect, authorize('ADMIN'), assignUserTeam);
 router.delete('/:id', protect, authorize('ADMIN'), deleteUser);

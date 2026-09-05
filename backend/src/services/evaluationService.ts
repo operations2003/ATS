@@ -330,7 +330,7 @@ export async function evaluateCandidateAgainstRequirements(
     recommendation = 'DO NOT SUBMIT';
     const failedNames = result.mandatoryFailures.map(f => f.requirement).join(', ');
     recommendationReason = `Critical mandatory requirement failed: ${failedNames || 'Mandatory prerequisite not satisfied'}.`;
-  } else if (result.overallScore >= 75) {
+  } else if (result.overallScore >= 65) {
     recommendation = 'SUBMIT';
     recommendationReason = 'Strong qualification alignment across mandatory requirements, technical stack, and verified experience.';
   } else if (result.overallScore < 50) {

@@ -212,11 +212,12 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
       const latestEval = Array.isArray(c.evaluations) && c.evaluations.length > 0 ? c.evaluations[0] : null;
       const latestApp = Array.isArray(c.applications) && c.applications.length > 0 ? c.applications[0] : null;
       const rawScore = c.matchScore ?? c.atsScore ?? latestEval?.score ?? latestEval?.atsScore ?? latestApp?.match_score;
-      const isSubmit = c.decision === 'SUBMIT' || c.decision === 'ACCEPT' || latestEval?.decision === 'SUBMIT' || latestEval?.decision === 'ACCEPT' || latestApp?.stage === 'SHORTLISTED' || (typeof rawScore === 'number' && rawScore >= 70);
-      const evalDecision = isSubmit ? 'SUBMIT' : 'DO NOT SUBMIT';
+      const hasScore = typeof rawScore === 'number' && !isNaN(rawScore);
+      const isSubmit = c.decision === 'SUBMIT' || c.decision === 'ACCEPT' || latestEval?.decision === 'SUBMIT' || latestEval?.decision === 'ACCEPT' || latestApp?.stage === 'SHORTLISTED' || (hasScore && rawScore >= 70);
+      const evalDecision = hasScore ? (isSubmit ? 'SUBMIT' : 'DO NOT SUBMIT') : (c.decision || undefined);
       return {
-        matchScore: typeof rawScore === 'number' ? Math.round(rawScore) : undefined,
-        atsScore: typeof rawScore === 'number' ? Math.round(rawScore) : undefined,
+        matchScore: hasScore ? Math.round(rawScore) : undefined,
+        atsScore: hasScore ? Math.round(rawScore) : undefined,
         decision: evalDecision,
         matchLevel: c.matchLevel || latestEval?.matchLevel,
         mandatoryCompliance: c.mandatoryCompliance || latestEval?.mandatoryCompliance,
@@ -515,7 +516,7 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
         const evalPayload = await evaluateCandidateAgainstRequirements(c, jobData, reqs);
         finalScore = evalPayload.overallScore ?? evalPayload.overallMatch ?? 0;
         matchLevel = evalPayload.matchLevel;
-        decision = evalPayload.recommendation || (finalScore >= 80 ? 'SUBMIT' : finalScore >= 60 ? 'REVIEW' : 'DO NOT SUBMIT');
+        decision = evalPayload.recommendation || (finalScore >= 65 ? 'SUBMIT' : finalScore >= 50 ? 'REVIEW' : 'DO NOT SUBMIT');
         compliance = evalPayload.mandatoryCompliance
           ? `${evalPayload.mandatoryCompliance.met}/${evalPayload.mandatoryCompliance.total}`
           : 'N/A';
@@ -532,12 +533,84 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
           jobTitle,
           scoringConfigVersion: '5.0.0-ai-semantic-matcher'
         };
+
+        // Persist to database candidate application & evaluation
+        if (isJobUuid && c.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.id)) {
+          const stage = finalScore >= 80 ? 'SHORTLISTED' : (finalScore >= 55 ? 'REVIEW' : 'REJECTED');
+          prisma.candidateApplication.upsert({
+            where: {
+              job_id_candidate_id: {
+                job_id: jobId,
+                candidate_id: c.id
+              }
+            },
+            update: {
+              match_score: finalScore,
+              stage,
+              status: 'active'
+            },
+            create: {
+              job_id: jobId,
+              candidate_id: c.id,
+              match_score: finalScore,
+              stage,
+              status: 'active'
+            }
+          }).catch(() => null);
+
+          if (currentUserId) {
+            prisma.evaluation.findFirst({
+              where: {
+                candidateId: c.id,
+                jobId: jobId
+              },
+              orderBy: { createdAt: 'desc' }
+            }).then(async (existing) => {
+              if (existing) {
+                await prisma.evaluation.update({
+                  where: { id: existing.id },
+                  data: {
+                    score: finalScore,
+                    atsScore: finalScore,
+                    decision,
+                    matchLevel,
+                    status: 'COMPLETED',
+                    updatedAt: new Date()
+                  }
+                }).catch(() => null);
+                // Clean up any extra duplicate evaluations for this candidate and job
+                await prisma.evaluation.deleteMany({
+                  where: {
+                    candidateId: c.id,
+                    jobId: jobId,
+                    id: { not: existing.id }
+                  }
+                }).catch(() => null);
+              } else {
+                await prisma.evaluation.create({
+                  data: {
+                    candidateId: c.id,
+                    jobId: jobId,
+                    score: finalScore,
+                    atsScore: finalScore,
+                    decision,
+                    matchLevel,
+                    evaluatedBy: currentUserId,
+                    createdByUserId: currentUserId,
+                    organizationId: req.user?.organizationId || 'org-tasknera',
+                    status: 'COMPLETED'
+                  }
+                }).catch(() => null);
+              }
+            }).catch(() => null);
+          }
+        }
       }
 
       const resolvedScore = typeof finalScore === 'number' ? Math.round(finalScore) : (typeof (c as any).matchScore === 'number' ? Math.round((c as any).matchScore) : undefined);
-      const isSubmit = decision === 'SUBMIT' || decision === 'ACCEPT' || (c as any).decision === 'SUBMIT' || (c as any).decision === 'ACCEPT' || (resolvedScore !== undefined && resolvedScore >= 70);
-      const resolvedDecision = isSubmit ? 'SUBMIT' : 'DO NOT SUBMIT';
-      const resolvedLevel = matchLevel || (c as any).matchLevel || (resolvedScore !== undefined ? (resolvedScore >= 70 ? 'STRONG MATCH' : 'LOW FIT') : undefined);
+      const isSubmit = decision === 'SUBMIT' || decision === 'ACCEPT' || (c as any).decision === 'SUBMIT' || (c as any).decision === 'ACCEPT' || (resolvedScore !== undefined && resolvedScore >= 65);
+      const resolvedDecision = isSubmit ? 'SUBMIT' : (decision === 'REVIEW' || (c as any).decision === 'REVIEW' ? 'REVIEW' : 'DO NOT SUBMIT');
+      const resolvedLevel = matchLevel || (c as any).matchLevel || (resolvedScore !== undefined ? (resolvedScore >= 65 ? 'STRONG MATCH' : 'LOW FIT') : undefined);
 
       return {
         ...c,

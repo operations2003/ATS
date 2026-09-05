@@ -194,11 +194,11 @@ export default function SignInPage() {
             </form>
 
             <div className="mt-6 text-center">
-              <p className="text-xs text-slate-500">
-                Don&apos;t have an account?{' '}
-                <Link href="/signup" className="text-brand-orange font-bold hover:underline">
-                  Sign up free
-                </Link>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Need an account?{' '}
+                <span className="text-slate-700 font-medium">
+                  Member accounts are provisioned exclusively by organization administrators.
+                </span>
               </p>
             </div>
           </div>

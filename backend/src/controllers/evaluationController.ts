@@ -48,11 +48,20 @@ export function getStandardRequirementsForPosition(positionTitle: string, client
 
   // 3. Human Resources & Talent Acquisition
   if (titleLower.includes('hr') || titleLower.includes('human resources') || titleLower.includes('recruiter') || titleLower.includes('talent acquisition')) {
+    const isJuniorOr1to2 = titleLower.includes('1–2') || titleLower.includes('1-2') || titleLower.includes('1 to 2') || titleLower.includes('intern') || titleLower.includes('entry') || titleLower.includes('associate') || titleLower.includes('coordinator') || titleLower.includes('executive');
     return [
-      { id: 'req-hr-1', requirement: '3+ years full life-cycle talent acquisition, recruiting, or HR operations experience', category: 'Experience', is_mandatory: true, weight: 2.0 },
-      { id: 'req-hr-2', requirement: 'Hands-on expertise with ATS platforms, candidate sourcing (LinkedIn Recruiter), and pipeline management', category: 'Functional Skill', is_mandatory: true, weight: 1.8 },
-      { id: 'req-hr-3', requirement: 'In-depth understanding of employment regulations, interview coordination, and onboarding', category: 'Functional Skill', is_mandatory: true, weight: 1.5 },
-      { id: 'req-hr-4', requirement: 'Degree in Human Resources, Psychology, Business Administration, or equivalent', category: 'Education', is_mandatory: false, weight: 1.0 }
+      {
+        id: 'req-hr-1',
+        requirement: isJuniorOr1to2
+          ? '1-2 years experience or practical internship in HR operations, coordination, or talent management'
+          : '3+ years full life-cycle talent acquisition, recruiting, or HR operations experience',
+        category: 'Experience',
+        is_mandatory: true,
+        weight: 2.0
+      },
+      { id: 'req-hr-2', requirement: 'Hands-on familiarity with HR operations, candidate coordination, and process workflows', category: 'Functional Skill', is_mandatory: false, weight: 1.8 },
+      { id: 'req-hr-3', requirement: 'Understanding of HR documentation, interview coordination, and onboarding execution', category: 'Functional Skill', is_mandatory: false, weight: 1.5 },
+      { id: 'req-hr-4', requirement: 'Degree or relevant education in Human Resources, Psychology, Business Administration, or equivalent', category: 'Education', is_mandatory: false, weight: 1.0 }
     ];
   }
 
@@ -694,7 +703,33 @@ export const getAllEvaluations = async (req: AuthRequest, res: Response): Promis
       orderBy: { createdAt: 'desc' }
     });
 
-    const evaluationItems = dbEvaluations.map(ev => {
+    // Deduplicate evaluations by candidate & job (keeping the latest evaluation per candidate)
+    const seenCandidateKeys = new Set<string>();
+    const deduplicatedDbEvals: typeof dbEvaluations = [];
+    const duplicateIdsToDelete: string[] = [];
+
+    for (const ev of dbEvaluations) {
+      const candName = (ev.candidate?.name || (ev.auditData as any)?.candidateName || '').trim().toLowerCase();
+      const primaryKey = `${ev.candidateId}_${ev.jobId}`;
+      const nameKey = candName ? `${candName}_${ev.jobId}` : '';
+
+      if (!seenCandidateKeys.has(primaryKey) && (!nameKey || !seenCandidateKeys.has(nameKey))) {
+        seenCandidateKeys.add(primaryKey);
+        if (nameKey) seenCandidateKeys.add(nameKey);
+        deduplicatedDbEvals.push(ev);
+      } else {
+        duplicateIdsToDelete.push(ev.id);
+      }
+    }
+
+    // Clean up accumulated duplicate evaluations from database in the background
+    if (duplicateIdsToDelete.length > 0) {
+      prisma.evaluation.deleteMany({
+        where: { id: { in: duplicateIdsToDelete } }
+      }).catch((err) => console.warn('[Cleaned Duplicate Evaluations Notice]:', err.message));
+    }
+
+    const evaluationItems = deduplicatedDbEvals.map(ev => {
       const score = Math.round(ev.score);
       const audit = (ev.auditData as any) || {};
 
@@ -723,10 +758,10 @@ export const getAllEvaluations = async (req: AuthRequest, res: Response): Promis
         score,
         ats: Math.round(ev.atsScore ?? score),
         overallScore: score,
-        matchLevel: ev.matchLevel || (score >= 80 ? 'STRONG MATCH' : 'GOOD MATCH'),
+        matchLevel: ev.matchLevel || (score >= 65 ? 'STRONG MATCH' : 'GOOD MATCH'),
         mandatory: ev.mandatoryCompliance || 'N/A',
         mandatoryFailed: ev.mandatoryFailed,
-        decision: ev.decision || 'REVIEW',
+        decision: (score >= 65 && !ev.mandatoryFailed) ? 'SUBMIT' : (ev.decision || 'REVIEW'),
         by: ev.creator?.name ? `Evaluated by ${ev.creator.name}` : 'Deterministic ATS Engine (v2.0)'
       };
     });

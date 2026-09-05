@@ -601,7 +601,6 @@ export default function JobsPage() {
                     <th className="px-4 py-4 hidden lg:table-cell">Compensation</th>
                     <th className="px-4 py-4 text-center">Work Mode</th>
                     <th className="px-4 py-4 text-center">Applicants</th>
-                    <th className="px-4 py-4 text-center">Top Match</th>
                     <th className="px-4 py-4 text-center">Status</th>
                     <th className="px-6 py-4 text-right">Actions</th>
                   </tr>
@@ -634,18 +633,6 @@ export default function JobsPage() {
                       </td>
                       <td className="px-4 py-4 text-center">
                         <span className="font-bold text-[#1E293B]">{j.candidates}</span>
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        {j.topScore !== null && j.topScore > 0 ? (
-                          <>
-                            <span className={`font-extrabold ${j.topScore >= 80 ? 'text-emerald-600' : j.topScore >= 65 ? 'text-amber-500' : 'text-rose-500'}`}>
-                              {j.topScore}
-                            </span>
-                            <span className="text-xs text-slate-400 font-semibold">/100</span>
-                          </>
-                        ) : (
-                          <span className="text-xs text-slate-400 font-medium">—</span>
-                        )}
                       </td>
                       <td className="px-4 py-4 text-center">
                         <div className="relative inline-block">

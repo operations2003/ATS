@@ -1,6 +1,6 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
-export type UserRole = 'ADMIN' | 'USER' | 'TEAM_LEAD' | 'RECRUITER_MEMBER';
+export type UserRole = 'ADMIN' | 'MEMBER' | 'TEAM_LEADER' | 'USER' | 'TEAM_LEAD' | 'RECRUITER_MEMBER';
 
 export interface User {
   id: string;

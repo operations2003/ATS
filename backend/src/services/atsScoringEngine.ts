@@ -883,7 +883,7 @@ export function evaluateExperienceRequirement(
   // Single threshold: "4+ years", "4 years", "minimum 5 years"
   const singleMatch = reqLower.match(/(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)/i);
 
-  let minYears = 3.0;
+  let minYears = 1.0;
   let maxYears: number | null = null;
 
   if (rangeMatch) {

@@ -447,7 +447,7 @@ const INITIAL_AUDIT_EVENTS: AuditEvent[] = [
   }
 ];
 
-const INITIAL_RECRUITERS: RecruiterMetric[] = ((initialRecruitersData as any[]) || []).filter(r => r.email?.toLowerCase().trim() !== 'admin123@gmail.com' && r.role !== 'ADMIN');
+const INITIAL_RECRUITERS: RecruiterMetric[] = ((initialRecruitersData as any[]) || []).filter(r => r.email?.toLowerCase().trim() !== 'sheetalbedi@tasknera.com' && r.role !== 'ADMIN');
 
 class ATSStore {
   private jobs: JobItem[] = [];
@@ -491,7 +491,7 @@ class ATSStore {
           'alex.m@tasknera.com',
           'alex.c@tasknera.com'
         ];
-        parsed = parsed.filter(p => !dummyEmails.includes(p.email?.toLowerCase()) && p.email?.toLowerCase().trim() !== 'admin123@gmail.com' && p.role !== 'ADMIN');
+        parsed = parsed.filter(p => !dummyEmails.includes(p.email?.toLowerCase()) && p.email?.toLowerCase().trim() !== 'sheetalbedi@tasknera.com' && p.role !== 'ADMIN');
 
         if (parsed.length === 0) {
           this.recruiters = INITIAL_RECRUITERS;
@@ -569,12 +569,12 @@ class ATSStore {
 
   public setRecruitersFromDatabase(members: RecruiterMetric[]): void {
     if (!Array.isArray(members) || members.length === 0) return;
-    this.recruiters = members.filter(m => m.email?.toLowerCase().trim() !== 'admin123@gmail.com' && m.role !== 'ADMIN');
+    this.recruiters = members.filter(m => m.email?.toLowerCase().trim() !== 'sheetalbedi@tasknera.com' && m.role !== 'ADMIN');
     this.saveToStorage();
   }
 
   public getRecruiters(): RecruiterMetric[] {
-    return this.recruiters.filter(r => r.email?.toLowerCase().trim() !== 'admin123@gmail.com' && r.role !== 'ADMIN');
+    return this.recruiters.filter(r => r.email?.toLowerCase().trim() !== 'sheetalbedi@tasknera.com' && r.role !== 'ADMIN');
   }
 
   public getRecruiter(id: string): RecruiterMetric | undefined {
@@ -584,7 +584,7 @@ class ATSStore {
   public ensureMember(user: { id?: string; name?: string | null; email?: string; role?: string }): RecruiterMetric | null {
     if (!user || !user.email) return null;
     const cleanEmail = user.email.toLowerCase().trim();
-    if (cleanEmail === 'admin123@gmail.com' || user.role === 'ADMIN') return null;
+    if (cleanEmail === 'sheetalbedi@tasknera.com' || user.role === 'ADMIN') return null;
     const cleanName = user.name?.trim() || cleanEmail.split('@')[0].replace('.', ' ').replace(/\b\w/g, l => l.toUpperCase());
 
     const existing = this.recruiters.find(r => r.email.toLowerCase() === cleanEmail || r.name.toLowerCase() === cleanName.toLowerCase());

@@ -43,6 +43,9 @@ app.post('/api/evaluations/:id/decision', protect, updateEvaluationDecisionContr
 app.patch('/api/evaluations/:id/decision', protect, updateEvaluationDecisionController);
 app.delete('/api/evaluations/:id', protect, deleteEvaluationController);
 
+import { ensureDefaultAdmin } from './controllers/authController';
+
 app.listen(PORT, () => {
   console.log(`[Backend] Server listening on http://localhost:${PORT}`);
+  ensureDefaultAdmin();
 });

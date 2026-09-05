@@ -13,10 +13,7 @@ interface AuthModalProps {
 export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
   onClose,
-  initialMode = 'signin',
 }) => {
-  const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
-  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -24,7 +21,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
-  const { signin, signup, googleSignin } = useAuth();
+  const { signin, googleSignin } = useAuth();
   const router = useRouter();
 
   if (!isOpen) return null;
@@ -32,18 +29,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (mode === 'signup' && password.length < 6) {
-      setError('Password must be at least 6 characters long');
-      return;
-    }
     setIsLoading(true);
     try {
-      let roleResult;
-      if (mode === 'signin') {
-        roleResult = await signin(email, password);
-      } else {
-        roleResult = await signup(name, email, password);
-      }
+      const roleResult = await signin(email, password);
       onClose();
       if (roleResult === 'ADMIN') {
         router.push('/admin');
@@ -96,7 +84,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <img src="/tasknera-logo-symbol.png" alt="TaskNera" className="w-full h-full object-contain" />
             </div>
             <h2 className="text-xl font-black text-slate-900 tracking-tight">
-              {mode === 'signin' ? 'Sign In to TaskNera' : 'Create Account'}
+              Sign In to TaskNera
             </h2>
             <p className="text-slate-500 text-xs mt-1">
               Enter your credentials to access your workspace
@@ -154,7 +142,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
                     />
                   </svg>
-                  <span>{mode === 'signin' ? 'Continue with Google' : 'Sign up with Google'}</span>
+                  <span>Continue with Google</span>
                 </>
               )}
             </button>
@@ -166,28 +154,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
               <div className="relative flex justify-center text-[11px] uppercase">
                 <span className="bg-white px-3 text-slate-400 font-semibold tracking-wider">
-                  {mode === 'signin' ? 'or sign in with email' : 'or register with email'}
+                  or sign in with corporate email
                 </span>
               </div>
             </div>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {mode === 'signup' && (
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  placeholder="e.g. Sarah Mitchell"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 text-xs font-medium"
-                />
-              </div>
-            )}
 
             <div>
               <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -243,34 +216,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               {isLoading ? (
                 <span>Signing in...</span>
               ) : (
-                <span>{mode === 'signin' ? 'Sign In →' : 'Create Account →'}</span>
+                <span>Sign In to Account →</span>
               )}
             </button>
           </form>
 
-          {/* Toggle between Sign In & Sign Up */}
-          <div className="mt-4 text-center text-xs text-slate-500">
-            {mode === 'signin' ? (
-              <>
-                New to TaskNera?{' '}
-                <button
-                  onClick={() => { setMode('signup'); setError(''); }}
-                  className="text-brand-orange font-bold hover:underline cursor-pointer"
-                >
-                  Sign up
-                </button>
-              </>
-            ) : (
-              <>
-                Already have an account?{' '}
-                <button
-                  onClick={() => { setMode('signin'); setError(''); }}
-                  className="text-brand-orange font-bold hover:underline cursor-pointer"
-                >
-                  Sign In
-                </button>
-              </>
-            )}
+          {/* Account Provisioning Notice */}
+          <div className="mt-4 text-center text-xs text-slate-500 leading-relaxed">
+            Need an account?{' '}
+            <span className="text-slate-700 font-medium">
+              Member accounts are provisioned exclusively by administrators.
+            </span>
           </div>
         </div>
       </div>

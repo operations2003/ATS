@@ -1,6 +1,94 @@
 import { Response } from 'express';
+import bcrypt from 'bcryptjs';
 import prisma from '../config/prisma';
 import { AuthRequest, UserRole } from '../middleware/authMiddleware';
+
+// @desc    Create a new member (Admin only)
+// @route   POST /api/users/create-member
+// @route   POST /api/users
+// @access  Private (ADMIN)
+export const createMember = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    // 1. Verify authenticated user is ADMIN
+    if (!req.user || req.user.role !== 'ADMIN') {
+      res.status(403).json({ error: 'Forbidden: Only administrators are authorized to create new members.' });
+      return;
+    }
+
+    const { name, email, password, teamId, role } = req.body;
+
+    // 2. Validate required fields
+    if (!email || !password) {
+      res.status(400).json({ error: 'Email and temporary password are required to create a member.' });
+      return;
+    }
+
+    const cleanEmail = String(email).toLowerCase().trim();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      res.status(400).json({ error: 'Please provide a valid email address.' });
+      return;
+    }
+
+    if (String(password).length < 8) {
+      res.status(400).json({ error: 'Password must be at least 8 characters long.' });
+      return;
+    }
+
+    // 3. Duplicate email check
+    const existingUser = await prisma.user.findUnique({
+      where: { email: cleanEmail }
+    });
+
+    if (existingUser) {
+      res.status(400).json({ error: 'A user with this email already exists.' });
+      return;
+    }
+
+    // 4. Role assignment: restrict to MEMBER or TEAM_LEADER; never allow arbitrary escalation
+    let assignedRole: UserRole = 'MEMBER';
+    if (role && (role === 'TEAM_LEADER' || role === 'TEAM_LEAD')) {
+      assignedRole = 'TEAM_LEADER';
+    } else {
+      assignedRole = 'MEMBER';
+    }
+
+    // 5. Securely hash password before storing
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(String(password), salt);
+
+    // 6. Save new user to database
+    const newUser = await prisma.user.create({
+      data: {
+        name: name ? String(name).trim() : cleanEmail.split('@')[0],
+        email: cleanEmail,
+        password: hashedPassword,
+        role: assignedRole,
+        teamId: teamId || null,
+        organizationId: req.user.organizationId || 'org-tasknera'
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        teamId: true,
+        organizationId: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `Member ${newUser.name || newUser.email} provisioned successfully`,
+      user: newUser
+    });
+  } catch (error: any) {
+    console.error('[User Controller] Error creating member:', error);
+    res.status(500).json({ error: error.message || 'Failed to create member' });
+  }
+};
 
 // @desc    Get all users (Admin only)
 // @route   GET /api/users
@@ -45,7 +133,7 @@ export const getTAMembers = async (req: AuthRequest, res: Response): Promise<voi
     const users = await prisma.user.findMany({
       where: {
         AND: [
-          { email: { not: 'admin123@gmail.com' } },
+          { email: { not: 'sheetalbedi@tasknera.com' } },
           { role: { not: 'ADMIN' } }
         ]
       },
@@ -86,7 +174,7 @@ export const getTAMembers = async (req: AuthRequest, res: Response): Promise<voi
     });
 
     const taMembers = users
-      .filter(u => u.email?.toLowerCase().trim() !== 'admin123@gmail.com' && u.role !== 'ADMIN')
+      .filter(u => u.email?.toLowerCase().trim() !== 'sheetalbedi@tasknera.com' && u.role !== 'ADMIN')
       .map(user => {
         const cleanRole = user.role === 'TEAM_LEADER' ? 'TEAM_LEAD' : 'RECRUITER_MEMBER';
         const cleanName = user.name || user.email.split('@')[0].replace('.', ' ').replace(/\b\w/g, l => l.toUpperCase());
