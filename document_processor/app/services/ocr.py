@@ -52,7 +52,7 @@ def perform_pdf_ocr(pdf_bytes: bytes) -> str:
     Converts PDF pages to images via fitz and performs OCR.
     """
     try:
-        import fitz  # PyMuPDF
+        import pymupdf as fitz  # PyMuPDF
         import pytesseract
         from PIL import Image
         configure_tesseract()

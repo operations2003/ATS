@@ -1,4 +1,4 @@
-import fitz  # PyMuPDF
+import pymupdf as fitz  # PyMuPDF
 from typing import Dict, Any
 from app.services.text_cleaner import clean_extracted_text
 from app.services.document_analyzer import analyze_document_quality
