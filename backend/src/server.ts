@@ -14,6 +14,16 @@ app.use(cors());
 app.use(express.json());
 
 // Routes
+app.get('/', (req: Request, res: Response) => {
+  res.json({
+    status: 'ok',
+    service: 'TaskNera ATS Backend API',
+    version: '1.0.0',
+    health: '/api/health',
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.get('/api/health', (req: Request, res: Response) => {
   res.json({
     status: 'ok',
