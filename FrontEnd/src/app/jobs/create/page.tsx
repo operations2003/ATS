@@ -268,6 +268,10 @@ export default function CreateJobPage() {
     e.preventDefault();
     setErrorMsg('');
 
+    if (isSubmitting) {
+      return;
+    }
+
     if (!validateForm()) {
       return;
     }

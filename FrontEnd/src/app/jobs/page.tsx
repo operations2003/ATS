@@ -241,7 +241,18 @@ export default function JobsPage() {
       }
       for (const local of localCreatedJobs) {
         if (!combinedMap.has(String(local.id))) {
-          combinedMap.set(String(local.id), local);
+          // Avoid duplicate entry if a job with the same client and position title already exists
+          const localTitle = (local.position || local.title || '').trim().toLowerCase();
+          const localClient = (local.client || '').trim().toLowerCase();
+          const existsInCombined = Array.from(combinedMap.values()).some((existing: any) => {
+            const exTitle = (existing.position || existing.title || '').trim().toLowerCase();
+            const exClient = (existing.client || '').trim().toLowerCase();
+            return exTitle.length > 0 && exTitle === localTitle && exClient === localClient;
+          });
+
+          if (!existsInCombined) {
+            combinedMap.set(String(local.id), local);
+          }
         }
       }
       const combined = Array.from(combinedMap.values());

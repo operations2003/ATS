@@ -229,10 +229,9 @@ export const createJob = async (req: AuthRequest, res: Response): Promise<void> 
       };
     }
 
-    // Always ensure job is in memory store
-    GLOBAL_JOB_STORE.set(job.id, job);
-    if (fallbackId !== job.id) {
-      GLOBAL_JOB_STORE.set(fallbackId, job);
+    // Cache by job.id only (never cache phantom fallbackId when DB created real job)
+    if (job && job.id) {
+      GLOBAL_JOB_STORE.set(job.id, job);
     }
 
     res.status(201).json({
@@ -445,7 +444,15 @@ export const getAllJobs = async (req: AuthRequest, res: Response): Promise<void>
 
     // Merge non-UUID custom jobs from GLOBAL_JOB_STORE (isolated by user)
     for (const [gId, gJob] of GLOBAL_JOB_STORE.entries()) {
-      if (!formattedJobs.some(fj => fj.id === gId)) {
+      const actualId = String(gJob.id || gId);
+      // Skip if this job is already present in formattedJobs by ID or matching client + position
+      const alreadyExists = formattedJobs.some(fj =>
+        fj.id === gId ||
+        fj.id === actualId ||
+        (fj.client && gJob.client && fj.client.trim().toLowerCase() === gJob.client.trim().toLowerCase() &&
+         (fj.position || fj.title || '').trim().toLowerCase() === (gJob.position || gJob.title || '').trim().toLowerCase())
+      );
+      if (!alreadyExists) {
         // Enforce user isolation: non-admin users only see jobs they created
         if (req.user && req.user.role !== 'ADMIN') {
           const jobOwner = gJob.created_by || gJob.createdBy;
@@ -910,6 +917,14 @@ export const deleteJob = async (req: AuthRequest, res: Response): Promise<void> 
     await prisma.candidate.deleteMany({ where: { job_id: jobId } });
     await prisma.requirement.deleteMany({ where: { job_id: jobId } });
     await prisma.job.delete({ where: { id: jobId } });
+
+    // Clean up in-memory cache
+    GLOBAL_JOB_STORE.delete(jobId);
+    for (const [key, val] of GLOBAL_JOB_STORE.entries()) {
+      if (val.id === jobId || key === jobId) {
+        GLOBAL_JOB_STORE.delete(key);
+      }
+    }
 
     res.status(200).json({
       success: true,
