@@ -211,16 +211,15 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
     ...(() => {
       const latestEval = Array.isArray(c.evaluations) && c.evaluations.length > 0 ? c.evaluations[0] : null;
       const latestApp = Array.isArray(c.applications) && c.applications.length > 0 ? c.applications[0] : null;
-      const rawScore = c.matchScore ?? c.atsScore ?? latestEval?.score ?? latestEval?.atsScore ?? latestApp?.match_score;
+      const rawScore = latestEval?.score ?? latestEval?.atsScore ?? c.matchScore ?? c.atsScore ?? latestApp?.match_score;
       const hasScore = typeof rawScore === 'number' && !isNaN(rawScore);
-      const isSubmit = c.decision === 'SUBMIT' || c.decision === 'ACCEPT' || latestEval?.decision === 'SUBMIT' || latestEval?.decision === 'ACCEPT' || latestApp?.stage === 'SHORTLISTED' || (hasScore && rawScore >= 70);
-      const evalDecision = hasScore ? (isSubmit ? 'SUBMIT' : 'DO NOT SUBMIT') : (c.decision || undefined);
+      const evalDecision = latestEval?.decision || c.decision || (hasScore ? (rawScore >= 75 ? 'SUBMIT' : (rawScore >= 50 ? 'REVIEW' : 'DO NOT SUBMIT')) : undefined);
       return {
         matchScore: hasScore ? Math.round(rawScore) : undefined,
         atsScore: hasScore ? Math.round(rawScore) : undefined,
         decision: evalDecision,
-        matchLevel: c.matchLevel || latestEval?.matchLevel,
-        mandatoryCompliance: c.mandatoryCompliance || latestEval?.mandatoryCompliance,
+        matchLevel: latestEval?.matchLevel || c.matchLevel,
+        mandatoryCompliance: latestEval?.mandatoryCompliance || c.mandatoryCompliance,
       };
     })(),
   };
@@ -608,10 +607,11 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
       }
 
       const resolvedScore = typeof finalScore === 'number' ? Math.round(finalScore) : (typeof (c as any).matchScore === 'number' ? Math.round((c as any).matchScore) : undefined);
-      const manualDecision = (c as any).decision || (c as any).recommendation;
-      const normalizedManual = manualDecision ? (manualDecision === 'DO NOT SUBMIT' ? 'REJECT' : manualDecision === 'ACCEPT' ? 'SUBMIT' : manualDecision) : undefined;
-      const resolvedDecision = normalizedManual || (decision ? (decision === 'DO NOT SUBMIT' ? 'REJECT' : decision === 'ACCEPT' ? 'SUBMIT' : decision) : 'REVIEW');
-      const resolvedLevel = matchLevel || (c as any).matchLevel || (resolvedScore !== undefined ? (resolvedScore >= 65 ? 'STRONG MATCH' : 'LOW FIT') : undefined);
+      const effectiveDecision = decision || (c as any).decision || (c as any).recommendation;
+      const resolvedDecision = effectiveDecision
+        ? (effectiveDecision === 'DO NOT SUBMIT' ? 'REJECT' : (effectiveDecision === 'ACCEPT' ? 'SUBMIT' : effectiveDecision))
+        : (resolvedScore !== undefined ? (resolvedScore >= 75 ? 'SUBMIT' : (resolvedScore >= 50 ? 'REVIEW' : 'REJECT')) : 'REVIEW');
+      const resolvedLevel = matchLevel || (c as any).matchLevel || (resolvedScore !== undefined ? (resolvedScore >= 75 ? 'STRONG MATCH' : (resolvedScore >= 50 ? 'MODERATE MATCH' : 'LOW FIT')) : undefined);
 
       return {
         ...c,
