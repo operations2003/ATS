@@ -101,6 +101,11 @@ export interface CandidateRecord {
   isDuplicate?: boolean;
   uploadedAt: string;
   decision?: 'REVIEW' | 'SUBMIT' | 'REJECT' | string;
+  matchScore?: number;
+  atsScore?: number;
+  matchLevel?: string;
+  mandatoryCompliance?: any;
+  evaluation?: any;
 }
 
 export interface UploadQueueItem {
@@ -187,35 +192,73 @@ const parseMonthsFromText = (text?: string | null): number => {
   return 0;
 };
 
-const getNumericExperienceDetails = (cand: { totalExperience?: string | null; totalExperienceMonths?: number; totalExperienceYears?: number; experience?: CandidateExperience[] }) => {
-  let months = cand.totalExperienceMonths || 0;
-  if (!months && cand.totalExperienceYears) {
-    months = Math.round(cand.totalExperienceYears * 12);
+const getNumericExperienceDetails = (cand: { 
+  totalExperience?: string | null; 
+  totalExperienceMonths?: number; 
+  totalExperienceYears?: number; 
+  experience?: CandidateExperience[] 
+}) => {
+  let months = 0;
+
+  // PRIORITY 1: Calculate directly from documented work experience roles (ground truth)
+  if (cand.experience && cand.experience.length > 0) {
+    let sum = 0;
+    for (const exp of cand.experience) {
+      const durMonths = parseMonthsFromText(exp.duration || (exp.startDate && exp.endDate ? `${exp.startDate} - ${exp.endDate}` : ''));
+      if (durMonths > 0) {
+        sum += durMonths;
+      }
+    }
+    if (sum > 0) {
+      months = sum;
+    }
   }
+
+  // PRIORITY 2: Pre-computed totalExperienceMonths
+  if (!months && cand.totalExperienceMonths && cand.totalExperienceMonths > 0) {
+    months = cand.totalExperienceMonths;
+  }
+
+  // PRIORITY 3: Parse from totalExperience string
   if (!months && cand.totalExperience) {
     months = parseMonthsFromText(cand.totalExperience);
   }
-  if (!months && cand.experience && cand.experience.length > 0) {
-    let sum = 0;
-    for (const exp of cand.experience) {
-      sum += parseMonthsFromText(exp.duration || (exp.startDate && exp.endDate ? `${exp.startDate} - ${exp.endDate}` : ''));
-    }
-    months = sum;
+
+  // PRIORITY 4: totalExperienceYears
+  if (!months && cand.totalExperienceYears && cand.totalExperienceYears > 0) {
+    months = Math.round(cand.totalExperienceYears * 12);
   }
 
   const years = parseFloat((months / 12).toFixed(1));
 
-  const badgeText = `${years} yrs`;
-  const subText = `${months} ${months === 1 ? 'mo' : 'mos'}`;
-  const fullLabel = months > 0
-    ? (months < 12 ? `${years} Years (${months} ${months === 1 ? 'month' : 'months'})` : `${years} Years (${Math.floor(months / 12)}y ${months % 12}m)`)
-    : (cand.totalExperience || '0 Years');
+  let badgeText = '0 yrs';
+  let fullLabel = '0 Years';
+
+  if (months > 0) {
+    if (months < 12) {
+      badgeText = `${months} mo${months === 1 ? '' : 's'}`;
+      fullLabel = `${months} ${months === 1 ? 'Month' : 'Months'}`;
+    } else {
+      const y = Math.floor(months / 12);
+      const m = months % 12;
+      if (m === 0) {
+        badgeText = `${y} yr${y === 1 ? '' : 's'}`;
+        fullLabel = `${y} ${y === 1 ? 'Year' : 'Years'}`;
+      } else {
+        badgeText = `${y} yr${y === 1 ? '' : 's'} ${m} mo${m === 1 ? '' : 's'}`;
+        fullLabel = `${y} ${y === 1 ? 'Year' : 'Years'} ${m} ${m === 1 ? 'Month' : 'Months'}`;
+      }
+    }
+  } else if (cand.totalExperience && cand.totalExperience.trim()) {
+    badgeText = cand.totalExperience;
+    fullLabel = cand.totalExperience;
+  }
 
   return {
     months,
     years,
     badgeText,
-    subText,
+    subText: `${months} ${months === 1 ? 'mo' : 'mos'}`,
     fullLabel,
   };
 };
@@ -1040,10 +1083,23 @@ export default function JobCandidatesPage() {
           },
         ];
 
+      // Prioritize Python / backend evaluated score if already computed
+      const cAny = c as any;
+      const pythonScore = (typeof cAny.matchScore === 'number' && !isNaN(cAny.matchScore) && cAny.matchScore > 0)
+        ? Math.round(cAny.matchScore)
+        : (typeof cAny.atsScore === 'number' && !isNaN(cAny.atsScore) && cAny.atsScore > 0)
+          ? Math.round(cAny.atsScore)
+          : null;
+
+      const finalScore = pythonScore !== null ? pythonScore : matchResult.overallScore;
+      const finalLevel = pythonScore !== null
+        ? (cAny.matchLevel || (finalScore >= 75 ? 'STRONG MATCH' : finalScore >= 50 ? 'GOOD MATCH' : 'LOW FIT'))
+        : matchResult.matchLevel;
+
       return {
         ...c,
-        matchScore: matchResult.overallScore,
-        matchLevel: matchResult.matchLevel,
+        matchScore: finalScore,
+        matchLevel: finalLevel,
         matchBreakdown: matchResult.breakdown,
         matchSummary: matchResult.summary,
         requirementEvals,

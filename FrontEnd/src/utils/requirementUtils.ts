@@ -787,15 +787,10 @@ export const computeComprehensiveMatchScore = (
 
   let overallScore = Math.min(100, Math.max(0, Math.round(weightedTotal)));
 
-  // If mandatory requirement failed or severe experience failure, cap overall score so it cannot be accepted
-  if (mandatoryRequirementFailed) {
-    overallScore = Math.min(overallScore, 44);
-  }
-
   let matchLevel: 'STRONG MATCH' | 'GOOD MATCH' | 'MODERATE MATCH' | 'LOW FIT' = 'MODERATE MATCH';
   if (overallScore >= 70 && !mandatoryRequirementFailed) matchLevel = 'STRONG MATCH';
-  else if (overallScore >= 55 && !mandatoryRequirementFailed) matchLevel = 'GOOD MATCH';
-  else if (overallScore >= 45 && !mandatoryRequirementFailed) matchLevel = 'MODERATE MATCH';
+  else if (overallScore >= 55) matchLevel = 'GOOD MATCH';
+  else if (overallScore >= 45) matchLevel = 'MODERATE MATCH';
   else matchLevel = 'LOW FIT';
 
   const breakdown: MatchScoreBreakdown = {

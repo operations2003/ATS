@@ -233,29 +233,31 @@ export default function DashboardPage() {
                     score = Math.round(c.atsScore);
                   }
 
-                  // Compute with comprehensive match score (matching candidates page exactly)
-                  try {
-                    const effectiveSkills = getEffectiveSkills(c, reqs);
-                    const comp = computeComprehensiveMatchScore(
-                      {
-                        skills: effectiveSkills.length > 0 ? effectiveSkills : (Array.isArray(c.skills) ? c.skills : []),
-                        totalExperience: c.totalExperience || c.totalExperienceYears,
-                        totalExperienceYears: c.totalExperienceYears,
-                        education: c.education || [],
-                        rawText: c.rawText || '',
-                        summary: c.summary || c.professionalSummary || '',
-                        currentTitle: c.currentTitle || '',
-                      },
-                      {
-                        position: j.title,
-                        jd_text: rawJob.jd_text || j.title,
-                        requirements: reqs,
+                  // Only compute fallback score if candidate has no evaluated score from backend
+                  if (score === null || score === 0) {
+                    try {
+                      const effectiveSkills = getEffectiveSkills(c, reqs);
+                      const comp = computeComprehensiveMatchScore(
+                        {
+                          skills: effectiveSkills.length > 0 ? effectiveSkills : (Array.isArray(c.skills) ? c.skills : []),
+                          totalExperience: c.totalExperience || c.totalExperienceYears,
+                          totalExperienceYears: c.totalExperienceYears,
+                          education: c.education || [],
+                          rawText: c.rawText || '',
+                          summary: c.summary || c.professionalSummary || '',
+                          currentTitle: c.currentTitle || '',
+                        },
+                        {
+                          position: j.title,
+                          jd_text: rawJob.jd_text || j.title,
+                          requirements: reqs,
+                        }
+                      );
+                      if (comp && typeof comp.overallScore === 'number' && comp.overallScore > 0) {
+                        score = Math.round(comp.overallScore);
                       }
-                    );
-                    if (comp && typeof comp.overallScore === 'number' && comp.overallScore > 0) {
-                      score = Math.round(comp.overallScore);
-                    }
-                  } catch (e) {}
+                    } catch (e) {}
+                  }
 
                   if (score !== null && score > 0) {
                     if (maxJobScore === null || score > maxJobScore) {

@@ -7,7 +7,8 @@ import {
   extractStructuredCandidateFromText,
   CandidateParsedProfile,
   validateCvTextQuality,
-  calculateCareerGaps
+  calculateCareerGaps,
+  formatNumericExperience
 } from '../services/cvParsingService';
 import { evaluateCandidateAgainstRequirements } from '../services/evaluationService';
 import { getStandardRequirementsForPosition } from './evaluationController';
@@ -161,6 +162,23 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
     ? c.name.trim()
     : (c.resume_file_url ? c.resume_file_url.replace(/\.[^/.]+$/, '').replace(/[_\-]/g, ' ') : 'Candidate Profile');
 
+  // Calculate exact experience months from verified role entries
+  let roleMonths = 0;
+  if (experience.length > 0) {
+    for (const exp of experience) {
+      if (exp.duration) {
+        const moMatch = exp.duration.match(/(\d+)\s*(?:months?|mos?)/i);
+        const yrMatch = exp.duration.match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs?)/i);
+        if (moMatch) roleMonths += parseInt(moMatch[1], 10);
+        else if (yrMatch) roleMonths += Math.round(parseFloat(yrMatch[1]) * 12);
+      }
+    }
+  }
+
+  const finalExpString = roleMonths > 0
+    ? formatNumericExperience(roleMonths)
+    : (totalExp || (experience.length ? `${experience.length} yrs` : '0 yrs'));
+
   return {
     id: c.id,
     jobId: associatedJobId,
@@ -168,8 +186,10 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
     email: c.email || '',
     phone: c.phone || '',
     location: location || 'Remote',
-    totalExperience: totalExp || (experience.length ? `${experience.length * 2} yrs` : '3 yrs'),
-    relevantExperience: totalExp || '3 yrs',
+    totalExperience: finalExpString,
+    totalExperienceMonths: roleMonths > 0 ? roleMonths : undefined,
+    totalExperienceYears: roleMonths > 0 ? parseFloat((roleMonths / 12).toFixed(1)) : undefined,
+    relevantExperience: finalExpString,
     currentTitle: title || 'Software Professional',
     currentCompany: company || '',
     summary: summary || '',

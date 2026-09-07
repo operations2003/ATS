@@ -1285,7 +1285,7 @@ export function extractStructuredCandidateFromText(
       calculatedMonths = latestEndYear === earliestStartYear ? 6 : Math.max(6, (latestEndYear - earliestStartYear) * 12);
     }
 
-    if (calculatedMonths > 0 && (!totalExperience || totalExperienceMonths < calculatedMonths)) {
+    if (calculatedMonths > 0) {
       totalExperienceMonths = calculatedMonths;
       totalExperienceYears = parseFloat((calculatedMonths / 12).toFixed(1));
       totalExperience = formatNumericExperience(calculatedMonths);
