@@ -77,14 +77,12 @@ def extract_candidate_chunks(candidate: Dict[str, Any]) -> List[Dict[str, Any]]:
             if len(s_clean) > 15:
                 chunks.append({"text": s_clean, "source": "Professional Summary", "type": "summary_bullet"})
 
-    # 5. Full CV raw text fallback sentences
+    # 5. Full CV text paragraphs & lines
     raw_text = candidate.get("rawText") or candidate.get("raw_text") or ""
-    if raw_text and len(chunks) < 5:
-        sentences = re.split(r'(?<=[.!?\n])\s+', raw_text)
-        for s in sentences:
-            s_clean = s.strip()
-            if len(s_clean) > 20 and len(s_clean) < 300:
-                chunks.append({"text": s_clean, "source": "CV Document", "type": "raw_sentence"})
+    if raw_text:
+        lines_and_sents = [l.strip() for l in raw_text.split('\n') if len(l.strip()) > 15]
+        for item in lines_and_sents[:50]:
+            chunks.append({"text": item, "source": "CV Record", "type": "raw_line"})
 
     return chunks
 
@@ -190,13 +188,21 @@ def evaluate_with_ai(
                     best_evidence = c_text
                     best_source = c_item.get("source", "Experience")
 
-        # Full CV text partial match fallback
-        if raw_text_full and len(raw_text_full) > 20 and best_score < 0.60:
-            token_ratio = fuzz.partial_ratio(req_lower, raw_text_full) / 100.0
-            if token_ratio >= 0.70 and token_ratio > best_score:
-                best_score = max(best_score, token_ratio * 0.88)
-                if not best_evidence:
-                    best_evidence = f"Document context aligns with '{req_clean}'."
+        # Full CV text line-level search fallback
+        if raw_text_full and len(raw_text_full) > 20 and best_score < 0.70:
+            lines = [l.strip() for l in raw_text_full.split('\n') if len(l.strip()) > 10]
+            for line in lines:
+                if req_lower in line:
+                    best_score = max(best_score, 0.92)
+                    best_evidence = line
+                    best_source = "CV Record"
+                    break
+                else:
+                    tr = fuzz.token_set_ratio(req_lower, line) / 100.0
+                    if tr >= 0.65 and tr > best_score:
+                        best_score = tr
+                        best_evidence = line
+                        best_source = "CV Record"
 
         # 3. Classify status based on combined semantic score
         if best_score >= 0.55:

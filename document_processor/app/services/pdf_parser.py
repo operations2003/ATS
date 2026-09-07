@@ -33,19 +33,40 @@ def extract_multi_column_aware_page(page) -> str:
             left_sorted = sorted(left_blocks, key=lambda b: (b[1], b[0]))
             right_sorted = sorted(right_blocks, key=lambda b: (b[1], b[0]))
             
-            # Identify full-width header blocks (e.g. name at top span)
-            header_blocks = [b for b in text_blocks if b[1] < min(left_sorted[0][1], right_sorted[0][1]) + 20 and b not in left_blocks and b not in right_blocks]
-            header_sorted = sorted(header_blocks, key=lambda b: (b[1], b[0]))
+            # Other blocks (headers, full-width paragraphs, skills sections, footers)
+            other_blocks = [b for b in text_blocks if b not in left_blocks and b not in right_blocks]
+            
+            # If many blocks span across both columns, standard natural reading order is far superior
+            if len(other_blocks) > len(left_blocks) * 0.5:
+                sorted_blocks = sorted(text_blocks, key=lambda b: (b[1], b[0]))
+                return "\n\n".join([b[4].strip() for b in sorted_blocks if b[4].strip()])
+
+            # Partition other blocks into header, body spanning, and footer
+            min_col_top = min(left_sorted[0][1] if left_sorted else 0, right_sorted[0][1] if right_sorted else 0)
+            max_col_bottom = max(left_sorted[-1][3] if left_sorted else 0, right_sorted[-1][3] if right_sorted else 0)
+
+            header_blocks = sorted([b for b in other_blocks if b[3] <= min_col_top + 20], key=lambda b: (b[1], b[0]))
+            footer_blocks = sorted([b for b in other_blocks if b[1] >= max_col_bottom - 20], key=lambda b: (b[1], b[0]))
+            mid_blocks = sorted([b for b in other_blocks if b not in header_blocks and b not in footer_blocks], key=lambda b: (b[1], b[0]))
 
             combined = []
-            for b in header_sorted:
+            for b in header_blocks:
                 combined.append(b[4].strip())
             for b in left_sorted:
                 combined.append(b[4].strip())
             for b in right_sorted:
                 combined.append(b[4].strip())
+            for b in mid_blocks:
+                combined.append(b[4].strip())
+            for b in footer_blocks:
+                combined.append(b[4].strip())
 
-            return "\n\n".join([c for c in combined if c])
+            result_layout = "\n\n".join([c for c in combined if c])
+            raw_text = page.get_text("text") or ""
+            # If column grouping dropped any significant text, fall back to natural text
+            if len(result_layout) >= len(raw_text) * 0.9:
+                return result_layout
+            return raw_text
         else:
             # Standard single column or sorted block layout
             sorted_blocks = sorted(text_blocks, key=lambda b: (b[1], b[0]))
@@ -93,7 +114,15 @@ def parse_pdf_bytes(pdf_bytes: bytes, filename: str = "") -> Dict[str, Any]:
         extracted_raw = ""
         extracted_layout = ""
 
-    cleaned_normalized = clean_extracted_text(extracted_layout or extracted_raw)
+    cleaned_raw = clean_extracted_text(extracted_raw)
+    cleaned_layout = clean_extracted_text(extracted_layout)
+
+    # Always select the most complete extracted text (never discard sections/skills)
+    if len(cleaned_raw) >= len(cleaned_layout):
+        cleaned_normalized = cleaned_raw
+    else:
+        cleaned_normalized = cleaned_layout
+
     metrics = analyze_document_quality(cleaned_normalized, page_count, filename)
 
     # Trigger OCR fallback if text is INSUFFICIENT or FAILED (< 50 chars or < 10 words)
@@ -111,8 +140,8 @@ def parse_pdf_bytes(pdf_bytes: bytes, filename: str = "") -> Dict[str, Any]:
             pass
 
     return {
-        "text": clean_extracted_text(extracted_raw) or cleaned_normalized,
-        "layoutText": extracted_layout or cleaned_normalized,
+        "text": cleaned_raw or cleaned_normalized,
+        "layoutText": cleaned_layout or cleaned_normalized,
         "normalizedText": cleaned_normalized,
         "pageCount": page_count,
         "extractionMethod": extraction_method,

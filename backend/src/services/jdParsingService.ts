@@ -877,7 +877,8 @@ export const extractCompanyAndPosition = (
         }
       }
       const cleaned = cleanExtractedName(val, false);
-      if (cleaned && !explicitPosition) {
+      const isGenericWord = /^(?:details|overview|description|summary|specification|requirements|information|role\s+details|position\s+details)$/i.test(cleaned || '');
+      if (cleaned && !isGenericWord && !explicitPosition) {
         explicitPosition = cleaned;
       }
     }

@@ -13,6 +13,12 @@ SKILL_CATALOG = [
     "PostgreSQL", "Postgres", "MySQL", "MongoDB", "Redis", "SQLite", "Supabase", "Firebase", "DynamoDB", "Elasticsearch", "Prisma", "Prisma ORM", "TypeORM", "Mongoose", "Cassandra", "Oracle",
     # AI / ML & Data
     "Machine Learning", "Deep Learning", "NLP", "PyTorch", "TensorFlow", "Pandas", "NumPy", "Scikit-Learn", "OpenCV", "LLM", "Generative AI", "LangChain",
+    # SAP & Enterprise ERP
+    "SAP PP", "SAP QM", "SAP MM", "SAP SD", "SAP FICO", "SAP FI", "SAP CO", "SAP PM", "SAP WM", "SAP EWM", "SAP S/4HANA", "SAP HANA", "SAP ABAP", "SAP BASIS", "SAP ERP", "SAP ECC", "SAP", "S/4HANA", "ERP", "NetSuite",
+    # Manufacturing, Quality & Operations
+    "MRP", "Material Requirements Planning", "Quality Management", "Production Planning", "Shop Floor Control", "Master Data", "Quality Notifications", "Quality Inspection", "Defects Recording", "Inspection Plans", "BOM", "Bill of Materials", "Routing", "Work Center", "Batch Management", "Quality Control", "Quality Assurance", "Six Sigma", "Lean Manufacturing", "ISO 9001", "GMP", "LIMS", "Supply Chain", "Procurement",
+    # CRM, Sales & Marketing
+    "Salesforce", "HubSpot", "Zoho CRM", "CRM", "B2B Sales", "B2B", "Lead Generation", "Cold Calling", "Outbound Sales", "Inbound Sales", "Pipeline Management", "Account Management", "Negotiation", "Deal Closing", "Prospecting", "MQL", "Digital Marketing", "SEO", "SEM",
     # Methodologies & Tools
     "Git", "GitHub", "GitLab", "Jira", "Postman", "Figma", "Agile", "Scrum", "TDD", "Unit Testing", "Jest", "Cypress", "Selenium", "Webpack", "Vite"
 ]
@@ -59,11 +65,32 @@ def extract_candidate_name(text: str, filename: str = "") -> str:
 
 def extract_skills(text: str) -> List[str]:
     matched_skills = set()
+    
+    # 1. Match from comprehensive catalog
     for skill in SKILL_CATALOG:
-        # Regex boundary matching
         pattern = r'(?:^|[^a-zA-Z0-9_#+])' + re.escape(skill) + r'(?:$|[^a-zA-Z0-9_#+])'
         if re.search(pattern, text, re.IGNORECASE):
             matched_skills.add(skill)
+
+    # 2. Dynamic extraction from Skills & Competencies sections
+    sec_match = re.search(
+        r'(?:core\s+competencies(?:\s*(?:&|and)\s*skills)?|technical\s+skills|key\s+skills|skills\s*(?:&|and)?\s*abilities|areas\s+of\s+expertise)[\s\S]*?(?=(?:\n[A-Z\s]{4,30}(?:\n|:)|$))',
+        text,
+        re.IGNORECASE
+    )
+    if sec_match:
+        sec_lines = sec_match.group(0).split('\n')[1:]
+        for line in sec_lines:
+            cleaned = re.sub(r'^[A-Za-z0-9\s&/]+:\s*', '', line)
+            cleaned = re.sub(r'^[•*\-–—▪▫➢✓✔\d\.\)]\s*', '', cleaned).strip()
+            if not cleaned:
+                continue
+            tokens = re.split(r'[,|•*·;]\s*', cleaned)
+            for tok in tokens:
+                clean_tok = re.sub(r'\s*\([^)]*\)', '', tok).strip()
+                if 2 <= len(clean_tok) <= 40 and not re.match(r'^(?:skills|experience|summary|expertise|competencies|professional)$', clean_tok, re.I):
+                    matched_skills.add(clean_tok)
+
     return sorted(list(matched_skills))
 
 def extract_years_of_experience(text: str) -> Optional[str]:

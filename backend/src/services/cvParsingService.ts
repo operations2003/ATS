@@ -284,8 +284,8 @@ function extractSections(text: string): Record<string, string> {
     {
       canonical: 'SKILLS',
       patterns: [
-        /^(?:technical\s+skills|skills\s*&\s*abilities|skills\s*&\s*competencies|skills\s*&\s*expertise|technical\s+competencies|core\s+competencies|key\s+skills|areas\s+of\s+expertise|skills|technologies|technical\s+stack|tech\s+stack|competencies|proficiencies)$/i,
-        /^(?:technical\s+skills|skills|technologies|tech\s+stack)[:\s\-–]/i,
+        /^(?:technical\s+skills|skills\s*&\s*abilities|skills\s*&\s*competencies|skills\s*&\s*expertise|technical\s+competencies|core\s+competencies(?:\s*(?:&|and)\s*skills)?|key\s+skills|areas\s+of\s+expertise|skills|technologies|technical\s+stack|tech\s+stack|competencies|proficiencies)$/i,
+        /^(?:technical\s+skills|core\s+competencies(?:\s*(?:&|and)\s*skills)?|skills|technologies|tech\s+stack)[:\s\-–]/i,
       ]
     },
     {
@@ -933,8 +933,14 @@ export function parseSkillsFromText(cleanText: string, skillsSectionText?: strin
     'Prisma ORM', 'Prisma', 'GraphQL', 'Microservices', 'Postman', 'Vercel', 'Render', 'Neon', 'Figma', 'UI/UX',
     'Bootstrap', 'Jest', 'Cypress', 'Webpack', 'Vite', 'Kafka', 'RabbitMQ', 'Linux', 'Nginx', 'Artificial Intelligence',
     'AI', 'Machine Learning', 'GenAI', 'LLM', 'Web Development', 'Full Stack', 'Frontend', 'Backend',
-    'Salesforce', 'Apex', 'LWC', 'Visualforce', 'Manufacturing Cloud', 'SAP CO', 'SAP FI', 'SAP MM', 'SAP SD',
-    'SAP HANA', 'S/4HANA', 'Excel'
+    'Salesforce', 'Apex', 'LWC', 'Visualforce', 'Manufacturing Cloud', 'HubSpot', 'Zoho CRM', 'CRM',
+    'B2B Sales', 'B2B', 'Lead Generation', 'Cold Calling', 'Pipeline Management',
+    'SAP PP', 'SAP QM', 'SAP MM', 'SAP SD', 'SAP CO', 'SAP FI', 'SAP FICO', 'SAP PM', 'SAP WM', 'SAP EWM',
+    'SAP HANA', 'SAP S/4HANA', 'S/4HANA', 'SAP ERP', 'SAP ECC', 'SAP ABAP', 'SAP BASIS', 'SAP',
+    'MRP', 'Material Requirements Planning', 'Quality Management', 'Production Planning', 'Shop Floor Control',
+    'Master Data', 'Quality Notifications', 'Quality Inspection', 'Defects Recording', 'Inspection Plans',
+    'BOM', 'Bill of Materials', 'Routing', 'Work Center', 'Batch Management', 'Six Sigma', 'Lean Manufacturing',
+    'ISO 9001', 'GMP', 'LIMS', 'Supply Chain', 'Procurement', 'Excel'
   ];
 
   for (const skill of knownSkillCatalog) {
