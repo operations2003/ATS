@@ -20,6 +20,26 @@ app.add_middleware(
 app.include_router(parse_router)
 app.include_router(evaluate_router)
 
+@app.on_event("startup")
+async def startup_prewarm():
+    """Pre-warms AI embedding model on startup so initial evaluations don't experience model-loading delays."""
+    try:
+        from app.services.ai_matcher import get_embed_model
+        print("[Startup] Pre-warming embedding models...")
+        get_embed_model()
+        print("[Startup] AI embedding model loaded and ready.")
+    except Exception as e:
+        print(f"[Startup] AI pre-warming notice: {e}")
+
+@app.get("/")
+def root():
+    return {
+        "status": "ok",
+        "service": "tasknera_ats_engine",
+        "health": "/health",
+        "docs": "/docs"
+    }
+
 @app.get("/health")
 def health_check():
     return {
@@ -32,4 +52,8 @@ def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+    import os
+    port = int(os.environ.get("PORT", 8000))
+    host = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
+    uvicorn.run("app.main:app", host=host, port=port, reload=not bool(os.environ.get("PORT")))
+

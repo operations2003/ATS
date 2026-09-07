@@ -1,4 +1,6 @@
 import http from 'http';
+import https from 'https';
+import { URL } from 'url';
 import { extractTextFromBuffer, cleanAndNormalizeText } from './jdParsingService';
 
 export interface PythonDocumentResponse {
@@ -36,9 +38,33 @@ export interface PythonBatchResponse {
   results: PythonDocumentResponse[];
 }
 
-const PYTHON_SERVICE_PORT = parseInt(process.env.PYTHON_PORT || '8000', 10);
-const PYTHON_SERVICE_HOST = process.env.PYTHON_HOST || '127.0.0.1';
-const REQUEST_TIMEOUT_MS = parseInt(process.env.PYTHON_TIMEOUT_MS || '4000', 10);
+const REQUEST_TIMEOUT_MS = parseInt(process.env.PYTHON_TIMEOUT_MS || '25000', 10);
+
+export const getPythonServiceConfig = () => {
+  const rawUrl = process.env.DOCUMENT_PROCESSOR_URL;
+  if (rawUrl) {
+    try {
+      const parsed = new URL(rawUrl.trim());
+      const isHttps = parsed.protocol === 'https:';
+      return {
+        isHttps,
+        hostname: parsed.hostname,
+        port: parsed.port ? parseInt(parsed.port, 10) : (isHttps ? 443 : 80),
+        basePath: parsed.pathname.replace(/\/+$/, '')
+      };
+    } catch (e) {
+      console.warn('[Python Client] Invalid DOCUMENT_PROCESSOR_URL provided:', rawUrl);
+    }
+  }
+  const host = process.env.PYTHON_HOST || '127.0.0.1';
+  const port = parseInt(process.env.PYTHON_PORT || '8000', 10);
+  return {
+    isHttps: false,
+    hostname: host,
+    port,
+    basePath: ''
+  };
+};
 
 /**
  * Built-in Node.js local document extractor (PDF via pdf-parse, DOCX via mammoth, TXT)
@@ -109,6 +135,9 @@ export const extractDocumentTextViaPython = async (
       }
     };
 
+    const config = getPythonServiceConfig();
+    const httpModule = config.isHttps ? https : http;
+
     const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2);
 
     // Build multipart payload
@@ -118,11 +147,13 @@ export const extractDocumentTextViaPython = async (
     const footer = Buffer.from(`\r\n--${boundary}--\r\n`);
     const payload = Buffer.concat([header, buffer, footer]);
 
-    const req = http.request(
+    const requestPath = `${config.basePath}/parse-document`;
+
+    const req = httpModule.request(
       {
-        hostname: PYTHON_SERVICE_HOST,
-        port: PYTHON_SERVICE_PORT,
-        path: '/parse-document',
+        hostname: config.hostname,
+        port: config.port,
+        path: requestPath,
         method: 'POST',
         headers: {
           'Content-Type': `multipart/form-data; boundary=${boundary}`,
@@ -174,35 +205,13 @@ export const extractDocumentTextViaPython = async (
                 return safeResolve(json);
               }
             }
-            console.error(`[Document Processor] Python returned status ${res.statusCode} or empty text for ${filename}. Failing visibly per single-parser constraint.`);
-            safeResolve({
-              success: false,
-              fileName: filename,
-              fileType: mimeType,
-              pageCount: 0,
-              extractionMethod: 'failed',
-              ocrUsed: false,
-              textQuality: 'FAILED',
-              characterCount: 0,
-              wordCount: 0,
-              text: '',
-              error: `Document extraction service returned status ${res.statusCode} with unreadable text.`
-            });
+            console.warn(`[Document Processor] Python returned status ${res.statusCode} or empty text for ${filename}. Falling back gracefully to local Node extractor.`);
+            const localFallback = await extractDocumentTextLocally(buffer, filename, mimeType);
+            safeResolve(localFallback);
           } catch (jsonErr: any) {
-            console.error(`[Document Processor] Python JSON parse failed for ${filename}:`, jsonErr);
-            safeResolve({
-              success: false,
-              fileName: filename,
-              fileType: mimeType,
-              pageCount: 0,
-              extractionMethod: 'failed',
-              ocrUsed: false,
-              textQuality: 'FAILED',
-              characterCount: 0,
-              wordCount: 0,
-              text: '',
-              error: `Failed to parse extraction service response: ${jsonErr.message}`
-            });
+            console.warn(`[Document Processor] Python JSON parse failed for ${filename}, falling back to local extractor:`, jsonErr.message);
+            const localFallback = await extractDocumentTextLocally(buffer, filename, mimeType);
+            safeResolve(localFallback);
           }
         });
       }
@@ -210,37 +219,15 @@ export const extractDocumentTextViaPython = async (
 
     req.on('timeout', async () => {
       req.destroy();
-      console.error(`[Document Processor] Python service timed out (${REQUEST_TIMEOUT_MS}ms) for ${filename}. Failing visibly.`);
-      safeResolve({
-        success: false,
-        fileName: filename,
-        fileType: mimeType,
-        pageCount: 0,
-        extractionMethod: 'timeout',
-        ocrUsed: false,
-        textQuality: 'FAILED',
-        characterCount: 0,
-        wordCount: 0,
-        text: '',
-        error: `Document extraction service timed out after ${REQUEST_TIMEOUT_MS}ms. Please retry.`
-      });
+      console.warn(`[Document Processor] Python service timed out (${REQUEST_TIMEOUT_MS}ms) for ${filename}. Falling back gracefully to local Node extractor.`);
+      const localFallback = await extractDocumentTextLocally(buffer, filename, mimeType);
+      safeResolve(localFallback);
     });
 
     req.on('error', async (err) => {
-      console.error(`[Document Processor] Python service unavailable (${err.message}) for ${filename}. Failing visibly.`);
-      safeResolve({
-        success: false,
-        fileName: filename,
-        fileType: mimeType,
-        pageCount: 0,
-        extractionMethod: 'service_unavailable',
-        ocrUsed: false,
-        textQuality: 'FAILED',
-        characterCount: 0,
-        wordCount: 0,
-        text: '',
-        error: `Document extraction service is offline (${err.message}). Single extraction pipeline requires Python service.`
-      });
+      console.warn(`[Document Processor] Python service unavailable (${err.message}) for ${filename}. Falling back gracefully to local Node extractor.`);
+      const localFallback = await extractDocumentTextLocally(buffer, filename, mimeType);
+      safeResolve(localFallback);
     });
 
     req.write(payload);

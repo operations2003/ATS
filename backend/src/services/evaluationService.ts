@@ -116,7 +116,8 @@ export interface CandidateEvaluationPayload {
   evaluator: string;
 }
 
-const PYTHON_SERVICE_URL = process.env.DOCUMENT_PROCESSOR_URL || 'http://127.0.0.1:8000';
+const PYTHON_SERVICE_URL = (process.env.DOCUMENT_PROCESSOR_URL || 'http://127.0.0.1:8000').trim().replace(/\/+$/, '');
+const EVAL_TIMEOUT_MS = parseInt(process.env.PYTHON_TIMEOUT_MS || '25000', 10);
 
 /**
  * Evaluates a single candidate against a job's confirmed requirements
@@ -139,7 +140,7 @@ export async function evaluateCandidateAgainstRequirements(
   // 1. Attempt AI-Powered Semantic Evaluation via Python Service
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const timeoutId = setTimeout(() => controller.abort(), EVAL_TIMEOUT_MS);
 
     const response = await fetch(`${PYTHON_SERVICE_URL}/evaluate-ai`, {
       method: 'POST',

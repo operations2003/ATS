@@ -7,6 +7,8 @@
  */
 
 import http from 'http';
+import https from 'https';
+import { getPythonServiceConfig } from './pythonDocumentClient';
 
 export interface ControlledAiRequirement {
   id: string;
@@ -45,9 +47,7 @@ export const sanitizeAiText = (str: string | null | undefined): string => {
   return str.replace(/\s+/g, ' ').trim();
 };
 
-const PYTHON_SERVICE_PORT = parseInt(process.env.PYTHON_PORT || '8000', 10);
-const PYTHON_SERVICE_HOST = process.env.PYTHON_HOST || '127.0.0.1';
-const AI_TIMEOUT_MS = 2500;
+const AI_TIMEOUT_MS = parseInt(process.env.PYTHON_TIMEOUT_MS || '15000', 10);
 
 export const completeJdRequirementsControlled = async (jdText: string): Promise<ControlledAiRequirement[]> => {
   if (!jdText || jdText.trim().length < 20) {
@@ -56,12 +56,16 @@ export const completeJdRequirementsControlled = async (jdText: string): Promise<
 
   return new Promise((resolve) => {
     try {
+      const config = getPythonServiceConfig();
+      const httpModule = config.isHttps ? https : http;
       const payload = JSON.stringify({ jd_text: jdText });
-      const req = http.request(
+      const reqPath = `${config.basePath}/parse-jd-ai`;
+
+      const req = httpModule.request(
         {
-          host: PYTHON_SERVICE_HOST,
-          port: PYTHON_SERVICE_PORT,
-          path: '/parse-jd-ai',
+          hostname: config.hostname,
+          port: config.port,
+          path: reqPath,
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
