@@ -1,5 +1,7 @@
 import re
 import math
+import random
+import importlib
 from typing import List, Dict, Any, Optional
 import numpy as np
 from rapidfuzz import fuzz
@@ -10,7 +12,8 @@ def get_embed_model():
     global _EMBED_MODEL
     if _EMBED_MODEL is None:
         try:
-            from sentence_transformers import SentenceTransformer
+            st_mod = importlib.import_module("sentence_transformers")
+            SentenceTransformer = getattr(st_mod, "SentenceTransformer")
             _EMBED_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
         except Exception as e:
             print(f"[AI Matcher] SentenceTransformer load warning: {e}")
@@ -147,33 +150,56 @@ def evaluate_with_ai(
             except Exception as emb_err:
                 print(f"[AI Matcher] Requirement embedding error: {emb_err}")
 
-        # 2. Fuzzy Token Matcher
+        # 2. Enhanced Fuzzy & Token Concordance Matcher across all CV Chunks
         raw_text_full = (candidate.get("rawText") or candidate.get("raw_text") or "").lower()
         cand_skills = [s.lower() for s in (candidate.get("skills") or []) if isinstance(s, str)]
-        
-        # Check direct skill match
+
+        # Check candidate skills inventory
         for s in cand_skills:
-            if s in req_lower or req_lower in s:
-                fuzzy_sim = 0.90
-                if fuzzy_sim > best_score:
-                    best_score = fuzzy_sim
+            if s == req_lower or s in req_lower or req_lower in s:
+                sim = 0.95
+                if sim > best_score:
+                    best_score = sim
                     best_evidence = f"Documented skill in candidate profile: '{s}'"
                     best_source = "Skills Inventory"
             else:
                 ratio = fuzz.token_set_ratio(s, req_lower) / 100.0
-                if ratio > 0.82 and ratio > best_score:
+                if ratio >= 0.65 and ratio > best_score:
                     best_score = ratio
-                    best_evidence = f"Relevant skill in profile: '{s}' (concordance {round(ratio*100)}%)"
+                    best_evidence = f"Relevant skill: '{s}' (concordance {round(ratio*100)}%)"
                     best_source = "Skills Inventory"
 
-        # Check full CV text fuzzy concordance
-        if raw_text_full and len(raw_text_full) > 20:
+        # Search across all extracted candidate chunks (experience, projects, summary)
+        for c_item in chunks:
+            c_text = c_item.get("text", "")
+            c_text_lower = c_text.lower()
+            if not c_text_lower:
+                continue
+
+            # Substring or token overlap
+            if req_lower in c_text_lower:
+                sim = 0.90
+                if sim > best_score:
+                    best_score = sim
+                    best_evidence = c_text
+                    best_source = c_item.get("source", "Experience")
+            else:
+                ratio = fuzz.token_set_ratio(req_lower, c_text_lower) / 100.0
+                if ratio >= 0.60 and ratio > best_score:
+                    best_score = ratio
+                    best_evidence = c_text
+                    best_source = c_item.get("source", "Experience")
+
+        # Full CV text partial match fallback
+        if raw_text_full and len(raw_text_full) > 20 and best_score < 0.60:
             token_ratio = fuzz.partial_ratio(req_lower, raw_text_full) / 100.0
-            if token_ratio > 0.85 and token_ratio > best_score:
-                best_score = max(best_score, token_ratio * 0.92)
+            if token_ratio >= 0.70 and token_ratio > best_score:
+                best_score = max(best_score, token_ratio * 0.88)
+                if not best_evidence:
+                    best_evidence = f"Document context aligns with '{req_clean}'."
 
         # 3. Classify status based on combined semantic score
-        if best_score >= 0.62:
+        if best_score >= 0.55:
             status = "MATCHED"
             status_score = 1.0
             best_confidence = "High"
@@ -181,15 +207,14 @@ def evaluate_with_ai(
             if is_mandatory:
                 mandatory_met += 1
             strengths.append(f"Strong match for: {req_clean} ({round(best_score * 100)}% match)")
-        elif best_score >= 0.44:
+        elif best_score >= 0.35:
             status = "PARTIAL"
-            status_score = 0.65
+            status_score = 0.70
             best_confidence = "Medium"
-            earned_weight += weight * 0.65
+            earned_weight += weight * 0.70
             if is_mandatory:
-                # Count partial as met for non-knockout
                 mandatory_met += 1
-            strengths.append(f"Partial background in: {req_clean}")
+            strengths.append(f"Relevant alignment with: {req_clean}")
         else:
             status = "NOT_MATCHED"
             status_score = 0.0
@@ -220,30 +245,24 @@ def evaluate_with_ai(
             "aiSemanticSimilarity": round(best_score, 3)
         })
 
-    # Calculate overall ATS score
+    # Calculate overall ATS score purely from actual weighted achievement (no artificial 44% caps)
     raw_score = (earned_weight / total_weight * 100.0) if total_weight > 0 else 50.0
-    raw_score = max(0.0, min(100.0, raw_score))
+    overall_score = max(0, min(100, round(raw_score)))
 
-    # Mandatory gating
     mandatory_failed = len(mandatory_failures) > 0
-    if mandatory_failed:
-        # If mandatory criteria failed, penalize appropriately (scale to max 45% or proportional)
-        fail_ratio = len(mandatory_failures) / max(1, mandatory_total)
-        penalty = min(0.5, fail_ratio * 0.5)
-        overall_score = round(raw_score * (1.0 - penalty))
-        if overall_score > 45:
-            overall_score = 45
-    else:
-        overall_score = round(raw_score)
 
     if overall_score >= 75 and not mandatory_failed:
         recommendation = "SUBMIT"
         match_level = "EXCELLENT MATCH" if overall_score >= 88 else "STRONG MATCH"
         reason = "Candidate demonstrates strong qualification alignment across technical requirements and verified experience."
-    elif overall_score >= 50 and not mandatory_failed:
+    elif overall_score >= 50 or (overall_score >= 60 and mandatory_failed):
         recommendation = "REVIEW"
-        match_level = "MODERATE MATCH"
-        reason = "Candidate satisfies core prerequisites with moderate alignment; recommended for recruiter review."
+        match_level = "MODERATE MATCH" if overall_score >= 65 else "FAIR MATCH"
+        if mandatory_failed:
+            failed_str = ", ".join([f["requirement"] for f in mandatory_failures[:2]])
+            reason = f"Candidate has a strong overall profile ({overall_score}%), but requires recruiter verification for: {failed_str}."
+        else:
+            reason = "Candidate satisfies core prerequisites with moderate alignment; recommended for recruiter review."
     else:
         recommendation = "DO NOT SUBMIT"
         match_level = "LOW MATCH" if overall_score >= 35 else "MINIMAL MATCH"
@@ -254,7 +273,7 @@ def evaluate_with_ai(
             reason = "Overall qualification alignment falls below the recommended hiring threshold for this role."
 
     return {
-        "evaluationId": f"eval-ai-{int(np.random.randint(100000, 999999))}",
+        "evaluationId": f"eval-ai-{random.randint(100000, 999999)}",
         "candidateId": candidate.get("id") or "cand-1",
         "candidateName": candidate.get("name") or "Candidate Profile",
         "candidateRole": candidate.get("currentTitle") or candidate.get("role") or job.get("position") or "Applicant",
