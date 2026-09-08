@@ -251,10 +251,92 @@ def evaluate_with_ai(
             "aiSemanticSimilarity": round(best_score, 3)
         })
 
-    # Calculate overall ATS score purely from actual weighted achievement (no artificial 44% caps)
-    raw_score = (earned_weight / total_weight * 100.0) if total_weight > 0 else 50.0
-    overall_score = max(0, min(100, round(raw_score)))
+    # 4. Calibrated 4-Pillar ATS Calculation (45% Keywords/Skills, 27.5% Experience & Title, 12.5% Education, 15% Parsability)
+    # Track categories
+    skill_reqs = [r for r in evaluated_requirements if "skill" in r.get("category", "").lower() or "tech" in r.get("category", "").lower()]
+    core_skills_score = round(sum(r["score"] * r["weight"] for r in skill_reqs) / max(1.0, sum(r["weight"] for r in skill_reqs))) if skill_reqs else 80
 
+    # Experience calculation
+    exp_reqs = [r for r in evaluated_requirements if "exp" in r.get("category", "").lower() or "experience" in r.get("requirement", "").lower()]
+    cand_exp = candidate.get("totalExperienceYears")
+    if cand_exp is None and candidate.get("totalExperience"):
+        exp_m = re.search(r'(\d+(?:\.\d+)?)', str(candidate.get("totalExperience")))
+        if exp_m:
+            cand_exp = float(exp_m.group(1))
+    cand_exp = float(cand_exp or 0.0)
+    
+    # Required experience from job
+    req_exp = 3.0
+    for er in exp_reqs:
+        ym = re.search(r'(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)', er.get("requirement", ""), re.I)
+        if ym:
+            req_exp = float(ym.group(1))
+            break
+    exp_score = 100 if cand_exp >= req_exp else round(min(100.0, (cand_exp / max(1.0, req_exp)) * 100.0))
+
+    # Job title alignment
+    target_pos = job.get("position") or job.get("title") or ""
+    cand_title = candidate.get("currentTitle") or candidate.get("role") or ""
+    title_alignment = 80
+    if target_pos and cand_title:
+        t_clean = re.sub(r'[^a-zA-Z0-9\s]', '', target_pos.lower()).strip()
+        c_clean = re.sub(r'[^a-zA-Z0-9\s]', '', cand_title.lower()).strip()
+        if t_clean in c_clean or c_clean in t_clean:
+            title_alignment = 100
+        else:
+            t_words = [w for w in t_clean.split() if len(w) > 2]
+            c_words = [w for w in c_clean.split() if len(w) > 2]
+            overlap = [w for w in t_words if w in c_words]
+            if overlap:
+                title_alignment = round((len(overlap) / len(t_words)) * 100)
+            else:
+                title_alignment = 40
+    exp_relevance_score = round(exp_score * 0.70 + title_alignment * 0.30)
+
+    # Education & Certifications score
+    cand_edu = candidate.get("education") or []
+    has_bachelor_or_higher = any(
+        any(deg in str(e).lower() for deg in ["bachelor", "btech", "bs", "master", "ms", "phd", "mba"])
+        for e in cand_edu
+    )
+    edu_score = 100 if has_bachelor_or_higher else (80 if len(cand_edu) > 0 else 70)
+
+    # Parsability calculation
+    raw_text = candidate.get("rawText") or candidate.get("raw_text") or ""
+    word_count = len(raw_text.split()) if raw_text else 0
+    parsability_score = 100
+    if word_count < 30:
+        parsability_score = 30
+    elif word_count < 80:
+        parsability_score = 55
+    elif word_count < 150:
+        parsability_score = 75
+    else:
+        if not re.search(r'(?:work\s+experience|professional\s+experience|employment\s+history|experience)', raw_text, re.I):
+            parsability_score -= 5
+        if not re.search(r'(?:education|academic\s+background|qualifications|degree)', raw_text, re.I):
+            parsability_score -= 5
+        if not re.search(r'(?:technical\s+skills|skills|technologies|competencies)', raw_text, re.I):
+            parsability_score -= 5
+    parsability_score = max(0, min(100, parsability_score))
+
+    # Mandatory score
+    mandatory_score = round((mandatory_met / max(1, mandatory_total)) * 100) if mandatory_total > 0 else 100
+
+    # Semantic score (supporting evidence)
+    sim_scores = [r.get("aiSemanticSimilarity", 0.5) for r in evaluated_requirements if r.get("aiSemanticSimilarity")]
+    avg_sim = (sum(sim_scores) / len(sim_scores)) if sim_scores else 0.60
+    semantic_score = round(min(100.0, max(0.0, avg_sim * 100.0)))
+
+    # 4-Pillar ATS score formula: 45% Keywords, 27.5% Experience & Title, 12.5% Education & Certs, 15% Parsability
+    calculated_ats = (
+        (core_skills_score * 0.45) +
+        (exp_relevance_score * 0.275) +
+        (edu_score * 0.125) +
+        (parsability_score * 0.15)
+    )
+    overall_score = max(0, min(100, round(calculated_ats)))
+    raw_score = overall_score
     mandatory_failed = len(mandatory_failures) > 0
 
     if overall_score >= 75 and not mandatory_failed:

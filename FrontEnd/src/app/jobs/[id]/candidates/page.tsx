@@ -958,6 +958,10 @@ export default function JobCandidatesPage() {
           rawText: c.rawText || '',
           summary: c.summary || c.professionalSummary || '',
           currentTitle: c.currentTitle || '',
+          certifications: c.certifications || [],
+          experience: c.experience || [],
+          parsingMetadata: c.parsingMetadata,
+          parsingStatus: c.parsingStatus,
         },
         {
           position: job?.position || 'Job Position',
@@ -984,17 +988,17 @@ export default function JobCandidatesPage() {
           let matchPercent = 0;
 
           if (isExpReq) {
-            const requiredYears = yearsPattern ? parseFloat(yearsPattern[1]) : 3.0;
+            const requiredYears = yearsPattern ? parseFloat(yearsPattern[1]) : (matchResult.breakdown.experience.requiredYears || 3.0);
             const candExp = c.totalExperienceYears || parseFloat(String(c.totalExperience || '0').replace(/[^0-9.]/g, '')) || 0;
             if (candExp >= requiredYears) {
               hasSkill = true;
               matchPercent = 100;
-            } else if (candExp >= requiredYears * 0.75) {
-              hasSkill = true;
-              matchPercent = 70;
+            } else if (requiredYears > 0) {
+              matchPercent = Math.min(100, Math.max(0, Math.round((candExp / requiredYears) * 100)));
+              hasSkill = matchPercent >= 50;
             } else {
-              hasSkill = false;
-              matchPercent = 0;
+              hasSkill = true;
+              matchPercent = 100;
             }
           } else {
             // Technical / skill matching
@@ -1017,7 +1021,7 @@ export default function JobCandidatesPage() {
             matchPercent = hasSkill ? 100 : 0;
           }
 
-          const status = hasSkill ? RequirementStatus.FULLY_MET : RequirementStatus.NOT_MET;
+          const status = matchPercent >= 80 ? RequirementStatus.FULLY_MET : (matchPercent > 0 ? RequirementStatus.PARTIALLY_MET : RequirementStatus.NOT_MET);
           return {
             id: req.id,
             requirement: {
@@ -1029,10 +1033,10 @@ export default function JobCandidatesPage() {
             },
             status,
             confidence: ConfidenceLevel.HIGH,
-            pointsAwarded: hasSkill ? (matchPercent >= 100 ? 10 : 7) : 0,
+            pointsAwarded: Math.round((matchPercent / 100) * 10),
             maxPoints: 10,
             matchPercentage: matchPercent,
-            hasEvidence: Boolean(hasSkill),
+            hasEvidence: Boolean(hasSkill || matchPercent > 0),
             evidence: [
               {
                 id: `ev-${req.id}`,
@@ -1083,18 +1087,8 @@ export default function JobCandidatesPage() {
           },
         ];
 
-      // Prioritize Python / backend evaluated score if already computed
-      const cAny = c as any;
-      const pythonScore = (typeof cAny.matchScore === 'number' && !isNaN(cAny.matchScore) && cAny.matchScore > 0)
-        ? Math.round(cAny.matchScore)
-        : (typeof cAny.atsScore === 'number' && !isNaN(cAny.atsScore) && cAny.atsScore > 0)
-          ? Math.round(cAny.atsScore)
-          : null;
-
-      const finalScore = pythonScore !== null ? pythonScore : matchResult.overallScore;
-      const finalLevel = pythonScore !== null
-        ? (cAny.matchLevel || (finalScore >= 75 ? 'STRONG MATCH' : finalScore >= 50 ? 'GOOD MATCH' : 'LOW FIT'))
-        : matchResult.matchLevel;
+      const finalScore = matchResult.overallScore;
+      const finalLevel = matchResult.matchLevel;
 
       return {
         ...c,

@@ -205,7 +205,11 @@ def evaluate_cv_against_jd(
 
     # Category C: Relevant Experience (15 points)
     # Computed strictly against required minimum relevant experience
-    req_exp_years = min_experience_years if min_experience_years is not None else 3.0
+    req_exp_years = min_experience_years
+    if req_exp_years is None:
+        # Extract from job description text or mandatory criteria if present
+        exp_m = re.search(r'(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)', job_description or '', re.I)
+        req_exp_years = float(exp_m.group(1)) if exp_m else 3.0
     cand_rel_years = exp_data["relevant_experience_years"]
     exp_max = 15.0
 
@@ -217,15 +221,11 @@ def evaluate_cv_against_jd(
         exp_score = exp_max
         exp_status = RequirementStatus.FULLY_MET
         exp_expl = f"Candidate meets experience requirement: {cand_rel_years} years relevant tenure (required: {req_exp_years} yrs, total tenure: {exp_data['total_experience_years']} yrs)."
-    elif cand_rel_years >= req_exp_years * 0.65:
-        exp_ratio = cand_rel_years / req_exp_years
-        exp_score = exp_max * exp_ratio
-        exp_status = RequirementStatus.PARTIALLY_MET
-        exp_expl = f"Candidate partially meets experience: {cand_rel_years} yrs relevant of {req_exp_years} yrs required (total: {exp_data['total_experience_years']} yrs)."
     else:
-        exp_score = 0.0
-        exp_status = RequirementStatus.NOT_MET
-        exp_expl = f"Candidate has {cand_rel_years} yrs relevant experience, below required {req_exp_years} yrs (total tenure: {exp_data['total_experience_years']} yrs)."
+        exp_ratio = min(1.0, max(0.0, cand_rel_years / req_exp_years))
+        exp_score = exp_max * exp_ratio
+        exp_status = RequirementStatus.PARTIALLY_MET if exp_ratio >= 0.4 else RequirementStatus.NOT_MET
+        exp_expl = f"Candidate partially meets experience: {cand_rel_years} yrs relevant of {req_exp_years} yrs required (total: {exp_data['total_experience_years']} yrs)."
 
     criteria_evaluations.append(
         CriterionEvaluation(
