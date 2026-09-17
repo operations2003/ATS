@@ -50,9 +50,10 @@ export const ensureDefaultAdmin = async (): Promise<void> => {
     }
 
     // 2. Demote any other accounts that were previous admins
+    const designatedAdmins = [adminEmail, 'shubham@tasknera.com'];
     await prisma.user.updateMany({
       where: {
-        email: { not: adminEmail },
+        email: { notIn: designatedAdmins },
         role: 'ADMIN'
       },
       data: {

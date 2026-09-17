@@ -202,8 +202,11 @@ const EXACT_SYNONYM_GROUPS: string[][] = [
   ['info*engine', 'infoengine', 'info engine', 'info*engine tasks'],
   ['terraform', 'hashicorp terraform'],
   ['sap', 'sap erp', 'sap ecc', 'sap s/4hana', 's/4hana'],
-  ['sap mm', 'sap materials management', 'materials management (mm)'],
-  ['postgresql', 'postgres', 'pgsql', 'relational databases', 'rdbms', 'sql', 'mysql', 'sql databases'],
+  ['sap mm', 'sap materials management', 'materials management (mm)', 'materials management', 'purchasing and procurement', 'procurement', 'purchasing', 'sourcing and procurement', 'sap mm solutioning', 'vendor management', 'materials management solutioning'],
+  ['sap ibp', 'integrated business planning', 'sap integrated business planning', 'supply chain planning', 'demand planning'],
+  ['stakeholder management', 'client management', 'stakeholder engagement', 'cross-functional collaboration'],
+  ['postgresql', 'postgres', 'pgsql', 'postgresql db', 'postgres db'],
+  ['mysql', 'mysql database', 'mysql db'],
   ['lead generation', 'prospecting', 'pipeline generation', 'outbound sales', 'outbound prospecting', 'sales prospecting'],
   ['pipeline management', 'sales pipeline', 'deal pipeline', 'crm pipeline'],
   ['contract negotiation', 'commercial negotiation', 'closing deals', 'deal closing', 'contract closing', 'deal negotiation', 'negotiating contracts'],
@@ -285,7 +288,11 @@ export const GENERIC_STOP_WORDS = new Set([
   'role', 'good', 'excellent', 'preferred', 'required', 'must', 'have', 'minimum',
   'years', 'yrs', 'yr', 'year', 'work', 'overview',
   'hands-on', 'proficient', 'proficiency', 'knowledge', 'familiarity', 'strong',
-  'deep', 'solid', 'proven', 'demonstrated', 'ability', 'working'
+  'deep', 'solid', 'proven', 'demonstrated', 'ability', 'working',
+  'database', 'databases', 'relational', 'queries', 'architecture', 'system',
+  'systems', 'management', 'development', 'engineering', 'software',
+  'application', 'applications', 'platform', 'platforms', 'solutions',
+  'services', 'service', 'tools', 'tool', 'data', 'cloud', 'analysis'
 ]);
 
 // Backward compatibility alias
@@ -1267,6 +1274,8 @@ export function calculateATSScore(
     weight?: number;
     is_mandatory?: boolean;
     isMandatory?: boolean;
+    source_evidence?: string | null;
+    sourceEvidence?: string | null;
   }>
 ): ATSScoringResult {
   const reqResults: RequirementEvaluationResult[] = [];
@@ -1337,6 +1346,7 @@ export function calculateATSScore(
   for (const req of effectiveReqs) {
     const reqId = req.id || `req-${Math.random().toString(36).substring(2, 7)}`;
     const reqText = (req.requirement || '').trim();
+    const sourceEvidence = String(req.source_evidence || req.sourceEvidence || '').trim();
     const reqCategory = (req.category || 'Technical Skill').trim();
     const isMandatory = typeof req.is_mandatory === 'boolean'
       ? req.is_mandatory
@@ -1351,12 +1361,16 @@ export function calculateATSScore(
 
     let evalResult: SkillMatchResult;
 
-    const hasYearsExplicit = /\b\d+(?:\.\d+)?\+?\s*(?:years?|yrs?)\b/i.test(reqLower) || /\b\d+\s*(?:-|to|–)\s*\d+\s*(?:years?|yrs?)\b/i.test(reqLower);
+    const srcYearsMatch = sourceEvidence ? sourceEvidence.match(/(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)/i) : null;
+    const hasYearsExplicit = /\b\d+(?:\.\d+)?\+?\s*(?:years?|yrs?)\b/i.test(reqLower) ||
+      /\b\d+\s*(?:-|to|–)\s*\d+\s*(?:years?|yrs?)\b/i.test(reqLower) ||
+      (isMandatory && Boolean(srcYearsMatch));
     const isCategoryExperience = (catLower === 'experience' || catLower.startsWith('exp')) && !catLower.includes('skill');
 
     // 1. Experience Requirements: ONLY if category is experience OR requirement text explicitly specifies years (e.g. "5+ years")
     if (isCategoryExperience || hasYearsExplicit) {
-      const expRes = evaluateExperienceRequirement(candidate, reqText);
+      const targetExpText = (isMandatory && sourceEvidence && srcYearsMatch) ? sourceEvidence : reqText;
+      const expRes = evaluateExperienceRequirement(candidate, targetExpText);
       evalResult = {
         status: expRes.status,
         evidence: expRes.evidence,
@@ -1395,6 +1409,15 @@ export function calculateATSScore(
       } else {
         pillarPoints.tech.earned += STATUS_SCORE_MAP[evalResult.status] * weight;
         pillarPoints.tech.total += weight;
+      }
+    }
+
+    // Contextual mandatory source evidence enrichment
+    if (isMandatory && sourceEvidence) {
+      if (evalResult.status === 'MATCHED') {
+        evalResult.evidence = `Verified alignment with mandatory requirement ("${sourceEvidence}"): ${evalResult.evidence}`;
+      } else {
+        evalResult.failureReason = `Candidate lacks verified context for mandatory requirement: "${sourceEvidence}".`;
       }
     }
 
@@ -1439,7 +1462,8 @@ export function calculateATSScore(
       evidenceSource: evalResult.source,
       evidenceType: evalResult.confidence,
       confidence: evalResult.confidence === 'EXPLICIT' ? 'High' : evalResult.confidence === 'STRONG_SEMANTIC' ? 'Medium' : 'Low',
-      failureReason: evalResult.failureReason
+      failureReason: evalResult.failureReason,
+      ...(sourceEvidence ? { sourceEvidence, source_evidence: sourceEvidence } : {})
     });
   }
 
@@ -1456,19 +1480,22 @@ export function calculateATSScore(
     // Cross-domain mismatch: Technical applicant on Sales role (or vice-versa)
     overallScore = Math.min(rawScore, 12);
   } else if (mandatoryFailures.length >= 3) {
-    overallScore = Math.min(rawScore, 15);
-  } else if (mandatoryFailures.length >= 2) {
-    overallScore = Math.min(rawScore, 25);
-  } else if (hasMandatoryFailure) {
-    overallScore = Math.min(rawScore, 40);
+    overallScore = Math.min(rawScore, 38);
+  } else if (mandatoryFailures.length === 2) {
+    overallScore = Math.max(35, Math.min(rawScore - 20, 58));
+  } else if (mandatoryFailures.length === 1) {
+    // 1 isolated mandatory gap: Deduct 8-10 points from raw score, NEVER clamp to 40%
+    overallScore = Math.max(45, Math.round(rawScore - 10));
   }
 
   // 3. Determine Final Match Tier deterministically
   let finalMatchLevel: MatchTier = 'MINIMAL MATCH';
   if (hasDomainMismatch || mandatoryFailures.length >= 3 || overallScore < 20) {
     finalMatchLevel = 'MINIMAL MATCH';
-  } else if (hasMandatoryFailure || overallScore < 45) {
+  } else if (mandatoryFailures.length === 2 || overallScore < 45) {
     finalMatchLevel = overallScore >= 30 ? 'LOW MATCH' : 'MINIMAL MATCH';
+  } else if (mandatoryFailures.length === 1) {
+    finalMatchLevel = overallScore >= 72 ? 'STRONG MATCH' : overallScore >= 52 ? 'MODERATE MATCH' : 'LOW MATCH';
   } else {
     if (overallScore >= 85) finalMatchLevel = 'EXCELLENT MATCH';
     else if (overallScore >= 70) finalMatchLevel = 'STRONG MATCH';

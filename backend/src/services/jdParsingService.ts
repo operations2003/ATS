@@ -44,6 +44,8 @@ export interface ParsedRequirement {
   sourceSection: string;
   confidence: 'HIGH' | 'MEDIUM' | 'LOW';
   needsVerification: boolean;
+  aliases?: string[];
+  context?: string;
 }
 
 export interface ParsedJobMetadata {
@@ -473,37 +475,43 @@ export const detectHeading = (line: string): { isHeading: boolean; type: JobSect
   const trimmed = line.trim();
   if (!trimmed || trimmed.length > 130) return { isHeading: false, type: 'GENERAL', title: '' };
 
-  // Strip emojis, leading numbers/bullets/special symbols (🚫, 📋, 🚀, 🎁, 📅, 📝, ⚡, 🔍, 📞, 📊, 🎯, etc.)
+  // Strip markdown formatting, emojis, leading numbers/bullets/special symbols
   const cleanLine = trimmed
-    .replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{1F300}-\u{1F9FF}\s•●*|\-–—\d.]+/gu, '')
+    .replace(/^#{1,6}\s*/, '')
+    .replace(/^\s*[*_]{1,3}/, '')
+    .replace(/[*_]{1,3}\s*$/, '')
+    .replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\u2600-\u27BF\s•●*▪▫➢✓✔·\-\u2022\u2023\u25E6\u2043\u2219]+/gu, '')
+    .replace(/^\s*(?:\d+|[ivxIVX]+)[\.\)\-:]\s*/, '')
     .replace(/\s*\([^)]*\)\s*$/, '') // remove trailing (recruiter checks)
     .replace(/\s*\[[^\]]*\]\s*$/, '')
+    .replace(/[:\-–—\s]+$/, '')
     .trim();
 
-  const lower = cleanLine.toLowerCase().replace(/[:\-_]+$/, '').trim();
+  const lower = cleanLine.toLowerCase();
+  const norm = lower.replace(/&/g, 'and').replace(/[-–—]/g, ' ');
 
   // Mandatory Skills Headings
-  if (/^(key\s+requirements|requirements|core\s+requirements|qualifications|eligibility\s+criteria|candidate\s+profile|what\s+you\s+need|what\s+we\s+are\s+looking\s+for|skills\s*(?:&|and)\s*experience|basic\s+qualifications|mandatory\s+skills|mandatory\s+requirements|non-negotiable\s+mandatory\s+requirements|non-negotiable\s+requirements|mandatory\s+qualifications|must\s+have|must\s+haves|required\s+skills|required\s+qualifications|minimum\s+requirements|minimum\s+qualifications|essential\s+skills|core\s+skills|must-have\s+skills|mandatory|knock-out\s+rules|knockout\s+criteria|dealbreakers)$/i.test(lower)) {
+  if (/^(key\s+requirements|requirements|core\s+requirements|qualifications|eligibility\s+criteria|candidate\s+profile|what\s+you\s+need|what\s+we\s+are\s+looking\s+for|skills\s*(?:and|&)\s*experience|basic\s+qualifications|mandatory\s+skills|mandatory\s+requirements|non\s*negotiable\s+mandatory\s+requirements|non\s*negotiable\s+requirements|mandatory\s+qualifications|must\s+have|must\s+haves|required\s+skills|required\s+qualifications|required\s+experience|minimum\s+requirements|minimum\s+qualifications|essential\s+skills|core\s+skills|must\s*have\s+skills|mandatory|knock\s*out\s+rules|knockout\s+criteria|dealbreakers)$/i.test(norm)) {
     return { isHeading: true, type: 'MANDATORY_SKILLS', title: trimmed };
   }
 
   // Preferred Skills Headings
-  if (/^(preferred\s+skills|preferred\s+requirements|preferred\s+qualifications|nice\s+to\s+have|nice\s+to\s+haves|good\s+to\s+have|desired\s+skills|bonus\s+points|additional\s+skills|desirable\s+skills|secondary\s+skills|preferred)$/i.test(lower)) {
+  if (/^(preferred\s+skills|preferred\s+requirements|preferred\s+qualifications|preferred\s+experience|nice\s+to\s+have|nice\s+to\s+haves|good\s+to\s+have|good\s+to\s+haves|desired\s+skills|desired\s+qualifications|desired\s+requirements|bonus\s+points|bonus\s+skills|bonus\s+qualifications|additional\s+skills|additional\s+qualifications|desirable\s+skills|secondary\s+skills|plus\s+points|great\s+to\s+have|optional\s+requirements|optional\s+skills|preferred)$/i.test(norm)) {
     return { isHeading: true, type: 'PREFERRED_SKILLS', title: trimmed };
   }
 
   // Key Responsibilities Headings
-  if (/^(key\s+responsibilities|responsibilities|roles\s+and\s+responsibilities|job\s+responsibilities|primary\s+responsibilities|what\s+you\s+will\s+do|day\s+to\s+day\s+responsibilities|role\s+overview\s*(?:&|and)?\s*key\s+responsibilities|role\s+overview|duties)$/i.test(lower)) {
+  if (/^(key\s+responsibilities|responsibilities|roles?\s+and\s+responsibilities|job\s+responsibilities|primary\s+responsibilities|core\s+responsibilities|what\s+you\s+will\s+do|what\s+you\s*'?ll\s+do|what\s+you\s+will\s+be\s+doing|what\s+you\s*'?ll\s+be\s+doing|your\s+responsibilities|day\s+to\s+day\s+responsibilities|role\s+overview\s*(?:and|&)?\s*key\s+responsibilities|role\s+overview|duties|duties\s+and\s+responsibilities|responsibilities\s+and\s+duties|job\s+duties|main\s+duties|key\s+deliverables|tasks|scope\s+of\s+work)$/i.test(norm)) {
     return { isHeading: true, type: 'RESPONSIBILITIES', title: trimmed };
   }
 
   // Summary & Company & Role Headings
-  if (/^(job\s+summary|summary|about\s+the\s+role|overview|position\s+summary|about\s+us|about\s+[a-z0-9&.,'-]+|company\s+overview|why\s+join\s+us|job\s+purpose|role\s+snapshot|snapshot|what\s+you\s+get|what\s+you'll\s+get|what\s+we\s+offer|perks\s*(?:&|and)?\s*benefits|perks|benefits|why\s+this\s+role|the\s+opportunity)$/i.test(lower)) {
+  if (/^(job\s+summary|summary|about\s+the\s+role|about\s+the\s+job|overview|position\s+summary|position\s+overview|about\s+us|about\s+[a-z0-9&.,'\-]+|company\s+overview|about\s+the\s+company|why\s+join\s+us|job\s+purpose|role\s+purpose|role\s+snapshot|snapshot|who\s+we\s+are|who\s+you\s+are|about\s+you|what\s+you\s+bring|what\s+you\s*'?ll\s+bring|what\s+you\s+get|what\s+you\s*'?ll\s+get|what\s+we\s+offer|perks\s*(?:and|&)?\s*benefits|benefits\s*(?:and|&)?\s*perks|perks|benefits|why\s+this\s+role|the\s+opportunity)$/i.test(norm)) {
     return { isHeading: true, type: 'SUMMARY', title: trimmed };
   }
 
   // Commercials & Recruiter Billing & Exclusions & Interview Logistics
-  if (/^(commercials|compensation\s+details|billing\s+details|interview\s+process|interview\s+details|payment\s+terms|fee\s+structure|incentives?|freelance\s+recruiter.*|replacement\s+guarantee|what\s+we(?:'re|\s+are)\s+not\s+asking\s+for|what\s+we\s+do\s+not\s+want|what\s+you\s+don't\s+need|who\s+this\s+is\s+not\s+for|not\s+looking\s+for|exclusions|non-requirements|core\s+competencies|recruitment\s+information|recruiter\s+cheat\s+sheet.*|recruiter[’']s\s+cheat\s+code.*|boolean\s+search\s+strings.*|candidate\s+pre-screening\s+questionnaire.*|screening\s+&\s+evaluation\s+parameters.*|the\s+30-second\s+resume\s+scan.*|the\s+30-second\s+resume\s+screening\s+checklist.*|the\s+5-minute\s+screening\s+script.*|3-minute\s+phone\s+screening\s+script.*|quick-reference\s+match\s+scorecard.*|quick\s+.*instant\s+disqualification.*|instant\s+disqualification.*|profile\s+identifiers.*)$/i.test(lower)) {
+  if (/^(commercials|compensation\s+details|billing\s+details|interview\s+process|interview\s+details|payment\s+terms|fee\s+structure|incentives?|freelance\s+recruiter.*|replacement\s+guarantee|what\s+we(?:'re|\s+are)\s+not\s+asking\s+for|what\s+we\s+do\s+not\s+want|what\s+you\s+don't\s+need|who\s+this\s+is\s+not\s+for|not\s+looking\s+for|exclusions|non-requirements|core\s+competencies|recruitment\s+information|recruiter\s+cheat\s+sheet.*|recruiter[’']s\s+cheat\s+code.*|boolean\s+search\s+strings.*|candidate\s+pre-screening\s+questionnaire.*|screening\s+&\s+evaluation\s+parameters.*|the\s+30-second\s+resume\s+scan.*|the\s+30-second\s+resume\s+screening\s+checklist.*|the\s+5-minute\s+screening\s+script.*|3-minute\s+phone\s+screening\s+script.*|quick-reference\s+match\s+scorecard.*|quick\s+.*instant\s+disqualification.*|instant\s+disqualification.*|profile\s+identifiers.*)$/i.test(norm)) {
     return { isHeading: true, type: 'COMMERCIALS', title: trimmed };
   }
 
@@ -632,13 +640,20 @@ export const cleanBulletText = (text: string): string => {
     .replace(/\\ge\b/gi, '≥')
     .replace(/\$\\sim\$/gi, '~')
     // Strip emojis
-    .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{1F300}-\u{1F9FF}]/gu, '')
-    // Strip leading bullets, numbers, dashes, colons
-    .replace(/^[:\s–\-•●*▪▫➢✓✔o\d.)\-_—–:|]+\s*/, '')
+    .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}\u2600-\u27BF]/gu, '')
+    // Strip markdown headers (e.g. '### ')
+    .replace(/^\s*#{1,6}\s+/, '')
+    // Strip markdown bold wrappers if enclosing entire bullet (e.g. '**Requirement**' -> 'Requirement')
+    .replace(/^\s*\*\*(.*?)\*\*\s*$/, '$1')
     // Strip checkbox tokens: [ ], [x], [X], [✓], [✔], ( ), (x), (✓)
-    .replace(/^\[\s*[xX✓✔]?\s*\]\s*/, '')
-    .replace(/^\(\s*[xX✓✔]?\s*\)\s*/, '')
-    .replace(/^[:\s–\-•●*▪▫➢✓✔o\d.)\-_—–:|]+\s*/, '')
+    .replace(/^\s*\[\s*[xX✓✔]?\s*\]\s*/, '')
+    .replace(/^\s*\(\s*[xX✓✔]?\s*\)\s*/, '')
+    // Strip enumerated list markers like '1. ', '1) ', '(1) ', 'a. ', 'A) ' (MUST have whitespace after delimiter)
+    .replace(/^\s*(?:(?:\d+|[a-zA-Z])[\.\)]|\(\d+\))\s+/, '')
+    // Strip leading bullet symbols (•, ●, *, -, etc.)
+    .replace(/^\s*[•●*▪▫➢✓✔·\u2022\u2023\u25E6\u2043\u2219]\s*/, '')
+    // Strip leading dash or colon if followed by space (bullet list style, e.g. "- Requirement")
+    .replace(/^\s*[-–—:]\s+/, '')
     .replace(/\[\s*[xX✓✔]?\s*\]/g, '') // remove inline [ ] if any
     .replace(/\s+/g, ' ')
     .trim();
@@ -1331,14 +1346,30 @@ export const parseJobDescription = (
   const hiringCriteria = extractHiringCriteria(topSection);
 
   // 4. Extract Mandatory Skills (Strictly isMandatory = true, unless marked preferred)
-  const mandSection = sections.find(s => s.type === 'MANDATORY_SKILLS');
-  const rawMandatoryBullets = mandSection ? extractBulletsFromSection(mandSection) : [];
+  const mandSections = sections.filter(s => s.type === 'MANDATORY_SKILLS');
+  const rawMandatoryBullets = mandSections.flatMap(s => extractBulletsFromSection(s));
   const mandatoryRequirementsList: ParsedRequirement[] = [];
   const preferredFromMandatory: ParsedRequirement[] = [];
+  const reclassifiedResponsibilities: string[] = [];
+
+  const isObviousDutyOrResponsibility = (text: string): boolean => {
+    // If it mentions explicit experience tenure, degrees, certifications, or knockout markers, keep as qualification requirement
+    if (/\b(?:\d+[\d\s\-–+to]*\s*(?:years?|yrs?)|experience\s+in|knowledge\s+of|proficien|skills?\s+in|degree|bachelor|master|certification|certified|must\s+have|required)\b/i.test(text)) {
+      return false;
+    }
+    // Action verbs typical of job responsibilities/duties rather than candidate qualification criteria
+    return /^(?:manage|lead|conduct|execute|handle|collaborate|coordinate|build|maintain|design|develop|deliver|support|assist|drive|perform|prepare|participate|ensure|resolve|optimize|demonstrate|qualify|prospect|follow[- ]up|create|monitor|track|review|organize|implement)\b/i.test(text);
+  };
 
   for (const bullet of rawMandatoryBullets) {
     const clean = cleanBulletText(bullet);
     if (!isValidRequirement(clean)) continue;
+
+    if (isObviousDutyOrResponsibility(clean)) {
+      reclassifiedResponsibilities.push(clean);
+      continue;
+    }
+
     const isPref = /\b(is\s+preferred|preferred|nice\s+to\s+have|good\s+to\s+have|plus|optional)\b/i.test(clean);
     const item: ParsedRequirement = {
       requirement: clean,
@@ -1362,12 +1393,16 @@ export const parseJobDescription = (
   }
 
   // 5. Extract Preferred Skills (Strictly isMandatory = false)
-  const prefSection = sections.find(s => s.type === 'PREFERRED_SKILLS');
-  const rawPreferredBullets = prefSection ? extractBulletsFromSection(prefSection) : [];
+  const prefSections = sections.filter(s => s.type === 'PREFERRED_SKILLS');
+  const rawPreferredBullets = prefSections.flatMap(s => extractBulletsFromSection(s));
   const preferredRequirementsList: ParsedRequirement[] = [...preferredFromMandatory];
   for (const bullet of rawPreferredBullets) {
     const clean = cleanBulletText(bullet);
     if (!isValidRequirement(clean)) continue;
+    if (isObviousDutyOrResponsibility(clean)) {
+      reclassifiedResponsibilities.push(clean);
+      continue;
+    }
     preferredRequirementsList.push({
       requirement: clean,
       category: categorizeRequirement(clean),
@@ -1385,8 +1420,11 @@ export const parseJobDescription = (
   }
 
   // 6. Extract Responsibilities (Separated collection; never converted into requirements)
-  const respSection = sections.find(s => s.type === 'RESPONSIBILITIES');
-  const responsibilityBullets = respSection ? extractBulletsFromSection(respSection).map(b => cleanBulletText(b)) : [];
+  const respSections = sections.filter(s => s.type === 'RESPONSIBILITIES');
+  const responsibilityBullets = [
+    ...respSections.flatMap(s => extractBulletsFromSection(s)).map(b => cleanBulletText(b)),
+    ...reclassifiedResponsibilities
+  ];
 
   // Fallback for unsegmented legacy JDs without explicit section headings
   if (mandatoryRequirementsList.length === 0 && preferredRequirementsList.length === 0) {

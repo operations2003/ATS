@@ -1,14 +1,15 @@
 /**
- * Controlled AI Integration: AI-Assisted JD Requirement Completion Service
- * - Extracts requirements reasonably supported by JD text without hallucination.
- * - Retains source evidence, category, confidence, and is_inferred flag.
- * - Inferred requirements are NEVER marked as mandatory knockouts.
- * - 100% Graceful Fallback: If AI is unavailable or times out, returns null/empty array.
+ * Controlled AI Integration: AI-Assisted JD Requirement & Normalization Service
+ * - Uses Gemini 2.5 Flash-Lite as primary semantic understanding engine with Gemini 3.5 Flash-Lite fallback.
+ * - Extracts structured JD components: Role, mandatory vs preferred requirements, aliases, responsibilities, experience.
+ * - 100% Graceful Fallback: If Gemini is unavailable, times out, or errors, falls back to the deterministic
+ *   document processor parsing without breaking the upload flow or losing the original JD.
  */
 
 import http from 'http';
 import https from 'https';
 import { getPythonServiceConfig } from './pythonDocumentClient';
+import { understandJobDescriptionWithGemini, NormalizedJdSchema, NormalizedRequirement } from './geminiService';
 
 export interface ControlledAiRequirement {
   id: string;
@@ -19,6 +20,9 @@ export interface ControlledAiRequirement {
   is_inferred: boolean;
   is_mandatory: boolean;
   weight: number;
+  aliases?: string[];
+  related_terms?: string[];
+  context?: string;
 }
 
 export interface AiParsedJd {
@@ -32,14 +36,19 @@ export interface AiParsedJd {
     requirement: string;
     category: string;
     sourceEvidence?: string;
+    aliases?: string[];
+    context?: string;
   }>;
   preferredRequirements: Array<{
     requirement: string;
     category: string;
     sourceEvidence?: string;
+    aliases?: string[];
+    context?: string;
   }>;
   responsibilities: string[];
   inferredRequirements?: ControlledAiRequirement[];
+  normalizedJd?: NormalizedJdSchema | null;
 }
 
 export const sanitizeAiText = (str: string | null | undefined): string => {
@@ -49,6 +58,109 @@ export const sanitizeAiText = (str: string | null | undefined): string => {
 
 const AI_TIMEOUT_MS = parseInt(process.env.PYTHON_TIMEOUT_MS || '15000', 10);
 
+/**
+ * Executes full semantic JD comprehension via Gemini with automatic fallback
+ */
+export async function semanticallyUnderstandJd(jdText: string): Promise<{
+  normalizedJd: NormalizedJdSchema | null;
+  requirements: ControlledAiRequirement[];
+  aiModel: string;
+  status: 'COMPLETED' | 'FALLBACK';
+}> {
+  if (!jdText || jdText.trim().length < 25) {
+    return {
+      normalizedJd: null,
+      requirements: [],
+      aiModel: 'none',
+      status: 'FALLBACK'
+    };
+  }
+
+  // 1. Primary: Google Gemini 2.5 Flash Semantic Comprehension
+  try {
+    const geminiResult = await understandJobDescriptionWithGemini(jdText);
+    if (geminiResult) {
+      console.log(`[JD AI Service] Successfully semantically analyzed JD with Gemini. Found ${geminiResult.mandatory_requirements.length} mandatory, ${geminiResult.preferred_requirements.length} preferred requirements.`);
+
+      const mappedRequirements: ControlledAiRequirement[] = [];
+
+      // Map Gemini's canonical requirements directly without modifying Gemini's semantic classification
+      // Add mandatory requirements exactly as extracted by Gemini
+      geminiResult.mandatory_requirements.forEach((req, idx) => {
+        mappedRequirements.push({
+          id: `req-ai-m-${idx + 1}`,
+          requirement: req.name,
+          category: req.category || 'Technical Skill',
+          source_evidence: req.description || req.context || req.name,
+          confidence: 'HIGH',
+          is_inferred: false,
+          is_mandatory: true,
+          weight: req.weight || 2.0,
+          aliases: req.aliases || [],
+          related_terms: req.related_terms || [],
+          context: req.context || ''
+        });
+      });
+
+      // Add preferred requirements exactly as extracted by Gemini
+      geminiResult.preferred_requirements.forEach((req, idx) => {
+        mappedRequirements.push({
+          id: `req-ai-p-${idx + 1}`,
+          requirement: req.name,
+          category: req.category || 'Technical Skill',
+          source_evidence: req.description || req.context || req.name,
+          confidence: 'HIGH',
+          is_inferred: false,
+          is_mandatory: false,
+          weight: req.weight || 1.0,
+          aliases: req.aliases || [],
+          related_terms: req.related_terms || [],
+          context: req.context || ''
+        });
+      });
+
+      // Only add experience as a standalone requirement if no explicit requirements were extracted
+      if (mappedRequirements.length === 0 && geminiResult.experience?.description && geminiResult.experience.minimum_years !== null) {
+        mappedRequirements.unshift({
+          id: 'req-ai-exp-1',
+          requirement: `${geminiResult.experience.minimum_years}+ years experience: ${geminiResult.experience.description}`,
+          category: 'Experience',
+          source_evidence: geminiResult.experience.description,
+          confidence: 'HIGH',
+          is_inferred: false,
+          is_mandatory: true,
+          weight: 2.0,
+          aliases: [`${geminiResult.experience.minimum_years} years`, `${geminiResult.experience.minimum_years}+ yrs`],
+          context: 'Minimum professional experience'
+        });
+      }
+
+      return {
+        normalizedJd: geminiResult,
+        requirements: mappedRequirements,
+        aiModel: 'semantic-ai-v2',
+        status: 'COMPLETED'
+      };
+    }
+  } catch (err: any) {
+    console.warn('[JD AI Service] Gemini comprehension skipped due to error, invoking fallback:', err?.message || err);
+  }
+
+  // 2. Secondary Fallback: Deterministic Python Document Processor extraction
+  console.log('[JD AI Service] Invoking secondary deterministic fallback for JD comprehension...');
+  const fallbackReqs = await completeJdRequirementsControlled(jdText);
+
+  return {
+    normalizedJd: null,
+    requirements: fallbackReqs,
+    aiModel: 'deterministic-fallback',
+    status: 'FALLBACK'
+  };
+}
+
+/**
+ * Deterministic / Local extraction fallback
+ */
 export const completeJdRequirementsControlled = async (jdText: string): Promise<ControlledAiRequirement[]> => {
   if (!jdText || jdText.trim().length < 20) {
     return [];
@@ -96,20 +208,20 @@ export const completeJdRequirementsControlled = async (jdText: string): Promise<
       );
 
       req.on('error', (err) => {
-        console.warn(`[Controlled AI] Service unavailable (${err.message}). Graceful fallback to deterministic parsing.`);
+        console.warn(`[Controlled AI] Service unavailable (${err.message}). Graceful fallback.`);
         resolve([]);
       });
 
       req.on('timeout', () => {
         req.destroy();
-        console.warn('[Controlled AI] JD completion timed out. Graceful fallback to deterministic parsing.');
+        console.warn('[Controlled AI] JD completion timed out. Graceful fallback.');
         resolve([]);
       });
 
       req.write(payload);
       req.end();
     } catch (err: any) {
-      console.warn(`[Controlled AI] Unexpected error (${err.message}). Falling back to deterministic parsing.`);
+      console.warn(`[Controlled AI] Unexpected error (${err.message}). Falling back.`);
       resolve([]);
     }
   });
@@ -117,28 +229,34 @@ export const completeJdRequirementsControlled = async (jdText: string): Promise<
 
 export const parseJdWithAi = async (rawText: string): Promise<AiParsedJd | null> => {
   try {
-    const inferred = await completeJdRequirementsControlled(rawText);
+    const semanticRes = await semanticallyUnderstandJd(rawText);
+    const inferred = semanticRes.requirements;
     if (!inferred || inferred.length === 0) return null;
 
     return {
       companyName: null,
-      positionTitle: null,
+      positionTitle: semanticRes.normalizedJd?.job_title || null,
       location: null,
       workMode: null,
       salary: null,
-      experience: null,
+      experience: semanticRes.normalizedJd?.experience?.description || null,
       mandatoryRequirements: inferred.filter(r => r.is_mandatory).map(r => ({
         requirement: r.requirement,
         category: r.category,
-        sourceEvidence: r.source_evidence
+        sourceEvidence: r.source_evidence,
+        aliases: r.aliases,
+        context: r.context
       })),
       preferredRequirements: inferred.filter(r => !r.is_mandatory).map(r => ({
         requirement: r.requirement,
         category: r.category,
-        sourceEvidence: r.source_evidence
+        sourceEvidence: r.source_evidence,
+        aliases: r.aliases,
+        context: r.context
       })),
-      responsibilities: inferred.filter(r => r.category === 'Responsibility').map(r => r.requirement),
-      inferredRequirements: inferred
+      responsibilities: semanticRes.normalizedJd?.responsibilities || inferred.filter(r => r.category === 'Responsibility').map(r => r.requirement),
+      inferredRequirements: inferred,
+      normalizedJd: semanticRes.normalizedJd
     };
   } catch {
     return null;

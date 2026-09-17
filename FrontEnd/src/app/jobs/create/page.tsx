@@ -158,10 +158,13 @@ export default function CreateJobPage() {
           .replace(/\$\\ge\$/gi, '≥')
           .replace(/\\ge\b/gi, '≥')
           .replace(/\$\\sim\$/gi, '~')
-          .replace(/^[\s•●*▪▫➢✓✔o\d.)\-_—–:|]+\s*/, '')
-          .replace(/^\[\s*[xX✓✔]?\s*\]\s*/, '')
-          .replace(/^\(\s*[xX✓✔]?\s*\)\s*/, '')
-          .replace(/^[:\s–\-•●*▪▫➢✓✔o\d.)\-_—–:|]+\s*/, '')
+          .replace(/^#{1,6}\s*/, '')
+          .replace(/^\s*\*\*(.*?)\*\*\s*$/, '$1')
+          .replace(/^\s*\[\s*[xX✓✔]?\s*\]\s*/, '')
+          .replace(/^\s*\(\s*[xX✓✔]?\s*\)\s*/, '')
+          .replace(/^\s*(?:(?:\d+|[a-zA-Z])[\.\)]|\(\d+\))\s+/, '')
+          .replace(/^\s*[•●*▪▫➢✓✔·\u2022\u2023\u25E6\u2043\u2219]\s*/, '')
+          .replace(/^\s*[-–—:]\s+/, '')
           .replace(/\[\s*[xX✓✔]?\s*\]/g, '')
           .trim();
       };
@@ -175,13 +178,13 @@ export default function CreateJobPage() {
               id: `req-${Date.now()}-${idx}`,
               requirement: cleanText,
               category: r.category || 'Technical Skill',
-              mandatory: Boolean(r.isMandatory ?? r.mandatory),
+              mandatory: Boolean(r.isMandatory ?? r.mandatory ?? r.is_mandatory),
               type: r.type || (r.category === 'Hiring Criteria' || r.sourceSection === 'Top Hiring Criteria' ? 'HIRING_CRITERIA' : 'SKILL'),
-              weight: r.weight || (Boolean(r.isMandatory ?? r.mandatory) ? 1.5 : 1.0),
+              weight: r.weight || (Boolean(r.isMandatory ?? r.mandatory ?? r.is_mandatory) ? 1.5 : 1.0),
               sourceEvidence: cleanEvidence,
               sourceSection: r.sourceSection || ''
             };
-          }).filter(r => r.requirement.length > 5)
+          }).filter(r => r.requirement && r.requirement.length >= 2)
         : [];
 
       setRequirements(formattedReqs);

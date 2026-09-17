@@ -15,6 +15,8 @@ import {
   ComprehensiveMatchResult,
   isJunkRequirement,
   safeWordMatch,
+  extractContextConcepts,
+  areSkillsEquivalent,
 } from '@/utils/requirementUtils';
 import { RequirementStatus, ConfidenceLevel } from '@/types';
 
@@ -966,7 +968,15 @@ export default function JobCandidatesPage() {
         {
           position: job?.position || 'Job Position',
           jd_text: job?.jd_text || job?.position || '',
-          requirements: job?.requirements || [],
+          requirements: (job?.requirements || []).map(r => ({
+            id: r.id,
+            requirement: r.requirement,
+            category: r.category,
+            is_mandatory: r.is_mandatory,
+            weight: r.weight,
+            source_evidence: (r as any).source_evidence || (r as any).sourceEvidence,
+            sourceEvidence: (r as any).source_evidence || (r as any).sourceEvidence,
+          })),
         }
       );
 
@@ -974,51 +984,186 @@ export default function JobCandidatesPage() {
       // Build requirement evaluation structure for RequirementTable (filtering out junk/commercial lines)
       const validRequirements = (job?.requirements || []).filter(req => req.requirement && !isJunkRequirement(req.requirement));
 
-      const requirementEvals = (validRequirements.length > 0)
+      const requirementEvals = (c.evaluation?.requirementEvaluations && c.evaluation.requirementEvaluations.length > 0)
+        ? c.evaluation.requirementEvaluations
+        : (validRequirements.length > 0)
         ? validRequirements.map(req => {
           const reqLower = req.requirement.toLowerCase();
+          const sourceEvidence = String((req as any).source_evidence || (req as any).sourceEvidence || '').trim();
           const reqCategory = (req.category || '').toLowerCase();
           const isMandatory = Boolean(req.is_mandatory);
 
-          // Check if experience requirement
+          // Context deconstruction for requirement and mandatory source evidence
+          const reqCtx = extractContextConcepts(req.requirement);
+          const srcCtx = sourceEvidence ? extractContextConcepts(sourceEvidence) : null;
+
+          // Standard synonyms and extracted aliases
+          const knownSynonyms: Record<string, string[]> = {
+            'sap mm': ['sap materials management', 'materials management', 'purchasing and procurement', 'procurement', 'purchasing', 'sap mm solutioning', 'vendor management', 'materials management solutioning'],
+            'purchasing and procurement': ['sap mm', 'sap materials management', 'materials management', 'procurement', 'purchasing', 'sap mm solutioning', 'sourcing'],
+            'procurement': ['sap mm', 'purchasing', 'purchasing and procurement', 'materials management', 'sap materials management', 'sourcing'],
+            'purchasing': ['sap mm', 'procurement', 'purchasing and procurement', 'materials management'],
+            'sap ibp': ['integrated business planning', 'sap integrated business planning', 'supply chain planning', 'demand planning'],
+            'stakeholder management': ['client management', 'stakeholder engagement', 'cross-functional collaboration'],
+            'react': ['reactjs', 'react.js'],
+            'react.js': ['react', 'reactjs'],
+            'reactjs': ['react', 'react.js'],
+            'node.js': ['node', 'nodejs'],
+            'nodejs': ['node', 'node.js'],
+            'express': ['expressjs', 'express.js'],
+            'express.js': ['express', 'expressjs'],
+            'postgresql': ['postgres', 'psql'],
+            'postgres': ['postgresql', 'psql'],
+            'mongodb': ['mongo'],
+            'mongo': ['mongodb'],
+            'kubernetes': ['k8s'],
+            'k8s': ['kubernetes'],
+            'typescript': ['ts'],
+            'javascript': ['js'],
+            'golang': ['go'],
+          };
+
+          const nonEquivalents: Record<string, string[]> = {
+            'react': ['angular', 'vue', 'vuejs'],
+            'angular': ['react', 'vue', 'vuejs'],
+            'vue': ['react', 'angular'],
+            'postgresql': ['mysql', 'mongodb', 'oracle'],
+            'mysql': ['postgresql', 'mongodb'],
+            'mongodb': ['postgresql', 'mysql'],
+            'python': ['java', 'c#', 'php', 'ruby'],
+            'java': ['python', 'c#', 'php', 'ruby'],
+            'docker': ['kubernetes', 'k8s'],
+          };
+
+          // Combine aliases from requirement object, normalized JD, and known synonyms
+          const explicitAliases: string[] = Array.isArray((req as any).aliases) ? (req as any).aliases : [];
+          const synonymAliases: string[] = [];
+          for (const [techKey, syns] of Object.entries(knownSynonyms)) {
+            if (reqLower.includes(techKey)) {
+              synonymAliases.push(...syns);
+            }
+          }
+          const allAliases = Array.from(new Set([...explicitAliases, ...synonymAliases]));
+
+          // Check if experience requirement (Contextual Tenure Evaluation)
           const yearsPattern = reqLower.match(/(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)/i);
-          const isExpReq = Boolean(yearsPattern) || reqCategory.includes('exp') || reqLower.includes('experience');
+          const srcYears = srcCtx?.years;
+          const isExpReq = Boolean(yearsPattern) || srcYears !== undefined || reqCategory.includes('exp') || reqLower.includes('experience');
 
           let hasSkill = false;
+          let matchedAlias = '';
+          let matchReason = '';
+          let failureReason = '';
           let matchPercent = 0;
 
           if (isExpReq) {
-            const requiredYears = yearsPattern ? parseFloat(yearsPattern[1]) : (matchResult.breakdown.experience.requiredYears || 3.0);
+            const requiredYears = (isMandatory && srcYears !== undefined)
+              ? srcYears
+              : (yearsPattern ? parseFloat(yearsPattern[1]) : (matchResult.breakdown.experience.requiredYears || 3.0));
             const candExp = c.totalExperienceYears || parseFloat(String(c.totalExperience || '0').replace(/[^0-9.]/g, '')) || 0;
             if (candExp >= requiredYears) {
               hasSkill = true;
               matchPercent = 100;
+              matchReason = isMandatory && sourceEvidence
+                ? `Candidate has ${candExp} years of verified experience, satisfying mandatory criteria ("${sourceEvidence}").`
+                : `Candidate has ${candExp} years of verified experience (meets/exceeds ${requiredYears} years required).`;
             } else if (requiredYears > 0) {
               matchPercent = Math.min(100, Math.max(0, Math.round((candExp / requiredYears) * 100)));
               hasSkill = matchPercent >= 50;
+              matchReason = `Candidate has ${candExp} of ${requiredYears} years required.`;
+              if (isMandatory) {
+                failureReason = `Lacks required tenure: Candidate has ${candExp} yrs vs ${requiredYears} yrs mandated by JD source evidence: "${sourceEvidence || req.requirement}".`;
+              }
             } else {
               hasSkill = true;
               matchPercent = 100;
             }
           } else {
-            // Technical / skill matching
-            const cleanTokens = reqLower
-              .replace(/(\d+\+?\s*years?|experience|minimum|required|hands-on|relevant|professional|industry|proven|in|with|of|for|and|to)/gi, ' ')
-              .split(/[\s,;/]+/)
-              .map((w: string) => w.trim().toLowerCase().replace(/^[^a-zA-Z0-9+#.-]+|[^a-zA-Z0-9+#.-]+$/g, ''))
-              .filter((w: string) => w.length >= 3 && !['years', 'work', 'skills', 'tools', 'high', 'level'].includes(w));
+            // Check strict non-equivalence (e.g. MySQL when PostgreSQL required)
+            let detectedNonEq = '';
+            for (const [reqTech, forbiddenList] of Object.entries(nonEquivalents)) {
+              if (reqLower.includes(reqTech)) {
+                // If candidate mentions forbidden tech but NOT the required tech
+                const candRawLower = (c.rawText || '').toLowerCase();
+                const hasReqTech = candRawLower.includes(reqTech) || allAliases.some(a => candRawLower.includes(a.toLowerCase()));
+                if (!hasReqTech) {
+                  for (const forb of forbiddenList) {
+                    if (candRawLower.includes(forb) || effectiveCandidateSkills.some(s => s.toLowerCase() === forb)) {
+                      detectedNonEq = forb;
+                      break;
+                    }
+                  }
+                }
+              }
+            }
 
-            hasSkill = effectiveCandidateSkills.some(cs => {
-              const csLow = cs.toLowerCase();
-              return csLow === reqLower ||
-                     safeWordMatch(csLow, reqLower) ||
-                     cleanTokens.some((tok: string) => csLow === tok);
-            }) || cleanTokens.some((tok: string) => {
-              return effectiveCandidateSkills.some(cs => cs.toLowerCase() === tok) ||
-                     safeWordMatch(tok, c.rawText || '');
-            });
+            if (detectedNonEq) {
+              hasSkill = false;
+              matchPercent = 0;
+              failureReason = `Strict Technology Boundary: Candidate demonstrates ${detectedNonEq}, which is not interchangeable with required ${req.requirement}.`;
+            } else {
+              // Contextual concept and token match (No whole-line string matching)
+              const cleanTokens = reqLower
+                .replace(/(\d+\+?\s*years?|experience|minimum|required|hands-on|relevant|professional|industry|proven|in|with|of|for|and|to)/gi, ' ')
+                .split(/[\s,;/]+/)
+                .map((w: string) => w.trim().toLowerCase().replace(/^[^a-zA-Z0-9+#.-]+|[^a-zA-Z0-9+#.-]+$/g, ''))
+                .filter((w: string) => w.length >= 3 && !['years', 'work', 'skills', 'tools', 'high', 'level'].includes(w));
 
-            matchPercent = hasSkill ? 100 : 0;
+              const allTokens = Array.from(new Set([
+                ...cleanTokens,
+                ...(srcCtx ? srcCtx.cleanTokens : [])
+              ]));
+              const allConcepts = Array.from(new Set([
+                ...reqCtx.concepts,
+                ...(srcCtx ? srcCtx.concepts : [])
+              ]));
+
+              const directMatch = effectiveCandidateSkills.some(cs => {
+                const csLow = cs.toLowerCase();
+                return csLow === reqLower ||
+                       safeWordMatch(csLow, reqLower) ||
+                       safeWordMatch(reqLower, csLow) ||
+                       areSkillsEquivalent(csLow, reqLower) ||
+                       allConcepts.some(con => csLow === con || safeWordMatch(con, csLow) || safeWordMatch(csLow, con) || areSkillsEquivalent(csLow, con)) ||
+                       allTokens.some((tok: string) => csLow === tok || safeWordMatch(tok, csLow) || safeWordMatch(csLow, tok) || areSkillsEquivalent(csLow, tok));
+              }) || allConcepts.some((con: string) => {
+                return safeWordMatch(con, c.rawText || '') ||
+                       effectiveCandidateSkills.some(cs => areSkillsEquivalent(cs, con) || safeWordMatch(con, cs.toLowerCase()) || safeWordMatch(cs.toLowerCase(), con));
+              }) || allTokens.some((tok: string) => {
+                return effectiveCandidateSkills.some(cs => cs.toLowerCase() === tok || areSkillsEquivalent(cs, tok) || safeWordMatch(tok, cs.toLowerCase()) || safeWordMatch(cs.toLowerCase(), tok)) ||
+                       safeWordMatch(tok, c.rawText || '');
+              });
+
+              if (directMatch) {
+                hasSkill = true;
+                matchPercent = 100;
+                matchReason = isMandatory && sourceEvidence
+                  ? `Verified match against mandatory JD source criteria ("${sourceEvidence}"): Candidate demonstrates verified alignment.`
+                  : `Direct match found in candidate competencies or resume context.`;
+              } else {
+                // 2. Semantic Alias Match (e.g. ReactJS -> React.js)
+                for (const alias of allAliases) {
+                  const aliasLow = alias.toLowerCase();
+                  const aliasFound = effectiveCandidateSkills.some(cs => cs.toLowerCase() === aliasLow || safeWordMatch(aliasLow, cs.toLowerCase())) ||
+                                     safeWordMatch(aliasLow, c.rawText || '');
+                  if (aliasFound) {
+                    hasSkill = true;
+                    matchPercent = 100;
+                    matchedAlias = alias;
+                    matchReason = isMandatory && sourceEvidence
+                      ? `Semantic AI match: Verified "${alias}" fulfilling mandatory criteria ("${sourceEvidence}").`
+                      : `Semantic AI match: Found equivalent alias "${alias}" in candidate CV.`;
+                    break;
+                  }
+                }
+              }
+
+              if (!hasSkill && !failureReason) {
+                failureReason = isMandatory && sourceEvidence
+                  ? `Mandatory requirement not met: Candidate CV does not demonstrate verified context for "${sourceEvidence}".`
+                  : `Candidate CV does not contain evidence for "${req.requirement}" or recognized equivalents.`;
+              }
+            }
           }
 
           const status = matchPercent >= 80 ? RequirementStatus.FULLY_MET : (matchPercent > 0 ? RequirementStatus.PARTIALLY_MET : RequirementStatus.NOT_MET);
@@ -1030,21 +1175,28 @@ export default function JobCandidatesPage() {
               category: req.category || 'Technical Skill',
               isMandatory,
               weight: req.weight || 1.0,
+              aliases: allAliases.length > 0 ? allAliases : undefined,
+              sourceEvidence: sourceEvidence || undefined,
+              extractedFrom: sourceEvidence || undefined,
             },
+            sourceEvidence: sourceEvidence || undefined,
             status,
             confidence: ConfidenceLevel.HIGH,
             pointsAwarded: Math.round((matchPercent / 100) * 10),
             maxPoints: 10,
             matchPercentage: matchPercent,
+            matchedAlias: matchedAlias || undefined,
+            matchReason: matchReason || undefined,
+            failureReason: failureReason || undefined,
             hasEvidence: Boolean(hasSkill || matchPercent > 0),
             evidence: [
               {
                 id: `ev-${req.id}`,
-                type: 'Explicit',
+                type: matchedAlias ? 'Semantic' : 'Explicit',
                 source: 'Candidate Profile & CV Text',
                 text: hasSkill
-                  ? `Verified match: Candidate profile & CV document alignment for "${req.requirement}".`
-                  : `Not met: Candidate does not demonstrate required criteria for "${req.requirement}".`,
+                  ? (matchedAlias ? `Semantic match: Recognized "${matchedAlias}" satisfying criteria ("${sourceEvidence || req.requirement}").` : `Verified match: Candidate profile & CV document alignment for "${sourceEvidence || req.requirement}".`)
+                  : (failureReason || `Not met: Candidate does not demonstrate required criteria for "${req.requirement}".`),
                 matchStrength: matchPercent,
               },
             ],
@@ -1089,6 +1241,11 @@ export default function JobCandidatesPage() {
 
       const finalScore = matchResult.overallScore;
       const finalLevel = matchResult.matchLevel;
+      const failedCount = matchResult.breakdown?.mandatoryCompliance?.failedCount ?? 0;
+      const autoDecision: 'SUBMIT' | 'REVIEW' | 'REJECT' =
+        (finalScore >= 80 && failedCount === 0) ? 'SUBMIT' :
+        (finalScore < 45 || failedCount >= 2) ? 'REJECT' :
+        'REVIEW';
 
       return {
         ...c,
@@ -1097,6 +1254,8 @@ export default function JobCandidatesPage() {
         matchBreakdown: matchResult.breakdown,
         matchSummary: matchResult.summary,
         requirementEvals,
+        decision: (c as any).decision || autoDecision,
+        recommendation: (c as any).recommendation || (autoDecision === 'SUBMIT' ? 'ACCEPT' : autoDecision === 'REJECT' ? 'REJECT' : 'REVIEW'),
       };
     });
   }, [uniqueCandidates, job]);
@@ -1995,7 +2154,17 @@ export default function JobCandidatesPage() {
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                       }`}
                     >
-                      <span>{showCandidateMeta ? 'Hide Meta ▴' : 'Candidate Details ▾'}</span>
+                      <span>{showCandidateMeta ? 'Hide Meta' : 'Candidate Details'}</span>
+                      <svg
+                        className={`w-3.5 h-3.5 transition-transform duration-200 ease-out ${
+                          showCandidateMeta ? 'rotate-180 text-white' : 'text-slate-400'
+                        }`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
                     </button>
                     <button
                       onClick={() => {
@@ -2257,8 +2426,22 @@ export default function JobCandidatesPage() {
                               {selectedCandidate.requirementEvals.length} Criteria Evaluated
                             </span>
                           </div>
-                          <div className="flex items-center gap-1.5 text-xs font-bold text-brand-orange">
-                            <span>{showComplianceDropdown ? 'Collapse Audit Criteria ▴' : 'Expand Compliance Audit Dropdown ▾'}</span>
+                          <div className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 ${
+                            showComplianceDropdown
+                              ? 'bg-orange-50 text-orange-900 border border-orange-200 shadow-2xs'
+                              : 'bg-white text-slate-700 hover:text-orange-900 border border-slate-200 hover:border-orange-200 shadow-2xs'
+                          }`}>
+                            <span>{showComplianceDropdown ? 'Hide Audit Criteria' : 'View Audit Criteria'}</span>
+                            <svg
+                              className={`w-3.5 h-3.5 transition-transform duration-200 ease-out ${
+                                showComplianceDropdown ? 'rotate-180 text-orange-600' : 'text-slate-400'
+                              }`}
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
                           </div>
                         </button>
 

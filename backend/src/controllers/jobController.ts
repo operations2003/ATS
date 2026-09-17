@@ -68,48 +68,115 @@ export const parseJobDescriptionController = async (req: AuthRequest, res: Respo
     // 1. Run deterministic parser
     let result = parseJobDescription(textToParse, fileName, mimeType, pageCount, method, ocrUsed);
 
-    // 2. Controlled AI Layer: AI-Assisted JD Requirement Completion
-    // If the JD does not explicitly contain structured sections, infer supported requirements
-    // strictly from the JD text with is_inferred=true, without hallucinating.
-    const totalExplicitReqs = (result.data.mandatoryRequirements?.length || 0) + (result.data.preferredRequirements?.length || 0);
-    if (totalExplicitReqs < 4) {
-      console.log(`[JD Parsing Pipeline] JD has few explicit requirements (${totalExplicitReqs}). Triggering Controlled AI completion...`);
-      try {
-        const { completeJdRequirementsControlled } = await import('../services/jdAiService');
-        const inferredReqs = await completeJdRequirementsControlled(textToParse);
-        if (inferredReqs && inferredReqs.length > 0) {
-          console.log(`[JD Parsing Pipeline] Inferred ${inferredReqs.length} supported requirements from JD narrative.`);
-          for (const inf of inferredReqs) {
-            if (inf.is_mandatory) {
-              result.data.mandatoryRequirements.push(inf.requirement);
-            } else {
-              result.data.preferredRequirements.push(inf.requirement);
-            }
+    // 2. Semantic AI Layer: Gemini Semantic Comprehension & Normalization
+    try {
+      const { semanticallyUnderstandJd } = await import('../services/jdAiService');
+      const semRes = await semanticallyUnderstandJd(textToParse);
 
-            result.data.requirements.push({
-              requirement: inf.requirement,
-              category: inf.category,
-              type: inf.category === 'Experience' ? 'EXPERIENCE' : (inf.category === 'Education' ? 'EDUCATION' : 'SKILL'),
-              weight: inf.weight,
-              isMandatory: inf.is_mandatory,
-              mandatory: inf.is_mandatory,
-              evidenceRequired: true,
-              recruiterConfirmed: false,
-              needsVerification: false,
-              sourceEvidence: inf.source_evidence,
-              sourceSection: 'JD Narrative (AI-Inferred)',
-              confidence: inf.confidence
-            });
-          }
-          // Recalculate validation counts
-          result.data.validation.counts.mandatoryCount = result.data.mandatoryRequirements.length;
-          result.data.validation.counts.preferredCount = result.data.preferredRequirements.length;
-          result.data.validation.status = 'COMPLETE';
-          result.data.validation.message = `Extracted ${result.data.mandatoryRequirements.length} mandatory and ${result.data.preferredRequirements.length} inferred/preferred requirements.`;
+      if (semRes && semRes.normalizedJd && Array.isArray(semRes.requirements) && semRes.requirements.length > 0) {
+        console.log(`[JD Parsing Pipeline] Gemini Semantic Understanding succeeded (${semRes.aiModel}). Using Gemini's canonical requirements (${semRes.normalizedJd.mandatory_requirements.length} mandatory, ${semRes.normalizedJd.preferred_requirements.length} preferred).`);
+        (result.data as any).normalizedJd = semRes.normalizedJd;
+        (result.data as any).aiProcessingStatus = semRes.status;
+        (result.data as any).aiModel = semRes.aiModel;
+
+        // Populate title if deterministic parser missed it or Gemini found cleaner title
+        if (semRes.normalizedJd.job_title && (!result.data.positionTitle || result.data.positionTitle.length < 3)) {
+          result.data.positionTitle = semRes.normalizedJd.job_title;
+          if (result.data.job) result.data.job.positionTitle = semRes.normalizedJd.job_title;
         }
-      } catch (aiErr: any) {
-        console.warn('[JD Parsing Pipeline] Controlled AI completion skipped:', aiErr.message);
+
+        // Direct requirement synchronization from Gemini:
+        // Use Gemini's clean, semantic requirements as the canonical candidate evaluation rubric
+        const geminiMandatoryList = semRes.requirements
+          .filter(r => r.is_mandatory)
+          .map(r => r.requirement);
+
+        const geminiPreferredList = semRes.requirements
+          .filter(r => !r.is_mandatory)
+          .map(r => r.requirement);
+
+        result.data.mandatoryRequirements = geminiMandatoryList;
+        result.data.preferredRequirements = geminiPreferredList;
+        result.data.hiringCriteria = [];
+        if (result.data.job) {
+          result.data.job.mandatoryRequirements = geminiMandatoryList;
+          result.data.job.preferredRequirements = geminiPreferredList;
+          if (Array.isArray(semRes.normalizedJd.responsibilities) && semRes.normalizedJd.responsibilities.length > 0) {
+            result.data.job.responsibilities = semRes.normalizedJd.responsibilities;
+          }
+          if (Array.isArray(semRes.normalizedJd.technologies) && semRes.normalizedJd.technologies.length > 0) {
+            result.data.job.technologies = semRes.normalizedJd.technologies;
+          }
+        }
+
+        if (Array.isArray(semRes.normalizedJd.responsibilities) && semRes.normalizedJd.responsibilities.length > 0) {
+          result.data.responsibilities = semRes.normalizedJd.responsibilities;
+        }
+
+        result.data.requirements = semRes.requirements.map((inf, idx) => ({
+          id: inf.id || `req-ai-${idx + 1}`,
+          requirement: inf.requirement,
+          category: inf.category || 'Technical Skill',
+          type: inf.category === 'Experience' ? 'EXPERIENCE' : (inf.category === 'Education' ? 'EDUCATION' : (inf.category === 'Certification' ? 'CERTIFICATION' : 'SKILL')),
+          weight: typeof inf.weight === 'number' ? inf.weight : (inf.is_mandatory ? 2.0 : 1.0),
+          isMandatory: inf.is_mandatory,
+          mandatory: inf.is_mandatory,
+          evidenceRequired: true,
+          recruiterConfirmed: false,
+          needsVerification: false,
+          sourceEvidence: inf.source_evidence || inf.requirement,
+          sourceSection: inf.is_mandatory ? 'Mandatory Requirements' : 'Preferred Requirements',
+          confidence: (inf.confidence as 'HIGH' | 'MEDIUM' | 'LOW') || 'HIGH',
+          aliases: inf.aliases || [],
+          context: inf.context || ''
+        }));
+
+        result.data.validation.counts.mandatoryCount = result.data.mandatoryRequirements.length;
+        result.data.validation.counts.preferredCount = result.data.preferredRequirements.length;
+        result.data.validation.counts.hiringCriteriaCount = 0;
+        result.data.validation.counts.responsibilitiesCount = result.data.responsibilities?.length || 0;
+        result.data.validation.counts.totalRequirementsCount = result.data.requirements.length;
+        result.data.validation.status = 'COMPLETE';
+        result.data.validation.message = `Extracted ${result.data.mandatoryRequirements.length} mandatory and ${result.data.preferredRequirements.length} preferred requirements via Gemini Semantic Normalization.`;
+      } else {
+        // Fallback to secondary inference only if no explicit requirements were found
+        const totalExplicitReqs = (result.data.mandatoryRequirements?.length || 0) + (result.data.preferredRequirements?.length || 0);
+        if (totalExplicitReqs === 0) {
+          console.log(`[JD Parsing Pipeline] Triggering deterministic fallback completion for unsegmented JD...`);
+          const { completeJdRequirementsControlled } = await import('../services/jdAiService');
+          const inferredReqs = await completeJdRequirementsControlled(textToParse);
+          if (inferredReqs && inferredReqs.length > 0) {
+            for (const inf of inferredReqs) {
+              if (inf.is_mandatory) {
+                result.data.mandatoryRequirements.push(inf.requirement);
+              } else {
+                result.data.preferredRequirements.push(inf.requirement);
+              }
+
+              result.data.requirements.push({
+                requirement: inf.requirement,
+                category: inf.category,
+                type: inf.category === 'Experience' ? 'EXPERIENCE' : (inf.category === 'Education' ? 'EDUCATION' : 'SKILL'),
+                weight: inf.weight,
+                isMandatory: inf.is_mandatory,
+                mandatory: inf.is_mandatory,
+                evidenceRequired: true,
+                recruiterConfirmed: false,
+                needsVerification: false,
+                sourceEvidence: inf.source_evidence,
+                sourceSection: 'Fallback Inference Engine',
+                confidence: inf.confidence,
+                aliases: inf.aliases || [],
+                context: inf.context || ''
+              });
+            }
+            result.data.validation.counts.mandatoryCount = result.data.mandatoryRequirements.length;
+            result.data.validation.counts.preferredCount = result.data.preferredRequirements.length;
+          }
+        }
       }
+    } catch (aiErr: any) {
+      console.warn('[JD Parsing Pipeline] Semantic AI layer skipped, fallback intact:', aiErr.message);
     }
 
     console.log('\n========================================');
@@ -166,7 +233,7 @@ export const createJob = async (req: AuthRequest, res: Response): Promise<void> 
     }
 
     // Format requirements if passed
-    const requirementsData = Array.isArray(requirements)
+    let requirementsData = Array.isArray(requirements)
       ? requirements
           .map((r: any) => ({
             requirement: String(r.requirement || r.text || '').trim(),
@@ -175,10 +242,47 @@ export const createJob = async (req: AuthRequest, res: Response): Promise<void> 
             weight: typeof r.weight === 'number' ? r.weight : 1.0,
             evidence_required: Boolean(r.evidence_required ?? r.evidenceRequired ?? false),
             source_evidence: String(r.sourceEvidence || r.source_evidence || r.requirement || r.text || '').trim(),
-            needs_verification: Boolean(r.needsVerification ?? r.needs_verification ?? false)
+            needs_verification: Boolean(r.needsVerification ?? r.needs_verification ?? false),
+            aliases: Array.isArray(r.aliases) ? r.aliases : [],
+            context: r.context ? String(r.context).trim() : null
           }))
           .filter((r: any) => r.requirement.length > 0)
       : [];
+
+    // Semantic AI Representation
+    let normalizedJd = req.body.normalized_jd || req.body.normalizedJd || null;
+    let aiStatus = req.body.ai_processing_status || (normalizedJd ? 'COMPLETED' : 'PENDING');
+    let aiModel = req.body.ai_model || (normalizedJd ? 'semantic-ai-v2' : null);
+
+    // If normalized_jd was not pre-generated, attempt Gemini normalization now
+    if (!normalizedJd && jd_text && typeof jd_text === 'string' && jd_text.trim().length > 30) {
+      try {
+        const { semanticallyUnderstandJd } = await import('../services/jdAiService');
+        const semRes = await semanticallyUnderstandJd(jd_text);
+        if (semRes && semRes.normalizedJd) {
+          normalizedJd = semRes.normalizedJd;
+          aiStatus = semRes.status;
+          aiModel = semRes.aiModel;
+
+          // If no explicit requirements were provided, seed them from Gemini
+          if (requirementsData.length === 0 && semRes.requirements.length > 0) {
+            requirementsData = semRes.requirements.map(inf => ({
+              requirement: inf.requirement,
+              category: inf.category,
+              is_mandatory: inf.is_mandatory,
+              weight: inf.weight,
+              evidence_required: true,
+              source_evidence: inf.source_evidence,
+              needs_verification: false,
+              aliases: inf.aliases || [],
+              context: inf.context || null
+            }));
+          }
+        }
+      } catch (semErr: any) {
+        console.warn('[Create Job] Semantic normalization error:', semErr.message);
+      }
+    }
 
     // Save job in PostgreSQL via Prisma with optional nested requirements
     let job: any = null;
@@ -192,27 +296,46 @@ export const createJob = async (req: AuthRequest, res: Response): Promise<void> 
     }));
 
     try {
+      // Build Prisma data payload dynamically to handle any pending DB column migrations
+      const jobData: any = {
+        client: client.trim(),
+        position: position.trim(),
+        location: location ? String(location).trim() : null,
+        work_mode: work_mode ? String(work_mode).trim() : null,
+        salary: salary ? String(salary).trim() : null,
+        jd_text: jd_text ? String(jd_text).trim() : null,
+        jd_file_url: jd_file_url ? String(jd_file_url).trim() : null,
+        status: jobStatus,
+        created_by: req.user.userId,
+        requirements: {
+          create: requirementsData.map(r => ({
+            requirement: r.requirement,
+            category: r.category,
+            weight: r.weight,
+            is_mandatory: r.is_mandatory,
+            evidence_required: r.evidence_required,
+            source_evidence: r.source_evidence,
+            needs_verification: r.needs_verification
+          }))
+        }
+      };
+
+      if (normalizedJd) {
+        jobData.normalized_jd = normalizedJd;
+        jobData.original_jd = jd_text ? String(jd_text).trim() : null;
+        jobData.ai_processing_status = aiStatus;
+        jobData.ai_model = aiModel;
+        jobData.ai_processed_at = new Date();
+      }
+
       job = await prisma.job.create({
-        data: {
-          client: client.trim(),
-          position: position.trim(),
-          location: location ? String(location).trim() : null,
-          work_mode: work_mode ? String(work_mode).trim() : null,
-          salary: salary ? String(salary).trim() : null,
-          jd_text: jd_text ? String(jd_text).trim() : null,
-          jd_file_url: jd_file_url ? String(jd_file_url).trim() : null,
-          status: jobStatus,
-          created_by: req.user.userId,
-          requirements: {
-            create: requirementsData
-          }
-        },
+        data: jobData,
         include: {
           requirements: true
         }
       });
     } catch (dbErr: any) {
-      console.warn('[Create Job] Database unavailable, persisting to GLOBAL_JOB_STORE fallback:', dbErr?.message || dbErr);
+      console.warn('[Create Job] Database unavailable or schema mismatch, persisting to GLOBAL_JOB_STORE fallback:', dbErr?.message || dbErr);
       job = {
         id: fallbackId,
         client: client.trim(),
@@ -221,6 +344,11 @@ export const createJob = async (req: AuthRequest, res: Response): Promise<void> 
         work_mode: work_mode ? String(work_mode).trim() : 'Hybrid',
         salary: salary ? String(salary).trim() : undefined,
         jd_text: jd_text ? String(jd_text).trim() : undefined,
+        original_jd: jd_text ? String(jd_text).trim() : undefined,
+        normalized_jd: normalizedJd,
+        ai_processing_status: aiStatus,
+        ai_model: aiModel,
+        ai_processed_at: normalizedJd ? new Date() : undefined,
         jd_file_url: jd_file_url ? String(jd_file_url).trim() : undefined,
         status: jobStatus,
         created_by: req.user.userId,
@@ -231,6 +359,12 @@ export const createJob = async (req: AuthRequest, res: Response): Promise<void> 
 
     // Cache by job.id only (never cache phantom fallbackId when DB created real job)
     if (job && job.id) {
+      if (normalizedJd) {
+        job.normalized_jd = normalizedJd;
+        job.original_jd = job.original_jd || job.jd_text;
+        job.ai_processing_status = aiStatus;
+        job.ai_model = aiModel;
+      }
       GLOBAL_JOB_STORE.set(job.id, job);
     }
 
@@ -241,6 +375,80 @@ export const createJob = async (req: AuthRequest, res: Response): Promise<void> 
   } catch (error: any) {
     console.error('Create Job Error:', error);
     res.status(500).json({ error: 'Server error while creating job', details: error.message || String(error) });
+  }
+};
+
+// @desc    Trigger on-demand Gemini semantic normalization for an existing Job
+// @route   POST /api/jobs/:id/normalize-ai
+// @access  Private (Authenticated Recruiter)
+export const normalizeJobWithAiController = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const jobId = String(req.params.id || req.params.jobId || '').trim();
+    if (!jobId) {
+      res.status(400).json({ error: 'Job ID is required.' });
+      return;
+    }
+
+    const job = await getJobFromStoreOrDb(jobId);
+    if (!job) {
+      res.status(404).json({ error: `Job with ID "${jobId}" not found.` });
+      return;
+    }
+
+    const rawJdText = job.original_jd || job.jd_text || '';
+    if (!rawJdText || rawJdText.trim().length < 25) {
+      res.status(400).json({ error: 'Job does not contain sufficient original JD text for AI normalization.' });
+      return;
+    }
+
+    const { semanticallyUnderstandJd } = await import('../services/jdAiService');
+    const semRes = await semanticallyUnderstandJd(rawJdText);
+
+    if (!semRes.normalizedJd) {
+      res.status(503).json({
+        error: 'AI service is temporarily unavailable. Please try again in a moment.',
+        status: semRes.status
+      });
+      return;
+    }
+
+    // Attach to in-memory store
+    const updatedFields: any = {
+      original_jd: rawJdText,
+      normalized_jd: semRes.normalizedJd,
+      ai_processing_status: semRes.status,
+      ai_model: semRes.aiModel,
+      ai_processed_at: new Date()
+    };
+
+    if (GLOBAL_JOB_STORE.has(job.id)) {
+      const existing = GLOBAL_JOB_STORE.get(job.id);
+      GLOBAL_JOB_STORE.set(job.id, { ...existing, ...updatedFields });
+    }
+
+    // Attempt updating PostgreSQL if UUID
+    if (UUID_REGEX.test(job.id)) {
+      try {
+        await prisma.job.update({
+          where: { id: job.id },
+          data: updatedFields
+        });
+      } catch (dbErr: any) {
+        console.warn('[Normalize AI] DB update non-fatal error:', dbErr.message);
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Job successfully normalized with Semantic AI',
+      jobId: job.id,
+      normalizedJd: semRes.normalizedJd,
+      status: semRes.status,
+      aiModel: semRes.aiModel || 'semantic-ai-v2'
+    });
+  } catch (error: any) {
+    console.error('[Normalize Job AI Error]:', error);
+    res.status(500).json({ error: error.message || 'Failed to normalize job with AI' });
   }
 };
 

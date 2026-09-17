@@ -90,6 +90,13 @@ export default function RequirementsReviewPage() {
   const [newEvidenceRequired, setNewEvidenceRequired] = useState(true);
   const [addFieldError, setAddFieldError] = useState('');
 
+  // Semantic AI & Original JD View States
+  const [normalizedJd, setNormalizedJd] = useState<any>(null);
+  const [originalJdText, setOriginalJdText] = useState<string>('');
+  const [aiStatus, setAiStatus] = useState<string>('PENDING');
+  const [isNormalizing, setIsNormalizing] = useState(false);
+  const [activeTab, setActiveTab] = useState<'requirements' | 'normalized_ai' | 'original_jd'>('requirements');
+
   // Fetch job & requirements from backend API on mount
   useEffect(() => {
     async function loadData() {
@@ -99,7 +106,7 @@ export default function RequirementsReviewPage() {
         setLoading(true);
         setErrorMsg('');
         const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-        const authToken = token || localStorage.getItem('tasknera_token');
+        const authToken = token || (typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null);
 
         const headers = {
           ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
@@ -112,6 +119,9 @@ export default function RequirementsReviewPage() {
         if (jobRes.ok && jobData.job) {
           setJobTitle(jobData.job.position || 'Job Specification');
           setClientName(jobData.job.client || '');
+          setNormalizedJd(jobData.job.normalized_jd || jobData.job.normalizedJd || null);
+          setOriginalJdText(jobData.job.original_jd || jobData.job.jd_text || '');
+          setAiStatus(jobData.job.ai_processing_status || (jobData.job.normalized_jd ? 'COMPLETED' : 'PENDING'));
         }
 
         // 2. Fetch Requirements from Backend API
@@ -175,6 +185,43 @@ export default function RequirementsReviewPage() {
 
     loadData();
   }, [jobId, token]);
+
+  // Recruiter Action: Run on-demand Semantic AI Normalization
+  const handleRunAiNormalization = async () => {
+    try {
+      setIsNormalizing(true);
+      setErrorMsg('');
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const authToken = token || (typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null);
+      const res = await fetch(`${backendUrl}/jobs/${jobId}/normalize-ai`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+        }
+      });
+      const data = await res.json();
+      if (res.ok && data.normalizedJd) {
+        setNormalizedJd(data.normalizedJd);
+        setAiStatus('COMPLETED');
+        setSuccessMsg('Semantic Intelligence analysis completed successfully!');
+      } else {
+        const rawErr = data?.error || '';
+        const friendlyError = /503|500|502|504|429|status|unavailable|busy|demand/i.test(rawErr)
+          ? 'AI service is temporarily unavailable. Please try again in a moment.'
+          : (rawErr || 'AI service is temporarily unavailable. Please try again in a moment.');
+        setErrorMsg(friendlyError);
+      }
+    } catch (err: any) {
+      const errText = String(err?.message || err);
+      const friendlyCatchError = /503|500|502|504|429|fetch|network|status|unavailable|busy|demand/i.test(errText)
+        ? 'AI service is temporarily unavailable. Please try again in a moment.'
+        : (errText || 'AI service is temporarily unavailable. Please try again in a moment.');
+      setErrorMsg(friendlyCatchError);
+    } finally {
+      setIsNormalizing(false);
+    }
+  };
 
   // Recruiter Action: Update Single Requirement Field
   const handleUpdateField = (id: string, updates: Partial<RequirementItem>) => {
@@ -400,6 +447,51 @@ export default function RequirementsReviewPage() {
           </div>
         </div>
 
+        {/* Navigation Tabs */}
+        <div className="flex items-center gap-2 mb-6 border-b border-slate-200 pb-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setActiveTab('requirements')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'requirements'
+                ? 'bg-[#1E293B] text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 bg-white border border-slate-200'
+            }`}
+          >
+            Criteria Checklist ({requirements.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('normalized_ai')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+              activeTab === 'normalized_ai'
+                ? 'bg-brand-orange text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 bg-white border border-slate-200'
+            }`}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            AI Semantic Understanding
+            {normalizedJd ? (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-bold ml-1">Active</span>
+            ) : (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-600 font-normal ml-1">Pending</span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('original_jd')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'original_jd'
+                ? 'bg-[#1E293B] text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 bg-white border border-slate-200'
+            }`}
+          >
+            Original Requisition Document
+          </button>
+        </div>
+
         {/* Global Success / Error Banners */}
         {successMsg && (
           <div className="mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-center gap-3 shadow-sm">
@@ -439,8 +531,11 @@ export default function RequirementsReviewPage() {
           </div>
         )}
 
-        {/* Add Requirement Form Modal / Inline Box */}
-        {showAddForm && (
+        {/* Tab 1: Interactive Requirements Checklist */}
+        {activeTab === 'requirements' && (
+          <div>
+            {/* Add Requirement Form Modal / Inline Box */}
+            {showAddForm && (
           <div className="mb-8 p-6 rounded-2xl bg-white border border-brand-orange-border shadow-md space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="text-base font-bold text-[#1E293B] flex items-center gap-2">
@@ -703,6 +798,227 @@ export default function RequirementsReviewPage() {
                   </>
                 )}
               </button>
+            </div>
+          </div>
+        )}
+      </div>
+    )}
+
+        {/* Tab 2: AI Semantic Understanding */}
+        {activeTab === 'normalized_ai' && (
+          <div className="space-y-6">
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+                <div>
+                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1 shadow-xs">
+                      <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse"></span>
+                      Enterprise Semantic Intelligence Layer
+                    </span>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                      aiStatus === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+                    }`}>
+                      Status: {aiStatus}
+                    </span>
+                  </div>
+                  <h2 className="text-xl font-bold text-[#1E293B]">Normalized Semantic JD Representation</h2>
+                  <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
+                    Understands technological concepts across naming variants (e.g. React.js ≈ ReactJS), differentiates mandatory vs. preferred requirements, and extracts experience without word-chopping.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleRunAiNormalization}
+                  disabled={isNormalizing}
+                  className="px-5 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange flex items-center gap-2 self-start sm:self-auto cursor-pointer disabled:opacity-50"
+                >
+                  {isNormalizing ? (
+                    <>
+                      <svg className="animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>AI service analyzing... (retrying automatically if busy)</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      <span>{normalizedJd ? 'Re-run Semantic Analysis' : 'Run Semantic Understanding'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {normalizedJd ? (
+                <div className="mt-6 space-y-6">
+                  {/* Summary & Experience Overview */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Target Position</span>
+                      <h3 className="text-base font-bold text-[#1E293B]">{normalizedJd.job_title || jobTitle}</h3>
+                      {normalizedJd.summary && (
+                        <p className="text-xs text-slate-600 mt-1 leading-relaxed">{normalizedJd.summary}</p>
+                      )}
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Experience Baseline</span>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-md font-bold text-xs">
+                          {normalizedJd.experience?.minimum_years ? `${normalizedJd.experience.minimum_years}+ Years Minimum` : 'Flexible / Unspecified'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        {normalizedJd.experience?.description || 'General professional background as stated in requisition.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Mandatory Normalized Requirements */}
+                  <div>
+                    <h3 className="text-sm font-bold text-[#1E293B] flex items-center gap-2 mb-3">
+                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                      Mandatory Requirements & Recognized Aliases ({normalizedJd.mandatory_requirements?.length || 0})
+                    </h3>
+                    <div className="space-y-3">
+                      {(normalizedJd.mandatory_requirements || []).map((nr: any, idx: number) => (
+                        <div key={idx} className="p-4 rounded-xl bg-rose-50/30 border border-rose-100 hover:border-rose-200 transition-colors space-y-2">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <span className="text-sm font-bold text-slate-900">{nr.name}</span>
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">
+                              {nr.category || 'Mandatory Skill'}
+                            </span>
+                          </div>
+                          {nr.description && nr.description !== nr.name && (
+                            <p className="text-xs text-slate-600 leading-relaxed">{nr.description}</p>
+                          )}
+                          {nr.aliases && nr.aliases.length > 1 && (
+                            <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-rose-100/60">
+                              <span className="text-[10px] font-semibold text-slate-500">Recognized Aliases:</span>
+                              {nr.aliases.map((a: string, aIdx: number) => (
+                                <span key={aIdx} className="px-2 py-0.5 rounded-md text-[10px] bg-white border border-rose-200 text-rose-700 font-mono">
+                                  {a}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Preferred Normalized Requirements */}
+                  <div>
+                    <h3 className="text-sm font-bold text-[#1E293B] flex items-center gap-2 mb-3">
+                      <span className="w-2.5 h-2.5 rounded-full bg-brand-orange"></span>
+                      Preferred & Nice-to-Have Requirements ({normalizedJd.preferred_requirements?.length || 0})
+                    </h3>
+                    <div className="space-y-3">
+                      {(normalizedJd.preferred_requirements || []).map((nr: any, idx: number) => (
+                        <div key={idx} className="p-4 rounded-xl bg-amber-50/30 border border-amber-100 hover:border-amber-200 transition-colors space-y-2">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <span className="text-sm font-bold text-slate-900">{nr.name}</span>
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                              {nr.category || 'Preferred Skill'}
+                            </span>
+                          </div>
+                          {nr.description && nr.description !== nr.name && (
+                            <p className="text-xs text-slate-600 leading-relaxed">{nr.description}</p>
+                          )}
+                          {nr.aliases && nr.aliases.length > 1 && (
+                            <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-amber-100/60">
+                              <span className="text-[10px] font-semibold text-slate-500">Recognized Aliases:</span>
+                              {nr.aliases.map((a: string, aIdx: number) => (
+                                <span key={aIdx} className="px-2 py-0.5 rounded-md text-[10px] bg-white border border-amber-200 text-amber-800 font-mono">
+                                  {a}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Responsibilities */}
+                  {normalizedJd.responsibilities && normalizedJd.responsibilities.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-bold text-[#1E293B] mb-2">Core Responsibilities</h3>
+                      <ul className="list-disc pl-5 space-y-1.5 text-xs text-slate-700">
+                        {normalizedJd.responsibilities.map((resp: string, rIdx: number) => (
+                          <li key={rIdx} className="leading-relaxed">{resp}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Detected Technologies */}
+                  {normalizedJd.technologies && normalizedJd.technologies.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-bold text-[#1E293B] mb-2">Detected Technology Stack</h3>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {normalizedJd.technologies.map((tech: string, tIdx: number) => (
+                          <span key={tIdx} className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 border border-slate-200 text-xs font-semibold">
+                            {tech}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="py-12 text-center text-slate-500">
+                  <div className="w-12 h-12 rounded-full bg-brand-orange-pale text-brand-orange flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </div>
+                  <h4 className="text-sm font-bold text-[#1E293B] mb-1">No AI Semantic Breakdown Available Yet</h4>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto mb-4">
+                    Run Semantic Understanding to extract normalized criteria, technology aliases, and experience targets for accurate candidate matching.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleRunAiNormalization}
+                    disabled={isNormalizing}
+                    className="px-6 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange flex items-center gap-2 mx-auto cursor-pointer"
+                  >
+                    Run Semantic Understanding
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Tab 3: Original Requisition Document */}
+        {activeTab === 'original_jd' && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 flex-wrap gap-2">
+              <div>
+                <h3 className="text-base font-bold text-[#1E293B]">Preserved Original Job Description</h3>
+                <p className="text-xs text-slate-500">Unaltered raw text exactly as provided by the hiring manager or recruiter.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (originalJdText) {
+                    navigator.clipboard.writeText(originalJdText);
+                    setSuccessMsg('Original JD copied to clipboard!');
+                    setTimeout(() => setSuccessMsg(''), 2500);
+                  }
+                }}
+                className="px-3.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+              >
+                Copy Text
+              </button>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 font-mono text-xs text-slate-800 whitespace-pre-wrap leading-relaxed max-h-[600px] overflow-y-auto">
+              {originalJdText || 'No original JD text recorded for this job requisition.'}
             </div>
           </div>
         )}

@@ -41,6 +41,11 @@ model Job {
   position              String
   jd_file_url           String?     @map("jd_file_url")
   jd_text               String?     @map("jd_text")
+  original_jd           String?     @map("original_jd")
+  normalized_jd         Json?       @map("normalized_jd")
+  ai_processing_status  String?     @default("PENDING") @map("ai_processing_status")
+  ai_model              String?     @map("ai_model")
+  ai_processed_at       DateTime?   @map("ai_processed_at")
   location              String?
   work_mode             String?     @map("work_mode")
   salary                String?
@@ -72,6 +77,8 @@ model Requirement {
   recruiter_confirmed Boolean  @default(false) @map("recruiter_confirmed")
   source_evidence     String?  @map("source_evidence")
   needs_verification  Boolean  @default(false) @map("needs_verification")
+  aliases             String[] @default([])
+  context             String?
   created_at          DateTime @default(now()) @map("created_at")
   updated_at          DateTime @updatedAt @map("updated_at")
 

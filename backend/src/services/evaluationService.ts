@@ -114,8 +114,18 @@ export interface CandidateEvaluationPayload {
   evaluator: string;
 }
 
-const PYTHON_SERVICE_URL = (process.env.DOCUMENT_PROCESSOR_URL || 'http://127.0.0.1:8000').trim().replace(/\/+$/, '');
-const EVAL_TIMEOUT_MS = parseInt(process.env.PYTHON_TIMEOUT_MS || '25000', 10);
+const getPythonServiceUrls = (): string[] => {
+  const configured = (process.env.DOCUMENT_PROCESSOR_URL || '').trim().replace(/\/+$/, '');
+  const remote = (process.env.REMOTE_DOCUMENT_PROCESSOR_URL || '').trim().replace(/\/+$/, '');
+  const local = 'http://127.0.0.1:8000';
+  const urls: string[] = [];
+  if (configured) urls.push(configured);
+  if (!urls.includes(local)) urls.push(local);
+  if (remote && !urls.includes(remote)) urls.push(remote);
+  return urls;
+};
+
+const EVAL_TIMEOUT_MS = parseInt(process.env.PYTHON_TIMEOUT_MS || '15000', 10);
 
 /**
  * Evaluates a single candidate against a job's confirmed requirements
@@ -123,7 +133,7 @@ const EVAL_TIMEOUT_MS = parseInt(process.env.PYTHON_TIMEOUT_MS || '25000', 10);
  */
 export async function evaluateCandidateAgainstRequirements(
   candidate: CandidateRecord,
-  job: { id: string; position?: string; title?: string; client?: string; company?: string; jd_text?: string },
+  job: { id: string; position?: string; title?: string; client?: string; company?: string; jd_text?: string; normalized_jd?: any },
   requirements: Array<{
     id: string;
     requirement: string;
@@ -133,24 +143,58 @@ export async function evaluateCandidateAgainstRequirements(
     isMandatory?: boolean;
     needs_verification?: boolean;
     source_evidence?: string | null;
+    aliases?: string[];
+    context?: string | null;
   }>
 ): Promise<CandidateEvaluationPayload> {
+  // Enrich requirements with aliases from job.normalized_jd if present
+  const aliasLookup = new Map<string, string[]>();
+  if (job.normalized_jd) {
+    const allNormReqs = [
+      ...(job.normalized_jd.mandatory_requirements || []),
+      ...(job.normalized_jd.preferred_requirements || [])
+    ];
+    for (const nr of allNormReqs) {
+      if (nr.name && Array.isArray(nr.aliases) && nr.aliases.length > 0) {
+        aliasLookup.set(nr.name.toLowerCase().trim(), nr.aliases);
+      }
+    }
+  }
+
+  const enrichedRequirements = requirements.map(r => {
+    const reqLower = r.requirement.toLowerCase();
+    let aliases = r.aliases || [];
+    if (aliases.length === 0) {
+      for (const [name, aList] of aliasLookup.entries()) {
+        if (reqLower.includes(name) || name.includes(reqLower)) {
+          aliases = aList;
+          break;
+        }
+      }
+    }
+    return {
+      ...r,
+      aliases
+    };
+  });
+
   // 1. Attempt AI-Powered Semantic Evaluation via Python Service with retries
   let lastError: any = null;
-  const maxAttempts = 3;
+  const candidateUrls = getPythonServiceUrls();
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  for (let uIdx = 0; uIdx < candidateUrls.length; uIdx++) {
+    const serviceUrl = candidateUrls[uIdx];
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), EVAL_TIMEOUT_MS);
 
-      const response = await fetch(`${PYTHON_SERVICE_URL}/evaluate-ai`, {
+      const response = await fetch(`${serviceUrl}/evaluate-ai`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           candidate,
           job,
-          requirements
+          requirements: enrichedRequirements
         }),
         signal: controller.signal
       });
@@ -172,7 +216,9 @@ export async function evaluateCandidateAgainstRequirements(
             confidence: r.confidence || 'High',
             weight: r.weight || 1.0,
             score: r.score ?? 0,
-            failureReason: r.failureReason,
+            failureReason: r.failureReason || r.matchReason,
+            aiMatchReason: r.matchReason,
+            aiMatchedAlias: r.matchedAlias,
             evidenceType: 'STRONG_SEMANTIC'
           }));
 
@@ -303,14 +349,110 @@ export async function evaluateCandidateAgainstRequirements(
       }
     } catch (err: any) {
       lastError = err;
-      console.warn(`[EvaluationService] Python attempt ${attempt}/${maxAttempts} failed:`, err.message);
-      if (attempt < maxAttempts) {
-        // Wait 1.5 seconds before retrying to allow cold-start / socket recovery
-        await new Promise(res => setTimeout(res, 1500));
+      console.warn(`[EvaluationService] Python service (${serviceUrl}) attempt ${uIdx + 1}/${candidateUrls.length} failed:`, err.message);
+      if (uIdx + 1 < candidateUrls.length) {
+        await new Promise(res => setTimeout(res, 500));
       }
     }
   }
 
-  // Pure Python Guarantee: Fail cleanly instead of running conflicting TypeScript heuristics
-  throw new Error(`Python evaluation engine failed after ${maxAttempts} attempts: ${lastError?.message || 'Service unreachable'}. Please verify the Python document processor is online.`);
+  // 2. Resilient Deterministic Fallback: Run local TypeScript ATS Engine if Python service is unreachable
+  console.warn(`[EvaluationService] Python evaluation engine unavailable (${lastError?.message}). Engaging local ATS scoring fallback...`);
+  try {
+    const { calculateATSScore } = await import('./atsScoringEngine');
+    const tsResult = calculateATSScore(
+      candidate,
+      {
+        id: job.id,
+        position: job.position || job.title,
+        client: job.client || job.company,
+        jd_text: job.jd_text
+      },
+      enrichedRequirements as any
+    );
+
+    const mappedReqs: RequirementEvaluationResult[] = tsResult.requirements.map((r: any) => ({
+      id: r.id,
+      requirement: r.requirement,
+      category: r.category,
+      mandatory: r.mandatory,
+      isMandatory: r.mandatory,
+      evidence: r.candidateEvidence || r.evidence || '',
+      candidateEvidence: r.candidateEvidence || r.evidence || '',
+      evidenceSource: r.evidenceSource || 'Local ATS Evaluation',
+      status: r.status,
+      confidence: r.confidence || 'High',
+      weight: r.weight,
+      score: r.score,
+      failureReason: r.failureReason,
+      evidenceType: r.evidenceType
+    }));
+
+    return {
+      evaluationId: tsResult.evaluationId,
+      candidateId: candidate.id,
+      candidateName: candidate.name || 'Candidate',
+      candidateRole: candidate.currentTitle || job.position || 'Professional',
+      candidateCompany: candidate.currentCompany || 'Organization',
+      candidateEmail: candidate.email || '',
+      candidatePhone: candidate.phone || '',
+      candidateLocation: candidate.location || '',
+      jobId: job.id,
+      jobTitle: job.position || job.title || 'Job Position',
+      jobClient: job.client || job.company || 'Client',
+      rawScore: tsResult.rawScore,
+      baseDeterministicScore: tsResult.rawScore,
+      aiSemanticAdjustment: 0.0,
+      aiAssistanceEnabled: false,
+      inferredRequirementsCount: 0,
+      overallMatch: tsResult.overallScore,
+      atsScore: tsResult.overallScore,
+      overallScore: tsResult.overallScore,
+      matchLevel: tsResult.matchLevel,
+      mandatoryRequirementFailed: tsResult.mandatoryRequirementFailed,
+      mandatoryComplianceScore: tsResult.mandatoryComplianceScore,
+      mandatoryFailures: tsResult.mandatoryFailures,
+      mandatoryCompliance: tsResult.mandatoryCompliance,
+      recommendation: tsResult.overallScore >= 75 && !tsResult.mandatoryRequirementFailed ? 'SUBMIT' : (tsResult.overallScore >= 50 ? 'REVIEW' : 'DO NOT SUBMIT'),
+      recommendationReason: tsResult.mandatoryRequirementFailed ? 'Mandatory knockout criteria failed in candidate profile.' : 'Evaluated via Deterministic ATS Engine.',
+      pillarScores: tsResult.pillarScores,
+      pillars: tsResult.pillars,
+      scoreBreakdown: {
+        mandatory: { score: tsResult.mandatoryComplianceScore, max: 100, pct: tsResult.mandatoryComplianceScore, label: 'Mandatory Compliance' },
+        skills: { score: tsResult.pillarScores.technicalSkills, max: 100, pct: tsResult.pillarScores.technicalSkills, label: 'Technical Skills' },
+        experience: { score: tsResult.pillarScores.experience, max: 100, pct: tsResult.pillarScores.experience, label: 'Experience' },
+        responsibilities: { score: tsResult.pillarScores.genAI, max: 100, pct: tsResult.pillarScores.genAI, label: 'Role Competencies' },
+        preferred: { score: tsResult.pillarScores.education, max: 100, pct: tsResult.pillarScores.education, label: 'Education & Preferred' }
+      },
+      summaryCounts: {
+        mandatoryTotal: tsResult.mandatoryCompliance.total,
+        preferredTotal: mappedReqs.filter(r => !r.mandatory).length,
+        matched: mappedReqs.filter(r => r.status === 'MATCHED').length,
+        partial: mappedReqs.filter(r => r.status === 'PARTIAL').length,
+        notMatched: mappedReqs.filter(r => r.status === 'NOT_MATCHED').length,
+        unknown: 0,
+        fullyMet: mappedReqs.filter(r => r.status === 'MATCHED').length,
+        partiallyMet: mappedReqs.filter(r => r.status === 'PARTIAL').length,
+        notMet: mappedReqs.filter(r => r.status === 'NOT_MATCHED').length,
+        needsVerification: 0,
+        notFound: mappedReqs.filter(r => r.status === 'NOT_MATCHED').length
+      },
+      requirements: mappedReqs,
+      requirementResults: mappedReqs,
+      strengths: tsResult.strengths,
+      gaps: tsResult.gaps,
+      warnings: tsResult.warnings,
+      explanation: {
+        summary: `${tsResult.matchLevel} (${tsResult.overallScore}% Overall Match).`,
+        strengths: tsResult.strengths,
+        gaps: tsResult.gaps,
+        mandatoryStatus: tsResult.mandatoryRequirementFailed ? 'FAILED' : 'PASSED'
+      },
+      scoringConfigVersion: '5.0.0-ats-scoring-fallback',
+      evaluatedAt: new Date().toISOString(),
+      evaluator: 'TaskNera ATS Engine (Local Fallback)'
+    };
+  } catch (fallbackErr: any) {
+    throw new Error(`Evaluation engine failed: Python unreachable (${lastError?.message}) and fallback failed (${fallbackErr.message})`);
+  }
 }

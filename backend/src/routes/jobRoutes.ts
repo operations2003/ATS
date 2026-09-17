@@ -7,7 +7,8 @@ import {
   updateJob,
   deleteJob,
   parseJobDescriptionController,
-  getAvailableJobsForEvaluation
+  getAvailableJobsForEvaluation,
+  normalizeJobWithAiController
 } from '../controllers/jobController';
 import { protect, optionalProtect, authorize } from '../middleware/authMiddleware';
 
@@ -45,6 +46,7 @@ router.get('/available-for-evaluation', optionalProtect, getAvailableJobsForEval
 router.post('/', protect, createJob);
 router.get('/', optionalProtect, getAllJobs);
 router.get('/:id', optionalProtect, getJobById);
+router.post('/:id/normalize-ai', optionalProtect, normalizeJobWithAiController);
 router.put('/:id', optionalProtect, updateJob);
 router.delete('/:id', protect, deleteJob);
 

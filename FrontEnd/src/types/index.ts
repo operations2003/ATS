@@ -114,7 +114,11 @@ export interface Requirement {
   weight: number; // Points allocated to this requirement
   evidenceRequired: boolean;
   extractedFrom?: string; // Original text from JD
+  sourceEvidence?: string; // Extracted source evidence from JD
+  source_evidence?: string;
   order: number;
+  aliases?: string[];
+  context?: string;
 }
 
 export interface JobDescription {
@@ -302,6 +306,11 @@ export interface RequirementEvaluation {
   // Explanation
   reason: string;
   matchPercentage: number; // 0-100
+  matchReason?: string;
+  failureReason?: string;
+  matchedAlias?: string;
+  sourceEvidence?: string;
+  source_evidence?: string;
   
   // Overrides
   overriddenBy?: string;

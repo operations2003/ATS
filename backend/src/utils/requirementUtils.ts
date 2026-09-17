@@ -662,8 +662,65 @@ export const normalizeSkillAlias = (token: string): string => {
     'graphql': 'graphql',
     'ci/cd': 'ci/cd',
     'cicd': 'ci/cd',
+    // ERP, Supply Chain & Procurement
+    'sap mm': 'sap mm',
+    'sap materials management': 'sap mm',
+    'materials management': 'sap mm',
+    'sap mm solutioning': 'sap mm',
+    'purchasing and procurement': 'procurement',
+    'procurement and purchasing': 'procurement',
+    'purchasing': 'procurement',
+    'procurement': 'procurement',
+    'sourcing and procurement': 'procurement',
+    'strategic sourcing': 'procurement',
+    'sap ibp': 'sap ibp',
+    'integrated business planning': 'sap ibp',
+    'sap integrated business planning': 'sap ibp',
+    'supply chain planning': 'sap ibp',
+    'supply chain': 'supply chain',
+    'supply chain management': 'supply chain',
+    'scm': 'supply chain',
+    'vendor management': 'vendor management',
+    'supplier management': 'vendor management',
+    'stakeholder management': 'stakeholder management',
+    'stakeholder engagement': 'stakeholder management',
   };
   return aliasMap[low] || low;
+};
+
+const EQUIVALENT_SKILL_DOMAINS: string[][] = [
+  ['sap mm', 'sap materials management', 'materials management', 'purchasing and procurement', 'procurement', 'purchasing', 'sourcing and procurement', 'sap mm solutioning', 'vendor management', 'materials management solutioning'],
+  ['sap ibp', 'integrated business planning', 'sap integrated business planning', 'supply chain planning', 'demand planning'],
+  ['stakeholder management', 'client management', 'stakeholder engagement', 'cross-functional collaboration'],
+  ['react', 'react.js', 'reactjs'],
+  ['node.js', 'nodejs', 'node'],
+  ['express', 'express.js', 'expressjs'],
+  ['postgresql', 'postgres', 'psql'],
+  ['mongodb', 'mongo'],
+  ['kubernetes', 'k8s'],
+  ['typescript', 'ts'],
+  ['javascript', 'js'],
+  ['golang', 'go'],
+  ['docker', 'containerization'],
+  ['aws', 'amazon web services'],
+  ['gcp', 'google cloud platform', 'google cloud'],
+];
+
+export const areSkillsEquivalent = (a: string, b: string): boolean => {
+  if (!a || !b) return false;
+  const aClean = a.toLowerCase().trim();
+  const bClean = b.toLowerCase().trim();
+  const aNorm = normalizeSkillAlias(aClean);
+  const bNorm = normalizeSkillAlias(bClean);
+  if (aNorm === bNorm || aClean === bClean) return true;
+
+  return EQUIVALENT_SKILL_DOMAINS.some(group => {
+    if (group.includes(aNorm) && group.includes(bNorm)) return true;
+    if (group.includes(aClean) && group.includes(bClean)) return true;
+    const aHasDomain = group.some(alias => safeWordMatch(alias, aClean) || aClean.includes(alias) || safeWordMatch(alias, aNorm));
+    const bHasDomain = group.some(alias => safeWordMatch(alias, bClean) || bClean.includes(alias) || safeWordMatch(alias, bNorm));
+    return aHasDomain && bHasDomain;
+  });
 };
 
 /**
@@ -859,6 +916,41 @@ export const calculateEducationAndCertScore = (
 /**
  * Calibrated 4-Pillar Comprehensive ATS Match Calculator (45% Keywords, 27.5% Experience, 12.5% Edu, 15% Parsability)
  */
+export const extractContextConcepts = (text: string): { concepts: string[]; cleanTokens: string[]; years?: number } => {
+  if (!text) return { concepts: [], cleanTokens: [] };
+  const yrMatch = text.match(/(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)/i);
+  const years = yrMatch ? parseFloat(yrMatch[1]) : undefined;
+
+  const clean = text
+    .replace(/\b(?:minimum|at least|proven track record of|proven track record|hands-on experience|hands-on|deep knowledge of|deep knowledge|strong knowledge of|knowledge of|proficient in|proficiency in|strong understanding of|understanding of|familiarity with|expertise in|must have|should have|ability to|responsible for|working with|working knowledge of|proven ability to|experience with|experience in|strong|solid|demonstrated|track record of|required|preferred|bonus|plus)\b/gi, ' ')
+    .toLowerCase();
+
+  const parts = clean.split(/[,;/]|\b(?:and|with|as well as|including)\b/);
+  const stopWords = new Set([
+    'the', 'a', 'an', 'in', 'on', 'at', 'for', 'to', 'of', 'by', 'from', 'is', 'are', 'be',
+    'with', 'as', 'or', 'and', 'years', 'year', 'yrs', 'role', 'team', 'project', 'work',
+    'candidate', 'environment', 'solutions', 'applications', 'systems', 'processes', 'proficient',
+    'proficiency', 'experience', 'knowledge', 'required', 'preferred'
+  ]);
+
+  const concepts: string[] = [];
+  const cleanTokens: string[] = [];
+
+  for (const p of parts) {
+    const pTrim = p.replace(/[^a-zA-Z0-9+#.-]/g, ' ').trim();
+    const words = pTrim.split(/\s+/).filter(w => w.length >= 2 && !stopWords.has(w));
+    if (words.length > 0) {
+      const cStr = words.join(' ');
+      if (cStr.length >= 3 && !concepts.includes(cStr)) concepts.push(cStr);
+      for (const w of words) {
+        if (w.length >= 3 && !cleanTokens.includes(w)) cleanTokens.push(w);
+      }
+    }
+  }
+
+  return { concepts, cleanTokens, years };
+};
+
 export const computeComprehensiveMatchScore = (
   candidate: {
     skills?: string[];
@@ -877,7 +969,15 @@ export const computeComprehensiveMatchScore = (
     jd_text?: string;
     jdText?: string;
     position?: string;
-    requirements?: Array<{ id?: string; requirement: string; category?: string; weight?: number; is_mandatory?: boolean }>;
+    requirements?: Array<{
+      id?: string;
+      requirement: string;
+      category?: string;
+      weight?: number;
+      is_mandatory?: boolean;
+      source_evidence?: string;
+      sourceEvidence?: string;
+    }>;
   }
 ): ComprehensiveMatchResult => {
   const jdFullText = job.jd_text || job.jdText || job.position || '';
@@ -937,12 +1037,17 @@ export const computeComprehensiveMatchScore = (
   const matchedSkillsList: string[] = [];
   const missingSkillsList: string[] = [];
 
-  // Evaluate requirements deterministically with contextual weighting
+  // Evaluate requirements deterministically with contextual weighting (No whole-line string matching)
   for (const req of requirements) {
     const reqText = req.requirement || '';
+    const sourceEvidence = String(req.source_evidence || (req as any).sourceEvidence || '').trim();
     const reqCategory = (req.category || '').toLowerCase();
     const weight = typeof req.weight === 'number' && req.weight > 0 ? req.weight : 1.0;
     const reqLower = reqText.toLowerCase();
+
+    // Context deconstruction for requirement and mandatory source evidence
+    const reqCtx = extractContextConcepts(reqText);
+    const srcCtx = sourceEvidence ? extractContextConcepts(sourceEvidence) : null;
 
     // 1. Identify Preferred vs Mandatory vs General
     const isPreferred = !req.is_mandatory && (
@@ -972,16 +1077,18 @@ export const computeComprehensiveMatchScore = (
       totalMandatoryWeight += weight;
     }
 
-    // 2. Experience Requirements
+    // 2. Experience Requirements (Contextual Tenure Evaluation)
     const yearsPattern = reqLower.match(/(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)/i);
-    if (yearsPattern || reqCategory.includes('exp') || reqLower.includes('experience')) {
-      const requiredYears = yearsPattern ? parseFloat(yearsPattern[1]) : (finalRequiredYears || 3.0);
+    const srcYears = srcCtx?.years;
+    const requiredYears = (isMandatory && srcYears !== undefined)
+      ? srcYears
+      : (yearsPattern ? parseFloat(yearsPattern[1]) : (finalRequiredYears || 3.0));
 
-      const expKeywords = reqLower
-        .replace(/(\d+\+?\s*years?|experience|minimum|required|hands-on|relevant|professional|industry|proven|in|with|of|for|and|to)/gi, ' ')
-        .split(/[\s,;/]+/)
-        .map(w => w.trim().toLowerCase())
-        .filter(w => w.length > 3 && !['years', 'year', 'work', 'role', 'team', 'candidate', 'ability'].includes(w));
+    if (yearsPattern || srcYears !== undefined || reqCategory.includes('exp') || reqLower.includes('experience')) {
+      const expKeywords = [
+        ...reqCtx.cleanTokens,
+        ...(srcCtx ? srcCtx.cleanTokens : [])
+      ].filter(w => w.length > 3 && !['years', 'year', 'work', 'role', 'team', 'candidate', 'ability'].includes(w));
 
       let domainMatch = true;
       if (expKeywords.length > 0) {
@@ -1011,6 +1118,7 @@ export const computeComprehensiveMatchScore = (
           if (isMandatory) {
             earnedMandatoryWeight += (ratio * weight);
             mandatoryPartialCount++;
+            mandatoryRequirementFailed = true; // Strict mandatory knockout
           } else if (isPreferred) {
             earnedPreferredWeight += (ratio * weight);
           }
@@ -1034,7 +1142,7 @@ export const computeComprehensiveMatchScore = (
       continue;
     }
 
-    // 3. Technical Skills, Tools, Methodologies, Certifications
+    // 3. Technical Skills, Tools, Methodologies, Certifications (Context-Aware Matching)
     if (
       reqCategory.includes('skill') ||
       reqCategory.includes('tech') ||
@@ -1044,40 +1152,66 @@ export const computeComprehensiveMatchScore = (
       isPreferred ||
       isMandatory
     ) {
-      const cleanTech = reqText
-        .replace(/(proficient|proficiency|experience|hands-on|strong|deep|knowledge|architectural|familiarity|with|in|and|of|for|to|preferred|optional|bonus|plus)/gi, ' ')
-        .trim();
-      const techTokens = cleanTech
-        .split(/[,/&+\n]+/)
-        .map(t => t.trim().toLowerCase().replace(/^[^a-zA-Z0-9+#.-]+|[^a-zA-Z0-9+#.-]+$/g, ''))
-        .filter(t => t.length >= 3 && !['years', 'tools', 'skills', 'good', 'must', 'work', 'high', 'level'].includes(t));
+      const allTokens = Array.from(new Set([
+        ...reqCtx.cleanTokens,
+        ...(srcCtx ? srcCtx.cleanTokens : [])
+      ]));
+      const allConcepts = Array.from(new Set([
+        ...reqCtx.concepts,
+        ...(srcCtx ? srcCtx.concepts : [])
+      ]));
 
       totalTechWeight += weight;
-      const normReq = normalizeSkillAlias(cleanTech.toLowerCase());
+      const normReq = normalizeSkillAlias(reqText.toLowerCase());
 
       // Contextual evidence checking:
-      // In professional experience / projects = 1.0
-      // In skills inventory list = 0.90
-      // In summary / rawText = 0.85
-      // Partial = 0.50
+      // In professional experience / projects clauses = 1.0
+      // In summary / rawCandidateText clauses = 0.85
+      // Partial token overlap = 0.50
       let evidenceFactor = 0.0;
 
       const inExp = expDescriptions && (
         safeWordMatch(normReq, expDescriptions) ||
-        techTokens.some(tok => safeWordMatch(tok, expDescriptions))
+        safeWordMatch(reqText.toLowerCase(), expDescriptions) ||
+        allConcepts.some(c => safeWordMatch(c, expDescriptions)) ||
+        allTokens.some(tok => safeWordMatch(tok, expDescriptions)) ||
+        EQUIVALENT_SKILL_DOMAINS.some(group => (group.includes(normReq) || allConcepts.some(c => group.includes(c)) || group.some(alias => safeWordMatch(alias, reqText.toLowerCase()))) && group.some(alias => safeWordMatch(alias, expDescriptions)))
       );
 
       const inSkills = normalizedCandSkills.some(s => {
         if (!s || s.length < 2) return false;
+        const sNorm = normalizeSkillAlias(s);
         return (
           normReq === s ||
+          normReq === sNorm ||
+          safeWordMatch(normReq, s) ||
           safeWordMatch(s, normReq) ||
-          techTokens.some(tok => normalizeSkillAlias(tok) === s)
+          safeWordMatch(reqText.toLowerCase(), s) ||
+          safeWordMatch(s, reqText.toLowerCase()) ||
+          areSkillsEquivalent(s, normReq) ||
+          areSkillsEquivalent(s, reqText.toLowerCase()) ||
+          allConcepts.some(c => s === c || safeWordMatch(c, s) || safeWordMatch(s, c) || areSkillsEquivalent(s, c)) ||
+          allTokens.some(tok => s === tok || safeWordMatch(tok, s) || safeWordMatch(s, tok) || normalizeSkillAlias(tok) === s || areSkillsEquivalent(s, tok))
+        );
+      }) || candSkills.some(s => {
+        if (!s || s.length < 2) return false;
+        return (
+          safeWordMatch(normReq, s) ||
+          safeWordMatch(s, normReq) ||
+          safeWordMatch(reqText.toLowerCase(), s) ||
+          safeWordMatch(s, reqText.toLowerCase()) ||
+          areSkillsEquivalent(s, normReq) ||
+          areSkillsEquivalent(s, reqText.toLowerCase()) ||
+          allConcepts.some(c => safeWordMatch(c, s) || safeWordMatch(s, c) || areSkillsEquivalent(c, s) || areSkillsEquivalent(s, c)) ||
+          allTokens.some(tok => safeWordMatch(tok, s) || safeWordMatch(s, tok) || areSkillsEquivalent(s, tok))
         );
       });
 
       const inRaw = safeWordMatch(normReq, rawCandidateText) ||
-        techTokens.some(tok => safeWordMatch(tok, rawCandidateText));
+        safeWordMatch(reqText.toLowerCase(), rawCandidateText) ||
+        allConcepts.some(c => safeWordMatch(c, rawCandidateText)) ||
+        allTokens.some(tok => safeWordMatch(tok, rawCandidateText)) ||
+        EQUIVALENT_SKILL_DOMAINS.some(group => (group.includes(normReq) || allConcepts.some(c => group.includes(c)) || group.some(alias => safeWordMatch(alias, reqText.toLowerCase()))) && group.some(alias => safeWordMatch(alias, rawCandidateText)));
 
       if (inExp) {
         evidenceFactor = 1.0;
@@ -1086,7 +1220,7 @@ export const computeComprehensiveMatchScore = (
       } else if (inRaw) {
         evidenceFactor = 0.85;
       } else {
-        const isPartial = techTokens.some(tok => candSkills.some(cs => cs.includes(tok) || tok.includes(cs)));
+        const isPartial = allTokens.some(tok => candSkills.some(cs => cs.includes(tok) || tok.includes(cs) || areSkillsEquivalent(cs, tok)));
         if (isPartial) {
           evidenceFactor = 0.50;
         }
@@ -1115,13 +1249,12 @@ export const computeComprehensiveMatchScore = (
         missingSkillsList.push(reqText);
         if (isMandatory) {
           mandatoryMissingCount++;
-          mandatoryRequirementFailed = true;
         }
       }
     }
   }
 
-  // ── PILLAR 1: Keyword & Hard Skill Matching (Weight: 45%) ───────────────────
+  // ── PILLAR 1: Keyword & Hard Skill Matching (Weight: 35%) ───────────────────
   let keywordScore = 0;
   if (totalTechWeight > 0) {
     keywordScore = Math.min(100, Math.max(0, Math.round((earnedTechWeight / totalTechWeight) * 100)));
@@ -1132,26 +1265,37 @@ export const computeComprehensiveMatchScore = (
     keywordScore = 80;
   }
 
-  // ── PILLAR 2: Job Title & Experience Relevance (Weight: 27.5%) ──────────────
+  // ── PILLAR 2: Job Title & Experience Relevance (Weight: 30%) ──────────────
   const titleAlignmentScore = calculateJobTitleAlignmentScore(job.position || '', candidate.currentTitle || '', expTitles, rawCandidateText);
 
-  let expTenureScore = 100;
+  let expTenureScore = 85;
   if (finalRequiredYears > 0) {
     if (totalCareerYears >= finalRequiredYears) {
-      expTenureScore = 100;
+      // Meeting tenure requirement awards solid base (90) + incremental depth for relevant seniority up to 100
+      const extraYears = totalCareerYears - finalRequiredYears;
+      expTenureScore = Math.min(100, Math.round(90 + Math.min(extraYears * 2, 10)));
     } else {
-      expTenureScore = Math.min(100, Math.max(0, Math.round((totalCareerYears / finalRequiredYears) * 100)));
+      expTenureScore = Math.min(85, Math.max(0, Math.round((totalCareerYears / finalRequiredYears) * 85)));
     }
   } else if (totalExpWeight > 0) {
-    expTenureScore = Math.round((earnedExpWeight / totalExpWeight) * 100);
+    expTenureScore = Math.min(100, Math.round((earnedExpWeight / totalExpWeight) * 92));
   } else {
-    expTenureScore = Math.min(100, Math.round(totalCareerYears * 20));
+    expTenureScore = totalCareerYears >= 5 ? 90 : 75;
   }
 
-  // Combined Experience Relevance Score (Tenure 70% + Title Alignment 30%)
-  const experienceRelevanceScore = Math.min(100, Math.max(0, Math.round((expTenureScore * 0.70) + (titleAlignmentScore * 0.30))));
+  // Combined Experience Relevance Score (Tenure 75% + Title Alignment 25%)
+  // When tenure requirement is 100% satisfied (e.g. 6y / 6y), ensure experience score has a calibrated floor of at least 86%
+  let experienceRelevanceScore = Math.min(100, Math.max(0, Math.round((expTenureScore * 0.75) + (titleAlignmentScore * 0.25))));
+  if (finalRequiredYears > 0 && totalCareerYears >= finalRequiredYears) {
+    experienceRelevanceScore = Math.max(86, experienceRelevanceScore);
+  }
 
-  // ── PILLAR 3: Education & Certifications (Weight: 12.5%) ─────────────────────
+  // ── PILLAR 3: Semantic Overlap & Contextual Relevance (Weight: 20%) ─────────
+  // Genuine semantic text similarity between candidate CV and JD context
+  const keywordsResult = calculateKeywordOverlapScore(rawCandidateText, jdFullText);
+  const semanticScore = Math.min(100, Math.max(25, keywordsResult.score));
+
+  // ── PILLAR 4: Education & Certifications (Weight: 10%) ─────────────────────
   const eduCertResult = calculateEducationAndCertScore(
     candidate.education || [],
     candidate.certifications || [],
@@ -1161,23 +1305,43 @@ export const computeComprehensiveMatchScore = (
   );
   const educationCertificationScore = eduCertResult.score;
 
-  // ── PILLAR 4: Parsability & Formatting (Weight: 15%) ─────────────────────────
+  // ── PILLAR 5: Parsability & Formatting (Weight: 5%) ─────────────────────────
   const parsabilityScore = calculateParsabilityScore(rawCandidateText, candidate.parsingMetadata, candidate.parsingStatus);
 
-  // ── SUPPORTING EVIDENCE: Semantic Overlap Score ─────────────────────────────
-  const keywordsResult = calculateKeywordOverlapScore(rawCandidateText, jdFullText);
-  const semanticScore = keywordsResult.score;
-
   // ── FINAL ATS SCORE CALCULATION ─────────────────────────────────────────────
-  // Formula: (keywordScore * 0.45) + (experienceRelevanceScore * 0.275) + (educationCertificationScore * 0.125) + (parsabilityScore * 0.15)
-  // Range: 0 to 100, rounded to integer.
+  // 5 Genuine Pillars:
+  // Core Skills: 35%, Experience: 30%, Semantic Overlap: 20%, Education: 10%, Parsability: 5%
   const rawATSScore =
-    (keywordScore * 0.45) +
-    (experienceRelevanceScore * 0.275) +
-    (educationCertificationScore * 0.125) +
-    (parsabilityScore * 0.15);
+    (keywordScore * 0.35) +
+    (experienceRelevanceScore * 0.30) +
+    (semanticScore * 0.20) +
+    (educationCertificationScore * 0.10) +
+    (parsabilityScore * 0.05);
 
-  const finalATSScore = Math.min(100, Math.max(0, Math.round(rawATSScore)));
+  let finalATSScore = Math.min(100, Math.max(0, Math.round(rawATSScore)));
+
+  // ── GRADUATED MANDATORY COMPLIANCE (NO ARTIFICIAL 40% CLAMP) ────────────────
+  // Never brutally reject or clamp to 40% on an isolated single gap.
+  // Instead, apply a calibrated deduction proportional to mandatory compliance.
+  const totalMandatoryEvaluated = mandatoryMatchedCount + mandatoryPartialCount + mandatoryMissingCount;
+
+  if (mandatoryMissingCount === 1 && mandatoryPartialCount === 0) {
+    // Exactly 1 isolated mandatory gap: Deduct 8-10 points from raw score.
+    // The candidate remains in REVIEW (e.g. 72%-76%) with clear advisory.
+    finalATSScore = Math.max(45, Math.round(finalATSScore - 10));
+  } else if (mandatoryMissingCount === 1 && mandatoryPartialCount > 0) {
+    finalATSScore = Math.max(40, Math.round(finalATSScore - 15));
+  } else if (mandatoryMissingCount === 2) {
+    // 2 mandatory gaps: Moderate deduction
+    finalATSScore = Math.max(35, Math.min(finalATSScore - 20, 58));
+  } else if (mandatoryMissingCount >= 3 || (totalMandatoryEvaluated > 0 && (mandatoryMissingCount / totalMandatoryEvaluated) >= 0.6)) {
+    // 3+ mandatory gaps or majority missing: Genuine low fit
+    finalATSScore = Math.min(finalATSScore - 28, 42);
+  } else if (mandatoryPartialCount === 1 && mandatoryMissingCount === 0) {
+    finalATSScore = Math.max(50, Math.round(finalATSScore - 4));
+  }
+
+  finalATSScore = Math.min(100, Math.max(15, finalATSScore));
 
   // Mandatory requirements score for compliance reporting
   let mandatoryScore = 100;
@@ -1188,8 +1352,8 @@ export const computeComprehensiveMatchScore = (
   // Interpretation Bands
   let matchLevel: 'STRONG MATCH' | 'GOOD MATCH' | 'MODERATE MATCH' | 'LOW FIT' = 'MODERATE MATCH';
   if (finalATSScore >= 80 && mandatoryMissingCount === 0) matchLevel = 'STRONG MATCH';
-  else if (finalATSScore >= 60) matchLevel = 'GOOD MATCH';
-  else if (finalATSScore >= 50) matchLevel = 'MODERATE MATCH';
+  else if (finalATSScore >= 68) matchLevel = 'GOOD MATCH';
+  else if (finalATSScore >= 52) matchLevel = 'MODERATE MATCH';
   else matchLevel = 'LOW FIT';
 
   const preferredCoverage = totalPreferredWeight > 0 ? (earnedPreferredWeight / totalPreferredWeight) : 0;
@@ -1198,19 +1362,19 @@ export const computeComprehensiveMatchScore = (
   const breakdown: MatchScoreBreakdown = {
     mandatoryCompliance: {
       score: mandatoryScore,
-      weight: 28,
+      weight: 20,
       passed: mandatoryMissingCount === 0,
       failedCount: mandatoryMissingCount,
     },
     technicalSkills: {
       score: keywordScore,
-      weight: 45,
+      weight: 35,
       matchedSkills: matchedSkillsList,
       missingSkills: missingSkillsList,
     },
     relevantExperience: {
       score: experienceRelevanceScore,
-      weight: 27.5,
+      weight: 30,
       candidateYears: totalCareerYears,
       requiredYears: finalRequiredYears,
     },
@@ -1224,25 +1388,25 @@ export const computeComprehensiveMatchScore = (
     },
     skills: {
       score: keywordScore,
-      weight: 45,
+      weight: 35,
       matchedSkills: matchedSkillsList,
       missingSkills: missingSkillsList,
     },
     experience: {
       score: experienceRelevanceScore,
-      weight: 27.5,
+      weight: 30,
       candidateYears: totalCareerYears,
       requiredYears: finalRequiredYears,
     },
     education: {
       score: educationCertificationScore,
-      weight: 12.5,
+      weight: 10,
       candidateDegrees: eduCertResult.candidateDegrees,
       requiredDegrees: eduCertResult.requiredDegrees,
     },
     keywords: {
       score: semanticScore,
-      weight: 15,
+      weight: 20,
       cosineSimilarity: keywordsResult.cosineSimilarity,
       topMatchedTerms: keywordsResult.topMatchedTerms,
     },
@@ -1262,12 +1426,12 @@ export const computeComprehensiveMatchScore = (
     baseATSScore: finalATSScore,
   };
 
-  const summary = `${matchLevel} (${finalATSScore}% overall). 4-Pillar ATS: Keywords (45%): ${keywordScore}%, Experience & Title (27.5%): ${experienceRelevanceScore}%, Education & Certs (12.5%): ${educationCertificationScore}%, Parsability (15%): ${parsabilityScore}%.`;
+  const summary = `${matchLevel} (${finalATSScore}% overall). 5-Pillar ATS: Core Skills (35%): ${keywordScore}%, Experience & Title (30%): ${experienceRelevanceScore}%, Semantic Overlap (20%): ${semanticScore}%, Education & Certs (10%): ${educationCertificationScore}%, Parsability (5%): ${parsabilityScore}%.`;
 
   return {
     overallScore: finalATSScore,
     matchLevel,
-    mandatoryRequirementFailed: mandatoryMissingCount > 0,
+    mandatoryRequirementFailed: mandatoryMissingCount >= 2,
     breakdown,
     summary,
   };
