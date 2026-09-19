@@ -115,7 +115,7 @@ const Footer: React.FC = () => {
 
         {/* Subtle Divider & Legal / Copyright Row */}
         <div className="mt-10 pt-6 border-t border-slate-800/90 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
-          <p>© {currentYear} TaskNera ATS. All rights reserved.</p>
+          <p>© {currentYear} HireIQ by TaskNera. Recruitment Intelligence. All rights reserved.</p>
           <div className="flex items-center gap-6">
             <span className="hover:text-slate-200 transition-colors cursor-pointer">
               Privacy Policy

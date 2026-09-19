@@ -80,7 +80,7 @@ const features = [
 
 const testimonials = [
   {
-    quote: 'TaskNera reduced our time-to-hire by 60%. The scoring is consistent and every decision is backed by evidence.',
+    quote: 'HireIQ by TaskNera reduced our time-to-hire by 60%. The scoring is consistent and every decision is backed by evidence.',
     author: 'Sarah Mitchell',
     role: 'Head of HR, TechCorp',
     avatar: 'SM',
@@ -132,7 +132,7 @@ export default function HomePage() {
                 Engineered for Enterprise Talent Acquisition
               </h2>
               <p className="text-brand-charcoal-3 text-base leading-relaxed">
-                Not a generative AI chatbot making subjective decisions. Tasknera uses an auditable, deterministic framework with direct resume proof.
+                Not a generative AI chatbot making subjective decisions. HireIQ by TaskNera uses an auditable, deterministic framework with direct resume proof.
               </p>
 
               {/* Filter Pills */}
@@ -428,43 +428,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* High-Impact Enterprise CTA Banner */}
-        <section className="bg-brand-charcoal py-20 relative overflow-hidden">
-          {/* Subtle Orange Glow in Dark section */}
-          <div className="absolute top-0 right-1/4 w-96 h-96 bg-brand-orange/15 rounded-full blur-3xl pointer-events-none" />
-          
-          <div className="max-w-screen-xl mx-auto px-6 flex flex-col lg:flex-row items-center justify-between gap-10 relative z-10">
-            <div className="max-w-xl text-center lg:text-left">
-              <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-xs font-semibold text-brand-orange mb-3 border border-white/10">
-                Ready to Upgrade?
-              </div>
-              <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-3">
-                Standardize Your Candidate Evaluations Today
-              </h2>
-              <p className="text-white/70 text-sm sm:text-base leading-relaxed">
-                Empower your recruiters with deterministic scoring, automated evidence validation, and client-ready reports in minutes.
-              </p>
-            </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-4 flex-shrink-0">
-              <button
-                onClick={() => handleCta('/jobs/create')}
-                className="flex items-center gap-2 px-7 py-4 bg-brand-orange hover:bg-brand-orange-hover text-white font-bold rounded-2xl transition-all shadow-orange hover:shadow-orange-lg hover:-translate-y-0.5 text-sm"
-              >
-                Create Job Evaluation
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
-              </button>
-              <button
-                onClick={() => handleCta('/dashboard')}
-                className="px-7 py-4 bg-white/10 hover:bg-white/20 text-white font-bold rounded-2xl transition-all text-sm border border-white/20 hover:-translate-y-0.5"
-              >
-                Open Dashboard
-              </button>
-            </div>
-          </div>
-        </section>
       </main>
 
       <Footer />

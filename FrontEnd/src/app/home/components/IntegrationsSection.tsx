@@ -49,7 +49,7 @@ const IntegrationsSection: React.FC = () => {
               <span className="text-cyan-DEFAULT italic">in 15 minutes.</span>
             </h2>
             <p className="text-[1rem] text-ui-muted leading-relaxed">
-              Screen connects to every major ATS via OAuth — no IT ticket, no professional services engagement. Ranked results push directly into Greenhouse, Workday, or Lever the moment the batch completes.
+              HireIQ by TaskNera connects to every major ATS via OAuth — no IT ticket, no professional services engagement. Ranked results push directly into Greenhouse, Workday, or Lever the moment the batch completes.
             </p>
           </div>
           {/* Technical docs link */}
@@ -85,7 +85,7 @@ const IntegrationsSection: React.FC = () => {
 
         {/* Compare grid */}
         <div className="max-w-3xl">
-          <p className="text-[13px] font-600 text-ui-muted mb-6">Integration complexity: Screen vs. traditional setup</p>
+          <p className="text-[13px] font-600 text-ui-muted mb-6">Integration complexity: HireIQ by TaskNera vs. traditional setup</p>
           <div className="grid grid-cols-[1fr_1fr_1fr] gap-4 mb-4">
             <div className="text-[11px] font-700 text-ui-faint uppercase tracking-widest">Metric</div>
             <div className="flex items-center gap-2 text-[11px] font-700 uppercase tracking-widest text-ui-danger/70">
@@ -94,7 +94,7 @@ const IntegrationsSection: React.FC = () => {
             </div>
             <div className="flex items-center gap-2 text-[11px] font-700 uppercase tracking-widest text-cyan-DEFAULT/80">
               <span className="w-2 h-2 rounded-full bg-cyan-DEFAULT inline-block" />
-              Screen API
+              HireIQ by TaskNera API
             </div>
           </div>
           {COMPARE_ROWS.map((row, i) => (

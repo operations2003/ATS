@@ -546,7 +546,7 @@ export default function DashboardPage() {
                   </div>
                   <h3 className="text-base font-bold text-[#1E293B] mb-1">No job requisitions created yet</h3>
                   <p className="text-xs text-slate-500 max-w-sm mx-auto mb-6">
-                    Start by posting your first Job Description. TaskNera will extract criteria and evaluate candidates deterministically.
+                    Start by posting your first Job Description. HireIQ by TaskNera will extract criteria and evaluate candidates deterministically.
                   </p>
                   <Link
                     href="/jobs/create"

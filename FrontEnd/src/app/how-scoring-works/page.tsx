@@ -19,10 +19,10 @@ export default function HowScoringWorksPage() {
           Evaluation Ruleset v2.1 — Frozen & Deterministic
         </div>
         <h1 className="text-4xl sm:text-5xl font-extrabold text-slate-900 tracking-tight mb-4">
-          How TaskNera Scoring Works
+          How HireIQ by TaskNera Scoring Works
         </h1>
         <p className="max-w-2xl mx-auto text-base sm:text-lg text-slate-600 leading-relaxed">
-          TaskNera evaluates candidates using a <span className="font-semibold text-slate-900">pure arithmetic, auditable scoring engine</span>. 
+          HireIQ by TaskNera evaluates candidates using a <span className="font-semibold text-slate-900">pure arithmetic, auditable scoring engine</span>. 
           The exact same Job Description and CV input will always produce the exact same score and recommendation, byte-for-byte, forever.
         </p>
       </div>
@@ -197,7 +197,7 @@ export default function HowScoringWorksPage() {
               <div>
                 <h3 className="text-xl font-bold text-slate-900 mb-2">Deterministic Engine vs. Generative LLM ATS</h3>
                 <p className="text-sm text-slate-600 leading-relaxed">
-                  Why TaskNera forbids generative AI in matching and scoring.
+                  Why HireIQ by TaskNera forbids generative AI in matching and scoring.
                 </p>
               </div>
 
@@ -206,7 +206,7 @@ export default function HowScoringWorksPage() {
                   <thead>
                     <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase text-[11px]">
                       <th className="py-3 px-4">Dimension</th>
-                      <th className="py-3 px-4 text-emerald-700 bg-emerald-50/50">TaskNera Deterministic Engine</th>
+                      <th className="py-3 px-4 text-emerald-700 bg-emerald-50/50">HireIQ by TaskNera Deterministic Engine</th>
                       <th className="py-3 px-4 text-rose-700 bg-rose-50/50">Generic LLM / Chatbot ATS</th>
                     </tr>
                   </thead>
@@ -262,7 +262,7 @@ export default function HowScoringWorksPage() {
                     <code className="px-2 py-0.5 bg-slate-200 text-slate-800 rounded text-[11px]">"Proficient in AWS, no experience with Azure."</code>
                   </p>
                   <p className="text-xs text-slate-600 leading-relaxed">
-                    A naive keyword search extracts "Azure" as a match. TaskNera's spaCy dependency parser detects the negation cue ("no experience with") and marks Azure as <span className="font-semibold text-rose-600">NOT MET</span>.
+                    A naive keyword search extracts "Azure" as a match. HireIQ by TaskNera's spaCy dependency parser detects the negation cue ("no experience with") and marks Azure as <span className="font-semibold text-rose-600">NOT MET</span>.
                   </p>
                 </div>
 
@@ -272,7 +272,7 @@ export default function HowScoringWorksPage() {
                     Strict Non-Equivalence Catalog
                   </h4>
                   <p className="text-xs text-slate-600 leading-relaxed mb-3">
-                    Generic vector embeddings often erroneously equate related technologies. TaskNera enforces hard negative rules:
+                    Generic vector embeddings often erroneously equate related technologies. HireIQ by TaskNera enforces hard negative rules:
                   </p>
                   <ul className="text-xs text-slate-600 space-y-1 list-disc list-inside">
                     <li>Java ≠ JavaScript</li>

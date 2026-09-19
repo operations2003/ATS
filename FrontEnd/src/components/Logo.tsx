@@ -14,9 +14,9 @@ interface LogoProps {
 const Logo: React.FC<LogoProps> = ({ href = '/home', size = 'md', variant = 'dark', showTagline = true }) => {
   const iconSize  = size === 'sm' ? 'w-8 h-8' : size === 'lg' ? 'w-12 h-12' : 'w-9 h-9';
   const textSize  = size === 'sm' ? 'text-lg sm:text-xl'  : size === 'lg' ? 'text-3xl'  : 'text-2xl';
-  const tagSize   = size === 'sm' ? 'text-[8.5px]' : size === 'lg' ? 'text-xs' : 'text-[10px]';
-  const taskColor = variant === 'light' ? 'text-white' : 'text-[#1E293B]';
-  const tagColor  = variant === 'light' ? 'text-slate-300' : 'text-slate-600';
+  const tagSize   = size === 'sm' ? 'text-[8px]' : size === 'lg' ? 'text-[10px]' : 'text-[8.5px]';
+  const taskColor = variant === 'light' ? 'text-white' : 'text-[#0F172A]';
+  const tagColor  = variant === 'light' ? 'text-slate-400' : 'text-slate-500';
 
   const mark = (
     <div className="flex items-center gap-3 select-none group">
@@ -25,20 +25,25 @@ const Logo: React.FC<LogoProps> = ({ href = '/home', size = 'md', variant = 'dar
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/tasknera-logo-symbol.png"
-          alt="TaskNera"
+          alt="HireIQ by TaskNera"
           className="w-full h-full object-contain"
         />
       </div>
 
-      {/* Wordmark */}
+      {/* Wordmark & Hierarchy */}
       <div className="flex flex-col justify-center leading-none">
-        <div className={`font-extrabold tracking-tight ${textSize} leading-none`}>
-          <span className={taskColor}>Task</span>
-          <span className="text-[#FF6E38]">Nera</span>
+        {/* Brand Name */}
+        <div className={`font-black tracking-tight ${textSize} leading-none flex items-center`}>
+          <span className={taskColor}>Hire</span>
+          <span className="text-[#FF6E38]">IQ</span>
         </div>
+
+        {/* Tagline */}
         {showTagline && (
-          <span className={`font-semibold tracking-[0.01em] ${tagSize} ${tagColor} mt-1 leading-none`}>
-            People. Processes. Performance.
+          <span
+            className={`font-bold tracking-[0.14em] uppercase ${tagSize} ${tagColor} mt-1.5 leading-none`}
+          >
+            Recruitment Intelligence
           </span>
         )}
       </div>

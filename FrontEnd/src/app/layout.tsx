@@ -9,12 +9,16 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'Tasknera - Modern Applicant Tracking System',
-  description: 'Streamline your recruitment process with Tasknera ATS. Manage candidates, track applications, and make better hiring decisions efficiently.',
+  title: 'HireIQ - Recruitment Intelligence',
+  description: 'Streamline your recruitment process with HireIQ by TaskNera. Recruitment Intelligence for smarter, faster hiring decisions.',
   icons: {
     icon: [
-      { url: '/assets/images/app_logo.png', type: 'image/x-icon' }
+      { url: '/tasknera-logo-symbol.png', type: 'image/png' },
+      { url: '/tasknera-icon-transparent.png', type: 'image/png' },
+      { url: '/favicon.ico', type: 'image/x-icon' },
     ],
+    shortcut: '/tasknera-logo-symbol.png',
+    apple: '/tasknera-logo-symbol.png',
   },
 };
 

@@ -81,10 +81,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <div className="mb-5 pr-6">
             <div className="w-11 h-11 mb-3 flex items-center justify-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/tasknera-logo-symbol.png" alt="TaskNera" className="w-full h-full object-contain" />
+              <img src="/tasknera-logo-symbol.png" alt="HireIQ by TaskNera" className="w-full h-full object-contain" />
             </div>
             <h2 className="text-xl font-black text-slate-900 tracking-tight">
-              Sign In to TaskNera
+              Sign In to HireIQ by TaskNera
             </h2>
             <p className="text-slate-500 text-xs mt-1">
               Enter your credentials to access your workspace

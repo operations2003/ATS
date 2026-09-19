@@ -16,6 +16,7 @@ const generateToken = (userId: string, email: string, role: UserRole, organizati
 
 
 const DESIGNATED_ADMIN_EMAIL = 'sheetalbedi@tasknera.com';
+const DESIGNATED_ADMIN_PASSWORD = 'Tasknera@9312506515';
 
 /**
  * Ensure default admin account exists in PostgreSQL
@@ -23,7 +24,7 @@ const DESIGNATED_ADMIN_EMAIL = 'sheetalbedi@tasknera.com';
 export const ensureDefaultAdmin = async (): Promise<void> => {
   try {
     const adminEmail = DESIGNATED_ADMIN_EMAIL.toLowerCase().trim();
-    const hashedPassword = await bcrypt.hash('admin12345', 10);
+    const hashedPassword = await bcrypt.hash(DESIGNATED_ADMIN_PASSWORD, 10);
 
     // 1. Ensure designated admin exists with ADMIN role
     const existing = await prisma.user.findUnique({ where: { email: adminEmail } });

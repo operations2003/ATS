@@ -65,7 +65,7 @@ const HeroSection: React.FC = () => {
           <div className={`lg:col-span-6 transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-brand-orange-pale border border-brand-orange-border rounded-full text-xs font-semibold text-brand-orange mb-6 shadow-xs">
               <span className="w-2 h-2 rounded-full bg-brand-orange animate-ping" />
-              Candidate Intelligence & Precision ATS
+              Recruitment Intelligence
             </div>
 
             <h1 className="text-4xl sm:text-5xl lg:text-[52px] font-extrabold text-brand-charcoal leading-[1.15] tracking-tight mb-6">
@@ -216,7 +216,7 @@ const HeroSection: React.FC = () => {
             <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-brand-orange-pale rounded-full text-xs font-bold text-brand-orange uppercase tracking-wider mb-2">
               Workflow
             </div>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-brand-charcoal mb-2">How Tasknera Operates</h2>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-brand-charcoal mb-2">How HireIQ by TaskNera Operates</h2>
             <p className="text-brand-charcoal-3 text-sm">Four automated steps from raw job description to client-ready evaluation reports</p>
           </div>
 

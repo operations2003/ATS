@@ -60,7 +60,7 @@ export default function SignUpPage() {
                 <span className="w-5 h-5 rounded-full bg-brand-orange/10 text-brand-orange text-[11px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
                   3
                 </span>
-                <span>Use the official Sign In portal to log in to your ATS workspace.</span>
+                <span>Use the official Sign In portal to log in to your HireIQ by TaskNera workspace.</span>
               </div>
             </div>
 
@@ -76,7 +76,7 @@ export default function SignUpPage() {
 
       {/* Footer Note */}
       <footer className="w-full py-4 text-center text-xs text-slate-400">
-        © {new Date().getFullYear()} TaskNera. People. Processes. Performance.
+        © {new Date().getFullYear()} HireIQ by TaskNera. Recruitment Intelligence.
       </footer>
     </div>
   );

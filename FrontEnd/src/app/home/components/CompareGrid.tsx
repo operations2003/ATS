@@ -18,7 +18,7 @@ interface CompareGridProps {
 const CompareGrid: React.FC<CompareGridProps> = ({
   rows,
   manualLabel = 'Manual Screening',
-  aiLabel = 'Screen AI',
+  aiLabel = 'HireIQ by TaskNera',
 }) => {
   const ref = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(false);

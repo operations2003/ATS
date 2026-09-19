@@ -18,7 +18,7 @@ export default function AdminPage() {
 
   // Designated Admin Login State
   const [adminLoginEmail, setAdminLoginEmail] = useState('sheetalbedi@tasknera.com');
-  const [adminLoginPassword, setAdminLoginPassword] = useState('admin12345');
+  const [adminLoginPassword, setAdminLoginPassword] = useState('Tasknera@9312506515');
   const [adminLoginLoading, setAdminLoginLoading] = useState(false);
   const [adminLoginError, setAdminLoginError] = useState('');
 
@@ -287,7 +287,7 @@ export default function AdminPage() {
                   required
                   value={adminLoginPassword}
                   onChange={e => setAdminLoginPassword(e.target.value)}
-                  placeholder="admin12345"
+                  placeholder="Tasknera@9312506515"
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                 />
               </div>

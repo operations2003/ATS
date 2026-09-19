@@ -71,10 +71,10 @@ export default function SignInPage() {
             <div className="mb-6">
               <div className="w-12 h-12 mb-3 flex items-center justify-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/tasknera-logo-symbol.png" alt="TaskNera" className="w-full h-full object-contain" />
+                <img src="/tasknera-logo-symbol.png" alt="HireIQ by TaskNera" className="w-full h-full object-contain" />
               </div>
               <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-                Sign In to TaskNera
+                Sign In to HireIQ by TaskNera
               </h1>
               <p className="text-slate-500 text-xs mt-1">
                 Enter your credentials to access your requisitions and workspace
@@ -207,7 +207,7 @@ export default function SignInPage() {
 
       {/* Footer Note */}
       <footer className="w-full py-4 text-center text-xs text-slate-400">
-        © {new Date().getFullYear()} TaskNera. People. Processes. Performance.
+        © {new Date().getFullYear()} HireIQ by TaskNera. Recruitment Intelligence.
       </footer>
     </div>
   );
