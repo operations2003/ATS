@@ -363,32 +363,133 @@ export const assignUserTeam = async (req: AuthRequest, res: Response): Promise<v
   }
 };
 
-// @desc    Delete user (Admin only)
+// @desc    Delete user and all associated data (Admin only)
 // @route   DELETE /api/users/:id
 // @access  Private (ADMIN)
 export const deleteUser = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const id = String(req.params.id);
+    const rawId = String(req.params.id || '').trim();
+    const queryEmail = req.query.email ? String(req.query.email).toLowerCase().trim() : '';
 
-    if (req.user?.userId === id) {
-      res.status(400).json({ error: 'You cannot delete your own admin account' });
+    if (req.user?.userId === rawId) {
+      res.status(400).json({ error: 'You cannot delete your own administrator account' });
       return;
     }
 
-    const targetUser = await prisma.user.findUnique({ where: { id } });
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawId);
+
+    const targetUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          ...(isUuid ? [{ id: rawId }] : []),
+          ...(rawId.includes('@') ? [{ email: rawId.toLowerCase() }] : []),
+          ...(queryEmail ? [{ email: queryEmail }] : [])
+        ]
+      }
+    });
+
     if (!targetUser) {
-      res.status(404).json({ error: 'User not found' });
+      // User might be only in local state; respond 200 so UI can clean up local store
+      res.status(200).json({
+        success: true,
+        message: 'Member account not found in database or already removed'
+      });
       return;
     }
 
-    await prisma.user.delete({ where: { id } });
+    if (targetUser.email?.toLowerCase().trim() === 'sheetalbedi@tasknera.com' || targetUser.role === 'ADMIN') {
+      res.status(403).json({ error: 'Super Administrator accounts cannot be deleted' });
+      return;
+    }
+
+    if (targetUser.id === req.user?.userId) {
+      res.status(400).json({ error: 'You cannot delete your own administrator account' });
+      return;
+    }
+
+    const userId = targetUser.id;
+
+    // Comprehensive cascade deletion inside an atomic transaction
+    await prisma.$transaction(async (tx) => {
+      // 1. Identify all jobs created by this user
+      const userJobs = await tx.job.findMany({
+        where: { created_by: userId },
+        select: { id: true }
+      });
+      const userJobIds = userJobs.map(j => j.id);
+
+      // 2. Identify all candidates created by this user or linked to their jobs
+      const userCandidates = await tx.candidate.findMany({
+        where: {
+          OR: [
+            { created_by: userId },
+            ...(userJobIds.length > 0 ? [{ job_id: { in: userJobIds } }] : [])
+          ]
+        },
+        select: { id: true }
+      });
+      const userCandidateIds = userCandidates.map(c => c.id);
+
+      // 3. Delete candidate sub-records (experiences, educations, skills, certifications, languages, projects)
+      if (userCandidateIds.length > 0) {
+        await tx.candidateExperience.deleteMany({ where: { candidate_id: { in: userCandidateIds } } });
+        await tx.candidateEducation.deleteMany({ where: { candidate_id: { in: userCandidateIds } } });
+        await tx.candidateSkill.deleteMany({ where: { candidate_id: { in: userCandidateIds } } });
+        await tx.candidateCertification.deleteMany({ where: { candidate_id: { in: userCandidateIds } } });
+        await tx.candidateLanguage.deleteMany({ where: { candidate_id: { in: userCandidateIds } } });
+        await tx.candidateProject.deleteMany({ where: { candidate_id: { in: userCandidateIds } } });
+      }
+
+      // 4. Delete candidate applications
+      if (userCandidateIds.length > 0 || userJobIds.length > 0) {
+        await tx.candidateApplication.deleteMany({
+          where: {
+            OR: [
+              ...(userCandidateIds.length > 0 ? [{ candidate_id: { in: userCandidateIds } }] : []),
+              ...(userJobIds.length > 0 ? [{ job_id: { in: userJobIds } }] : [])
+            ]
+          }
+        });
+      }
+
+      // 5. Delete evaluations created by, evaluated by, assigned to this user, or referencing their candidates/jobs
+      await tx.evaluation.deleteMany({
+        where: {
+          OR: [
+            { createdByUserId: userId },
+            { evaluatedBy: userId },
+            { assignedToUserId: userId },
+            ...(userCandidateIds.length > 0 ? [{ candidateId: { in: userCandidateIds } }] : []),
+            ...(userJobIds.length > 0 ? [{ jobId: { in: userJobIds } }] : [])
+          ]
+        }
+      });
+
+      // 6. Delete job requirements
+      if (userJobIds.length > 0) {
+        await tx.requirement.deleteMany({ where: { job_id: { in: userJobIds } } });
+      }
+
+      // 7. Delete candidates
+      if (userCandidateIds.length > 0) {
+        await tx.candidate.deleteMany({ where: { id: { in: userCandidateIds } } });
+      }
+
+      // 8. Delete jobs
+      if (userJobIds.length > 0) {
+        await tx.job.deleteMany({ where: { id: { in: userJobIds } } });
+      }
+
+      // 9. Delete user
+      await tx.user.delete({ where: { id: userId } });
+    });
 
     res.status(200).json({
       success: true,
-      message: 'User account removed successfully'
+      message: `Member ${targetUser.name || targetUser.email} and all associated jobs, candidates, and evaluations have been permanently removed.`
     });
   } catch (error: any) {
-    console.error('[User Controller] Error deleting user:', error);
-    res.status(500).json({ error: error.message || 'Failed to delete user' });
+    console.error('[User Controller] Error deleting user and associated data:', error);
+    res.status(500).json({ error: error.message || 'Failed to delete user and associated data' });
   }
 };

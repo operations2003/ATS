@@ -39,6 +39,13 @@ export default function AdminPage() {
   const [addMemberError, setAddMemberError] = useState('');
   const [addMemberSuccess, setAddMemberSuccess] = useState('');
 
+  // Delete Member Confirmation State
+  const [memberToDelete, setMemberToDelete] = useState<RecruiterMetric | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteSuccess, setDeleteSuccess] = useState('');
+
   // Live state from Store
   const [recruiters, setRecruiters] = useState<RecruiterMetric[]>([]);
   const [jobs, setJobs] = useState<JobItem[]>([]);
@@ -66,7 +73,7 @@ export default function AdminPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data.members) && data.members.length > 0) {
+        if (Array.isArray(data.members)) {
           const nonAdmin = data.members.filter((m: any) => m.email?.toLowerCase().trim() !== 'sheetalbedi@tasknera.com' && m.role !== 'ADMIN');
           atsStore.setRecruitersFromDatabase(nonAdmin);
           setRecruiters(nonAdmin);
@@ -76,6 +83,61 @@ export default function AdminPage() {
       console.warn('Failed to fetch live TA members from database:', err);
     } finally {
       setLoadingMembers(false);
+    }
+  };
+
+  const handleInitiateDelete = (member: RecruiterMetric) => {
+    setMemberToDelete(member);
+    setDeleteError('');
+    setDeleteSuccess('');
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!memberToDelete) return;
+    setDeleteLoading(true);
+    setDeleteError('');
+    setDeleteSuccess('');
+
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
+
+      const deleteEndpoint = `${backendUrl}/users/${encodeURIComponent(memberToDelete.id)}?email=${encodeURIComponent(memberToDelete.email)}`;
+      const res = await fetch(deleteEndpoint, {
+        method: 'DELETE',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to delete member from database.');
+      }
+
+      // Purge locally from atsStore as well
+      atsStore.deleteRecruiter(memberToDelete.id, memberToDelete.name, memberToDelete.email);
+
+      // Refresh live member list and sync
+      await fetchLiveTAMembers();
+      syncData();
+
+      if (selectedRecruiter?.id === memberToDelete.id) {
+        setShowRecruiterModal(false);
+        setSelectedRecruiter(null);
+      }
+
+      setDeleteSuccess(data.message || `Member ${memberToDelete.name} and associated data successfully removed.`);
+      setTimeout(() => {
+        setShowDeleteModal(false);
+        setMemberToDelete(null);
+        setDeleteSuccess('');
+      }, 1200);
+    } catch (err: any) {
+      setDeleteError(err?.message || 'Failed to delete member.');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -464,12 +526,20 @@ export default function AdminPage() {
                       <th className="px-4 py-4 text-center whitespace-nowrap">Shortlists</th>
                       <th className="px-4 py-4 text-center whitespace-nowrap">Shortlist Rate</th>
                       <th className="px-6 py-4 text-center whitespace-nowrap">Avg Match Fit</th>
+                      <th className="px-6 py-4 text-center whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredRecruiters.map(r => {
                       return (
-                        <tr key={r.id} className="hover:bg-slate-50/80 transition-colors group">
+                        <tr 
+                          key={r.id} 
+                          onClick={() => {
+                            setSelectedRecruiter(r);
+                            setShowRecruiterModal(true);
+                          }}
+                          className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
+                        >
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
                               <div className="w-9 h-9 rounded-xl bg-brand-orange-pale text-brand-orange font-black text-xs flex items-center justify-center flex-shrink-0">
@@ -509,6 +579,21 @@ export default function AdminPage() {
                             <span className="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
                               {r.avgMatchScore}% Fit
                             </span>
+                          </td>
+
+                          <td className="px-6 py-4 text-center whitespace-nowrap">
+                            <div className="flex items-center justify-center" onClick={e => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={() => handleInitiateDelete(r)}
+                                title={`Delete ${r.name} & purge associated data`}
+                                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-200 cursor-pointer"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -721,8 +806,23 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-end pt-3 border-t border-slate-100">
+                <div className="flex items-center justify-between pt-3 border-t border-slate-100">
                   <button
+                    type="button"
+                    onClick={() => {
+                      const rec = selectedRecruiter;
+                      setShowRecruiterModal(false);
+                      handleInitiateDelete(rec);
+                    }}
+                    className="px-3.5 py-2 text-rose-600 hover:text-white hover:bg-rose-600 border border-rose-200 hover:border-rose-600 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    <span>Delete Member &amp; Associated Data</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setShowRecruiterModal(false)}
                     className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all cursor-pointer"
                   >
@@ -864,6 +964,130 @@ export default function AdminPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* ── MODAL: DELETE TEAM MEMBER & CASCADE PURGE ── */}
+        {showDeleteModal && memberToDelete && (
+          <div className="fixed inset-0 z-[220] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+              <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-600 font-black text-xl flex items-center justify-center border border-rose-200">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900">Delete Team Member</h3>
+                    <p className="text-xs text-rose-600 font-semibold">Permanently purge member &amp; all associated data</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={deleteLoading}
+                  onClick={() => {
+                    setShowDeleteModal(false);
+                    setMemberToDelete(null);
+                    setDeleteError('');
+                  }}
+                  className="text-slate-400 hover:text-slate-600 font-bold p-1 cursor-pointer disabled:opacity-50"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {deleteError && (
+                <div className="mb-4 p-3 bg-rose-50 rounded-xl border border-rose-200 text-xs text-rose-700 flex items-center gap-2">
+                  <span className="font-bold">✕</span>
+                  <span>{deleteError}</span>
+                </div>
+              )}
+
+              {deleteSuccess && (
+                <div className="mb-4 p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-700 flex items-center gap-2">
+                  <span className="font-bold">✓</span>
+                  <span>{deleteSuccess}</span>
+                </div>
+              )}
+
+              {/* Member Card Preview */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-brand-orange-pale text-brand-orange font-black text-sm flex items-center justify-center flex-shrink-0">
+                    {memberToDelete.name.charAt(0)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-extrabold text-slate-900 text-sm flex items-center gap-2 truncate">
+                      <span className="truncate">{memberToDelete.name}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold flex-shrink-0 ${
+                        memberToDelete.role === 'TEAM_LEAD' ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700'
+                      }`}>
+                        {memberToDelete.role === 'TEAM_LEAD' ? 'Team Lead' : 'TA Member'}
+                      </span>
+                    </div>
+                    <p className="text-slate-500 text-xs truncate">{memberToDelete.email} • {memberToDelete.team}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Warning Notice */}
+              <div className="p-4 rounded-2xl bg-rose-50/80 border border-rose-200 text-xs space-y-2 mb-5">
+                <div className="flex items-center gap-2 text-rose-800 font-black uppercase text-[11px] tracking-wide">
+                  <span>⚠️ Permanent Purge Notice</span>
+                </div>
+                <p className="text-rose-900 leading-relaxed font-medium">
+                  Deleting this employee will immediately revoke their access and <strong className="font-extrabold">permanently remove all data associated with them</strong> from the database, including:
+                </p>
+                <ul className="text-rose-800 space-y-1 list-disc list-inside text-[11px] font-medium pl-1">
+                  <li>Job requisitions and requirements uploaded or created by this member</li>
+                  <li>Candidate profiles and resumes sourced or managed by this member</li>
+                  <li>Resume screening logs, match scores, and AI evaluation records</li>
+                  <li>Recruiter performance activity logs and tracked metric entries</li>
+                </ul>
+                <p className="text-[11px] text-rose-700 font-bold pt-1">
+                  This action is irreversible. Are you sure you want to proceed?
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={deleteLoading}
+                  onClick={() => {
+                    setShowDeleteModal(false);
+                    setMemberToDelete(null);
+                    setDeleteError('');
+                  }}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={deleteLoading}
+                  onClick={handleConfirmDelete}
+                  className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 active:scale-[0.99] text-white text-xs font-black rounded-xl shadow-lg shadow-rose-600/20 transition-all cursor-pointer disabled:opacity-60 flex items-center gap-2"
+                >
+                  {deleteLoading ? (
+                    <>
+                      <svg className="animate-spin w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      <span>Purging Member &amp; Data...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      <span>Delete Member &amp; Associated Data</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         )}

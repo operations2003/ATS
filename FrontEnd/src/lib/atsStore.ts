@@ -293,7 +293,7 @@ class ATSStore {
   }
 
   public setRecruitersFromDatabase(members: RecruiterMetric[]): void {
-    if (!Array.isArray(members) || members.length === 0) return;
+    if (!Array.isArray(members)) return;
     this.recruiters = members.filter(m => m.email?.toLowerCase().trim() !== 'sheetalbedi@tasknera.com' && m.role !== 'ADMIN');
     this.saveToStorage();
   }
@@ -304,6 +304,74 @@ class ATSStore {
 
   public getRecruiter(id: string): RecruiterMetric | undefined {
     return this.recruiters.find(r => r.id === id);
+  }
+
+  public deleteRecruiter(id: string, name?: string, email?: string): boolean {
+    const cleanId = String(id || '').trim();
+    const cleanName = String(name || '').toLowerCase().trim();
+    const cleanEmail = String(email || '').toLowerCase().trim();
+
+    if (cleanEmail === 'sheetalbedi@tasknera.com') return false;
+
+    const target = this.recruiters.find(r =>
+      (cleanId && r.id === cleanId) ||
+      (cleanEmail && r.email.toLowerCase() === cleanEmail) ||
+      (cleanName && r.name.toLowerCase() === cleanName)
+    );
+
+    const targetName = target ? target.name : name || '';
+    const targetEmail = target ? target.email : email || '';
+
+    // Remove from recruiters
+    this.recruiters = this.recruiters.filter(r => {
+      if (cleanId && r.id === cleanId) return false;
+      if (cleanEmail && r.email.toLowerCase() === cleanEmail) return false;
+      if (cleanName && r.name.toLowerCase() === cleanName) return false;
+      return true;
+    });
+
+    // Cascade remove associated jobs created by or worked by this recruiter
+    const removedJobIds = new Set<string>();
+    this.jobs = this.jobs.filter(j => {
+      const assigned = String(j.assignedRecruiter || '').toLowerCase().trim();
+      const worked = j.workedBy?.some(w =>
+        (cleanName && w.name?.toLowerCase().trim() === cleanName) ||
+        (cleanEmail && w.email?.toLowerCase().trim() === cleanEmail) ||
+        (cleanId && w.id === cleanId)
+      );
+      const isAssigned = (cleanName && (assigned === cleanName || assigned.includes(cleanName))) ||
+                         (cleanEmail && assigned.includes(cleanEmail));
+      if (isAssigned || worked) {
+        removedJobIds.add(j.id);
+        return false;
+      }
+      return true;
+    });
+
+    // Cascade remove associated candidates assigned to or screened by this recruiter, or under purged jobs
+    this.candidates = this.candidates.filter(c => {
+      if (c.jobId && removedJobIds.has(c.jobId)) return false;
+      const assigned = String(c.assignedRecruiter || '').toLowerCase().trim();
+      const screened = String(c.screeningInfo?.screenedBy || '').toLowerCase().trim();
+      const reviewed = String(c.tlReviewedBy || '').toLowerCase().trim();
+      const isAssigned = (cleanName && (assigned === cleanName || assigned.includes(cleanName))) ||
+                         (cleanEmail && assigned.includes(cleanEmail));
+      const isScreened = cleanName && (screened === cleanName || screened.includes(cleanName));
+      const isReviewed = cleanName && (reviewed === cleanName || reviewed.includes(cleanName));
+      if (isAssigned || isScreened || isReviewed) return false;
+      return true;
+    });
+
+    this.logAudit({
+      action: 'USER_ROLE_UPDATED',
+      user: 'Administrator',
+      userRole: 'ADMIN',
+      target: `Member ${targetName || cleanName || cleanEmail}`,
+      detail: `Permanently removed team member ${targetName || cleanEmail} and purged all associated jobs, candidates, and evaluation records.`
+    });
+
+    this.saveToStorage();
+    return true;
   }
 
   public ensureMember(user: { id?: string; name?: string | null; email?: string; role?: string }): RecruiterMetric | null {
