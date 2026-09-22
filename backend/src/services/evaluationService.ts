@@ -7,6 +7,7 @@ import {
   MandatoryFailureDetail,
   PillarScores
 } from './atsScoringEngine';
+import { computeComprehensiveMatchScore, getEffectiveSkills } from '../utils/requirementUtils';
 
 export type EvaluationStatus =
   | 'MATCHED'
@@ -388,6 +389,57 @@ export async function evaluateCandidateAgainstRequirements(
       evidenceType: r.evidenceType
     }));
 
+    // Ensure score matches the exact Job Candidates calculation
+    let calculatedScore = tsResult.overallScore;
+    let calculatedLevel = tsResult.matchLevel;
+    let reqFailed = tsResult.mandatoryRequirementFailed;
+
+    try {
+      const effectiveSkills = getEffectiveSkills(candidate, enrichedRequirements);
+      const compResult = computeComprehensiveMatchScore(
+        {
+          skills: effectiveSkills,
+          totalExperience: candidate.totalExperience || candidate.totalExperienceYears,
+          totalExperienceYears: candidate.totalExperienceYears,
+          education: candidate.education || [],
+          rawText: candidate.rawText || '',
+          summary: candidate.summary || candidate.professionalSummary || '',
+          currentTitle: candidate.currentTitle || '',
+          certifications: candidate.certifications || [],
+          experience: candidate.experience || [],
+          parsingMetadata: candidate.parsingMetadata,
+          parsingStatus: candidate.parsingStatus,
+        },
+        {
+          position: job.position || job.title,
+          jd_text: job.jd_text,
+          requirements: enrichedRequirements.map((r: any) => ({
+            id: r.id,
+            requirement: r.requirement,
+            category: r.category,
+            is_mandatory: r.is_mandatory || r.mandatory,
+            weight: r.weight,
+            source_evidence: r.source_evidence,
+          })),
+        }
+      );
+      if (typeof compResult?.overallScore === 'number') {
+        calculatedScore = Math.round(compResult.overallScore);
+        const mapTier = (lvl?: string): MatchTier => {
+          if (!lvl) return calculatedLevel;
+          if (lvl === 'STRONG MATCH' || lvl === 'GOOD MATCH') return 'STRONG MATCH';
+          if (lvl === 'EXCELLENT MATCH') return 'EXCELLENT MATCH';
+          if (lvl === 'MODERATE MATCH') return 'MODERATE MATCH';
+          if (lvl === 'LOW FIT' || lvl === 'LOW MATCH') return 'LOW MATCH';
+          return 'MINIMAL MATCH';
+        };
+        calculatedLevel = mapTier(compResult.matchLevel);
+        reqFailed = Boolean(compResult.mandatoryRequirementFailed);
+      }
+    } catch (compErr) {
+      console.warn('[EvaluationService] Comprehensive match fallback error:', compErr);
+    }
+
     return {
       evaluationId: tsResult.evaluationId,
       candidateId: candidate.id,
@@ -400,21 +452,21 @@ export async function evaluateCandidateAgainstRequirements(
       jobId: job.id,
       jobTitle: job.position || job.title || 'Job Position',
       jobClient: job.client || job.company || 'Client',
-      rawScore: tsResult.rawScore,
-      baseDeterministicScore: tsResult.rawScore,
+      rawScore: calculatedScore,
+      baseDeterministicScore: calculatedScore,
       aiSemanticAdjustment: 0.0,
       aiAssistanceEnabled: false,
       inferredRequirementsCount: 0,
-      overallMatch: tsResult.overallScore,
-      atsScore: tsResult.overallScore,
-      overallScore: tsResult.overallScore,
-      matchLevel: tsResult.matchLevel,
-      mandatoryRequirementFailed: tsResult.mandatoryRequirementFailed,
+      overallMatch: calculatedScore,
+      atsScore: calculatedScore,
+      overallScore: calculatedScore,
+      matchLevel: calculatedLevel,
+      mandatoryRequirementFailed: reqFailed,
       mandatoryComplianceScore: tsResult.mandatoryComplianceScore,
       mandatoryFailures: tsResult.mandatoryFailures,
       mandatoryCompliance: tsResult.mandatoryCompliance,
-      recommendation: tsResult.overallScore >= 75 && !tsResult.mandatoryRequirementFailed ? 'SUBMIT' : (tsResult.overallScore >= 50 ? 'REVIEW' : 'DO NOT SUBMIT'),
-      recommendationReason: tsResult.mandatoryRequirementFailed ? 'Mandatory knockout criteria failed in candidate profile.' : 'Evaluated via Deterministic ATS Engine.',
+      recommendation: calculatedScore >= 75 && !reqFailed ? 'SUBMIT' : (calculatedScore >= 50 ? 'REVIEW' : 'DO NOT SUBMIT'),
+      recommendationReason: reqFailed ? 'Mandatory knockout criteria failed in candidate profile.' : 'Evaluated via Deterministic ATS Engine.',
       pillarScores: tsResult.pillarScores,
       pillars: tsResult.pillars,
       scoreBreakdown: {

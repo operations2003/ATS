@@ -13,6 +13,7 @@ import {
 import { evaluateCandidateAgainstRequirements } from '../services/evaluationService';
 import { getStandardRequirementsForPosition } from './evaluationController';
 import { getJobFromStoreOrDb, GLOBAL_JOB_STORE } from './jobController';
+import { computeComprehensiveMatchScore, getEffectiveSkills } from '../utils/requirementUtils';
 
 export interface CandidateRecord extends CandidateParsedProfile {
   id: string;
@@ -539,6 +540,45 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
         compliance = evalPayload.mandatoryCompliance
           ? `${evalPayload.mandatoryCompliance.met}/${evalPayload.mandatoryCompliance.total}`
           : 'N/A';
+
+        // Ensure score matches the exact Job Candidates calculation
+        try {
+          const effectiveSkills = getEffectiveSkills(c, reqs);
+          const compResult = computeComprehensiveMatchScore(
+            {
+              skills: effectiveSkills,
+              totalExperience: c.totalExperience || c.totalExperienceYears,
+              totalExperienceYears: c.totalExperienceYears,
+              education: c.education || [],
+              rawText: c.rawText || '',
+              summary: c.summary || c.professionalSummary || '',
+              currentTitle: c.currentTitle || '',
+              certifications: c.certifications || [],
+              experience: c.experience || [],
+              parsingMetadata: c.parsingMetadata,
+              parsingStatus: c.parsingStatus,
+            },
+            {
+              position: jobTitle,
+              jd_text: targetJob?.jd_text || jobTitle,
+              requirements: reqs.map((r: any) => ({
+                id: r.id,
+                requirement: r.requirement,
+                category: r.category,
+                is_mandatory: r.is_mandatory,
+                weight: r.weight,
+                source_evidence: r.source_evidence,
+              })),
+            }
+          );
+          if (typeof compResult?.overallScore === 'number') {
+            finalScore = Math.round(compResult.overallScore);
+            matchLevel = compResult.matchLevel || matchLevel;
+            decision = finalScore >= 80 ? 'SUBMIT' : (finalScore >= 55 ? 'REVIEW' : 'DO NOT SUBMIT');
+          }
+        } catch (compErr) {
+          console.warn('[getCandidatesForJob] Comprehensive match error:', compErr);
+        }
         
         // Update in-memory candidate cache so next request is fast
         (c as any).matchScore = finalScore;

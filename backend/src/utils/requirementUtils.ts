@@ -1436,3 +1436,63 @@ export const computeComprehensiveMatchScore = (
     summary,
   };
 };
+
+/**
+ * Extracts effective candidate skills by combining explicit skills,
+ * recognized catalog keywords, and JD requirement tokens found in candidate text.
+ * Exact logic mirrored from Job Candidates page for score consistency.
+ */
+export const getEffectiveSkills = (cand: any, jobReqs?: any[]): string[] => {
+  const existing = Array.isArray(cand.skills)
+    ? cand.skills.map((s: any) => (typeof s === 'string' ? s : s?.skill || '')).filter(Boolean)
+    : [];
+  const text = `${cand.summary || ''} ${cand.professionalSummary || ''} ${cand.rawText || cand.raw_text || ''}`;
+  const catalog = [
+    'React', 'React.js', 'Next.js', 'TypeScript', 'JavaScript', 'HTML5', 'HTML', 'CSS3', 'CSS', 'Tailwind CSS',
+    'Tailwind', 'Redux', 'Node.js', 'Express', 'Express.js', 'Python', 'Java', 'FastAPI', 'Django', 'Flask',
+    'SQL', 'PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'Supabase', 'Firebase', 'AWS', 'Docker', 'Git', 'GitHub',
+    'REST APIs', 'REST API', 'Prisma ORM', 'Prisma', 'GraphQL', 'Microservices', 'Postman', 'Vercel', 'Figma',
+    'Azure', 'GCP', 'Kubernetes', 'CI/CD', 'Jenkins', 'Terraform', 'Angular', 'Vue.js', 'Vue', 'SolidJS',
+    'Svelte', 'WebRTC', 'Socket.io', 'NestJS', 'Go', 'Golang', 'Rust', 'Ruby', 'PHP', 'Laravel',
+    'C#', 'C++', 'Unity', 'Unreal', 'TensorFlow', 'PyTorch', 'Pandas', 'NumPy', 'Scikit-Learn', 'D3.js',
+    'Three.js', 'OpenGL', 'WebAssembly', 'Electron', 'React Native', 'Flutter', 'Swift', 'Kotlin', 'Android', 'iOS',
+    'Salesforce', 'Apex', 'LWC', 'Lightning Web Components', 'Flow Automation', 'Flows', 'Process Builder',
+    'Manufacturing Cloud', 'Sales Cloud', 'Service Cloud', 'Marketing Cloud', 'Experience Cloud', 'Health Cloud',
+    'Financial Services Cloud', 'Visualforce', 'SOQL', 'SOSL', 'Aura Components', 'OmniStudio', 'Vlocity', 'CPQ',
+    'Platform Developer', 'Platform Developer I', 'Platform Developer II', 'Salesforce Certified Administrator',
+    'Salesforce Admin', 'Agile', 'Scrum', 'Sprint Execution', 'Jira', 'Confluence', 'Snowflake', 'Databricks',
+    'SAP', 'Workday', 'PowerBI', 'Tableau'
+  ];
+  const matched = new Set<string>(existing);
+  for (const s of catalog) {
+    const esc = s.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&');
+    if (new RegExp(`(?:^|[^a-zA-Z0-9_])${esc}(?:[^a-zA-Z0-9_]|$)`, 'i').test(text)) {
+      matched.add(s);
+    }
+  }
+
+  if (jobReqs && jobReqs.length > 0) {
+    for (const r of jobReqs) {
+      const phrase = (r.requirement || r.text || '').trim();
+      if (phrase.length > 2) {
+        const clean = phrase.replace(/(\d+\+?\s*years?|experience|minimum|required|hands-on|relevant|professional|industry|proven|in|with|of|for|and|to)/gi, ' ').trim();
+        const tokens = clean.split(/[\s,;/()\[\]{}*+?^$|\\]+/).filter((t: string) => t.length > 2);
+        for (const tok of tokens) {
+          if (tok.length >= 3) {
+            try {
+              const escTok = tok.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&');
+              if (new RegExp(`(?:^|[^a-zA-Z0-9_])${escTok}(?:[^a-zA-Z0-9_]|$)`, 'i').test(text)) {
+                matched.add(tok);
+              }
+            } catch (err) {
+              // Ignore invalid regex tokens
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return Array.from(matched);
+};
+

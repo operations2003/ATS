@@ -3,6 +3,7 @@ import prisma from '../config/prisma';
 import { evaluateCandidateAgainstRequirements, CandidateEvaluationPayload } from '../services/evaluationService';
 import { CandidateRecord, findCandidateRecord, getAllCandidateRecords, mapDbCandidateToRecord } from './candidateController';
 import { AuthRequest } from '../middleware/authMiddleware';
+import { computeComprehensiveMatchScore, getEffectiveSkills } from '../utils/requirementUtils';
 
 /**
  * Standard requirement helper for fallback jobs or unseeded requisitions
@@ -1027,14 +1028,8 @@ export const getCandidateEvaluationHistoryController = async (req: AuthRequest, 
         where: appWhere,
         include: {
           job: {
-            select: {
-              id: true,
-              position: true,
-              client: true,
-              location: true,
-              work_mode: true,
-              status: true,
-              created_by: true
+            include: {
+              requirements: true
             }
           }
         },
@@ -1051,6 +1046,65 @@ export const getCandidateEvaluationHistoryController = async (req: AuthRequest, 
         const cacheKey = `${candidateId}___${app.job_id}`;
         const cached = EVALUATION_CACHE.get(cacheKey);
 
+        let finalScore = app.match_score !== null ? Math.round(app.match_score) : (cached?.overallScore || null);
+        let matchLevel = cached?.matchLevel || (finalScore && finalScore >= 80 ? 'STRONG MATCH' : 'GOOD MATCH');
+        let stage = app.stage || 'SOURCED';
+
+        // Ensure Candidate Pool Drawer displays the exact same ATS score as Job Candidates page
+        if (candidate && app.job && app.job.requirements && app.job.requirements.length > 0) {
+          try {
+            const effectiveSkills = getEffectiveSkills(candidate, app.job.requirements);
+            const compResult = computeComprehensiveMatchScore(
+              {
+                skills: effectiveSkills,
+                totalExperience: candidate.totalExperience || candidate.totalExperienceYears,
+                totalExperienceYears: candidate.totalExperienceYears,
+                education: candidate.education || [],
+                rawText: candidate.rawText || '',
+                summary: candidate.summary || candidate.professionalSummary || '',
+                currentTitle: candidate.currentTitle || '',
+                certifications: candidate.certifications || [],
+                experience: candidate.experience || [],
+                parsingMetadata: candidate.parsingMetadata,
+                parsingStatus: candidate.parsingStatus,
+              },
+              {
+                position: app.job.position || 'Job Position',
+                jd_text: app.job.jd_text || app.job.position || '',
+                requirements: app.job.requirements.map((r: any) => ({
+                  id: r.id,
+                  requirement: r.requirement,
+                  category: r.category,
+                  is_mandatory: r.is_mandatory,
+                  weight: r.weight,
+                  source_evidence: r.source_evidence,
+                })),
+              }
+            );
+
+            if (typeof compResult?.overallScore === 'number') {
+              finalScore = Math.round(compResult.overallScore);
+              matchLevel = compResult.matchLevel || matchLevel;
+              stage = finalScore >= 80 ? 'SHORTLISTED' : (finalScore >= 55 ? 'REVIEW' : 'REJECTED');
+
+              // Sync database record so single source of truth is always consistent
+              if (app.match_score !== finalScore) {
+                prisma.candidateApplication.update({
+                  where: { id: app.id },
+                  data: { match_score: finalScore, stage }
+                }).catch(() => null);
+
+                prisma.evaluation.updateMany({
+                  where: { candidateId: candidate.id, jobId: app.job.id },
+                  data: { score: finalScore, atsScore: finalScore, matchLevel, decision: stage }
+                }).catch(() => null);
+              }
+            }
+          } catch (compErr) {
+            console.warn('[Evaluation History] Score computation fallback:', compErr);
+          }
+        }
+
         historyItems.push({
           jobId: app.job.id,
           jobTitle: app.job.position,
@@ -1058,13 +1112,13 @@ export const getCandidateEvaluationHistoryController = async (req: AuthRequest, 
           client: app.job.client,
           company: app.job.client,
           location: app.job.location || 'Remote',
-          score: app.match_score !== null ? Math.round(app.match_score) : (cached?.overallScore || null),
-          matchLevel: cached?.matchLevel || (app.match_score && app.match_score >= 80 ? 'STRONG MATCH' : 'GOOD MATCH'),
-          status: app.stage || 'SOURCED',
-          stage: app.stage || 'SOURCED',
+          score: finalScore,
+          matchLevel,
+          status: stage,
+          stage,
           date: app.updated_at ? new Date(app.updated_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent',
           evaluationId: cached?.evaluationId || `eval-${app.id}`,
-          alreadyEvaluated: Boolean(cached || app.match_score !== null)
+          alreadyEvaluated: Boolean(cached || finalScore !== null)
         });
       }
     }
