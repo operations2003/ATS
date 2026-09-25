@@ -925,7 +925,7 @@ export default function CandidatesPage() {
 
         {/* ── MATCH CANDIDATE WITH JD MODAL (ENTRY POINT 2) ── */}
         {matchingCandidate && (
-          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
             <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-100 overflow-hidden animate-scaleUp flex flex-col max-h-[90vh]">
 
               {/* Modal Header */}
@@ -1245,12 +1245,27 @@ export default function CandidatesPage() {
 
         {/* ── CANDIDATE PROFILE SLIDE-OVER DRAWER ── */}
         {selectedCandidate && (
-          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex justify-end animate-fadeIn">
-            <div className="w-full max-w-3xl bg-white h-full overflow-y-auto shadow-2xl flex flex-col justify-between">
+          <div
+            className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-xs flex justify-end animate-fadeIn"
+            onClick={() => setSelectedCandidate(null)}
+          >
+            <div
+              className="w-full max-w-3xl bg-white h-full overflow-y-auto shadow-2xl flex flex-col justify-between"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div>
                 {/* Modal Header */}
                 <div className="p-6 border-b border-slate-100 flex items-start justify-between bg-[#F8FAFC] sticky top-0 z-10">
                   <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => setSelectedCandidate(null)}
+                      className="p-2 -ml-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-200/70 transition-colors flex items-center justify-center cursor-pointer"
+                      title="Back to Candidate Pool"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                      </svg>
+                    </button>
                     <div className={`w-14 h-14 rounded-2xl font-extrabold text-xl flex items-center justify-center ${avatarColor(selectedCandidate.name)} shadow-2xs border`}>
                       {selectedCandidate.name.charAt(0).toUpperCase()}
                     </div>
@@ -1266,6 +1281,14 @@ export default function CandidatesPage() {
 
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <button
+                      onClick={() => setSelectedCandidate(null)}
+                      className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5"
+                      title="Back to Candidate Pool"
+                    >
+                      <span>←</span>
+                      <span>Back</span>
+                    </button>
+                    <button
                       onClick={() => {
                         navigator.clipboard.writeText(`${selectedCandidate.name} | ${selectedCandidate.email} | ${selectedCandidate.phone}`);
                         setCopiedContact(true);
@@ -1279,6 +1302,7 @@ export default function CandidatesPage() {
                     <button
                       onClick={() => setSelectedCandidate(null)}
                       className="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-200 flex items-center justify-center text-sm cursor-pointer transition-colors"
+                      title="Close"
                     >
                       ✕
                     </button>
@@ -1614,6 +1638,12 @@ export default function CandidatesPage() {
 
                 <div className="flex items-center gap-3">
                   <button
+                    onClick={() => setSelectedCandidate(null)}
+                    className="px-4 py-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold rounded-xl transition-all shadow-2xs cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>← Close</span>
+                  </button>
+                  <button
                     onClick={(e) => {
                       const cand = selectedCandidate;
                       setSelectedCandidate(null);
@@ -1634,7 +1664,7 @@ export default function CandidatesPage() {
 
         {/* ── DATABASE DELETION CONFIRMATION CARD MODAL ── */}
         {candidateToDelete && (
-          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
             <div className="bg-white rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl border border-slate-100 animate-scaleUp">
               <div className="w-14 h-14 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mb-5 border border-rose-100 shadow-2xs">
                 <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1691,7 +1721,7 @@ export default function CandidatesPage() {
 
         {/* ── UPLOAD RESUMES / ADD CVS MODAL ── */}
         {isUploadModalOpen && (
-          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
             <div className="bg-white rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl border border-slate-100 animate-scaleUp">
 
               <div className="flex items-center justify-between mb-5 pb-4 border-b border-slate-100">
