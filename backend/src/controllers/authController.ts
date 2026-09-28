@@ -18,6 +18,9 @@ const generateToken = (userId: string, email: string, role: UserRole, organizati
 const DESIGNATED_ADMIN_EMAIL = 'sheetalbedi@tasknera.com';
 const DESIGNATED_ADMIN_PASSWORD = 'Tasknera@9312506515';
 
+const DEMO_RECRUITER_EMAIL = 'recruiter@tasknera.com';
+const DEMO_RECRUITER_PASSWORD = 'Tasknera@Recruiter123';
+
 /**
  * Ensure default admin account exists in PostgreSQL
  */
@@ -104,6 +107,28 @@ export const signin = async (req: Request, res: Response): Promise<void> => {
           name: 'Sheetal Bedi',
           email: DESIGNATED_ADMIN_EMAIL,
           role: userRole,
+          organizationId: orgId,
+          createdAt: new Date().toISOString()
+        }
+      });
+      return;
+    }
+
+    // 2. Direct validation for demo recruiter member
+    if (cleanEmail === DEMO_RECRUITER_EMAIL && password === DEMO_RECRUITER_PASSWORD) {
+      const orgId = 'org-tasknera';
+      const userRole: UserRole = 'MEMBER';
+      const token = generateToken('member-recruiter', DEMO_RECRUITER_EMAIL, userRole, orgId);
+
+      res.status(200).json({
+        message: 'Signed in successfully',
+        token,
+        user: {
+          id: 'member-recruiter',
+          name: 'Ram Charan',
+          email: DEMO_RECRUITER_EMAIL,
+          role: userRole,
+          teamId: 'team-talent-acquisition',
           organizationId: orgId,
           createdAt: new Date().toISOString()
         }
@@ -224,6 +249,18 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
         name: 'Sheetal Bedi',
         email: DESIGNATED_ADMIN_EMAIL,
         role: 'ADMIN',
+        organizationId: 'org-tasknera',
+        createdAt: new Date().toISOString()
+      };
+    }
+
+    if (!user && req.user.email?.toLowerCase().trim() === DEMO_RECRUITER_EMAIL) {
+      user = {
+        id: req.user.userId || 'member-recruiter',
+        name: 'Ram Charan',
+        email: DEMO_RECRUITER_EMAIL,
+        role: 'MEMBER',
+        teamId: 'team-talent-acquisition',
         organizationId: 'org-tasknera',
         createdAt: new Date().toISOString()
       };

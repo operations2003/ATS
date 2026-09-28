@@ -62,6 +62,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
 
           if (!resolvedPassword && isDesignatedAdmin) {
             resolvedPassword = DESIGNATED_ADMIN_PASSWORD;
+          } else if (!resolvedPassword && cleanEmail === 'recruiter@tasknera.com') {
+            resolvedPassword = 'Tasknera@Recruiter123';
           }
 
           const fullUser = { 
@@ -132,6 +134,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
             name: 'Sheetal Bedi',
             email: DESIGNATED_ADMIN_EMAIL,
             role: 'ADMIN',
+            organizationId: 'org-tasknera'
+          } as any
+        };
+      } else if (cleanEmail === 'recruiter@tasknera.com' && password === 'Tasknera@Recruiter123') {
+        data = {
+          message: 'Signed in successfully',
+          token: 'tasknera-recruiter-session-token-' + Date.now(),
+          user: {
+            id: 'member-recruiter',
+            name: 'Ram Charan',
+            email: 'recruiter@tasknera.com',
+            role: 'MEMBER',
             organizationId: 'org-tasknera'
           } as any
         };
