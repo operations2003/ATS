@@ -126,7 +126,7 @@ export async function GET(
           }
         ],
         explanation: {
-          summary: `${isHigh ? 'STRONG MATCH' : isMid ? 'MODERATE MATCH' : 'LOW MATCH'} (${matchScore}% Match Score). Evaluated against requisition requirements.`,
+          summary: `${isHigh ? 'STRONG MATCH' : isMid ? 'MODERATE MATCH' : 'LOW MATCH'} (${matchScore}% Match Score). Evaluated against job requirements.`,
           strengths: ['Core technology alignment', 'Education qualification met'],
           gaps: isHigh ? [] : ['Mandatory experience or skill depth deficit identified.'],
           mandatoryStatus: isHigh ? 'PASSED (All mandatory criteria satisfied)' : 'FAILED (1 or more mandatory criteria not fully met)'

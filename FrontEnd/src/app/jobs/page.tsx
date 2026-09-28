@@ -106,7 +106,7 @@ function WorkedByMembers({ workers = [], isCompact = false }: { workers: JobWork
             {w.name}
           </div>
           <div className="text-[10px] text-slate-400 font-medium truncate max-w-[170px]">
-            {w.action === 'Created Requisition' ? 'Requisition Owner' : (w.action || (w.role === 'ADMIN' ? 'Administrator' : 'Recruiter'))}
+            {w.action === 'Uploaded JD' || w.action === 'Created Requisition' ? 'Job Creator' : (w.action || (w.role === 'ADMIN' ? 'Administrator' : 'Recruiter'))}
           </div>
         </div>
       </div>
@@ -151,10 +151,11 @@ function WorkedByMembers({ workers = [], isCompact = false }: { workers: JobWork
             <svg className="w-3.5 h-3.5 text-brand-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
-            <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Working On This Requisition</span>
+            <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Working On This Job</span>
           </div>
           <span className="text-[10px] px-2 py-0.5 bg-brand-orange/20 text-brand-orange border border-brand-orange/30 rounded-full font-bold">{activeWorkers.length} Members</span>
         </div>
+
 
         <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
           {activeWorkers.map((w, idx) => (
@@ -317,7 +318,7 @@ export default function JobsPage() {
                   name: j.user.name || (j.user.email ? j.user.email.split('@')[0] : (isCurrentAuthUser ? currentUserName : 'Recruiter')),
                   email: j.user.email || (isCurrentAuthUser ? user?.email : undefined),
                   role: j.user.role || (isCurrentAuthUser ? currentUserRole : 'MEMBER'),
-                  action: 'Created Requisition',
+                  action: 'Uploaded JD',
                   isCreator: true
                 }]
               : (j.assignedRecruiter
@@ -328,16 +329,16 @@ export default function JobsPage() {
                         name: trimmed,
                         email: `${trimmed.toLowerCase().replace(/\s+/g, '.')}@tasknera.com`,
                         role: idx === 0 ? 'Lead Recruiter' : 'Recruiter',
-                        action: idx === 0 ? 'Requisition Lead' : 'Candidate Screener',
+                        action: idx === 0 ? 'Job Lead' : 'Candidate Screener',
                         isCreator: idx === 0
                       };
                     })
                   : [{
                       id: isCurrentAuthUser ? (user?.id || 'usr-creator') : 'usr-owner',
-                      name: isCurrentAuthUser ? currentUserName : (user?.name || 'Requisition Owner'),
+                      name: isCurrentAuthUser ? currentUserName : (user?.name || 'Job Creator'),
                       email: isCurrentAuthUser ? user?.email : 'recruiter@tasknera.com',
                       role: isCurrentAuthUser ? currentUserRole : 'MEMBER',
-                      action: 'Created Requisition',
+                      action: 'Uploaded JD',
                       isCreator: true
                     }]
                 )
@@ -350,12 +351,13 @@ export default function JobsPage() {
             name: user?.name || (user?.email ? user.email.split('@')[0] : 'Ram Charan'),
             email: user?.email,
             role: user?.role || 'MEMBER',
-            action: 'Created Requisition',
+            action: 'Uploaded JD',
             isCreator: true
           });
         }
 
-        const validAssignedRecruiter = workedBy.map(w => w.name).join(', ') || (j.user?.name || user?.name || 'Requisition Owner');
+        const validAssignedRecruiter = workedBy.map(w => w.name).join(', ') || (j.user?.name || user?.name || 'Job Creator');
+
 
         let localCandCount = 0;
         if (typeof window !== 'undefined') {
@@ -521,10 +523,10 @@ export default function JobsPage() {
           <div>
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-orange-pale text-brand-orange text-xs font-bold uppercase tracking-wider mb-2 border border-brand-orange/20">
               <span className="w-1.5 h-1.5 rounded-full bg-brand-orange animate-pulse" />
-              Requisitions Directory
+              Jobs Directory
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Active Job Requisitions</h1>
-            <p className="text-sm text-slate-500 mt-1">Manage positions, monitor assigned TA teams, review deterministic rubrics, and run automated candidate matching</p>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Active Jobs & JDs</h1>
+            <p className="text-sm text-slate-500 mt-1">Manage positions, monitor assigned TA teams, review criteria rubrics, and run automated candidate matching</p>
           </div>
           <Link
             href="/jobs/create"
@@ -533,14 +535,14 @@ export default function JobsPage() {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
             </svg>
-            Create New Requisition
+            Upload New JD
           </Link>
         </div>
 
         {/* Stats Summary Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
           {[
-            { label: 'Total Requisitions', value: counts.All, color: 'text-slate-900', badge: 'bg-slate-100 text-slate-700 border-slate-200', icon: 'M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
+            { label: 'Total Jobs / JDs', value: counts.All, color: 'text-slate-900', badge: 'bg-slate-100 text-slate-700 border-slate-200', icon: 'M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
             { label: 'Active Pipeline', value: counts.Active, color: 'text-emerald-600', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
             { label: 'Draft Rubrics', value: counts.Draft, color: 'text-amber-600', badge: 'bg-amber-50 text-amber-700 border-amber-200', icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
             { label: 'Closed / Filled', value: counts.Closed, color: 'text-slate-500', badge: 'bg-slate-50 text-slate-600 border-slate-200', icon: 'M5 13l4 4L19 7' },
@@ -553,6 +555,7 @@ export default function JobsPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={stat.icon} />
                   </svg>
                 </div>
+
               </div>
               <div className={`text-3xl font-extrabold ${stat.color}`}>{stat.value}</div>
             </div>
@@ -618,8 +621,9 @@ export default function JobsPage() {
         {isLoading ? (
           <div className="text-center py-20 bg-white rounded-3xl border border-slate-200 shadow-sm">
             <div className="w-8 h-8 border-4 border-brand-orange border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="mt-4 text-sm text-slate-500 font-medium">Fetching your requisitions...</p>
+            <p className="mt-4 text-sm text-slate-500 font-medium">Fetching your jobs & JDs...</p>
           </div>
+
         ) : filtered.length > 0 ? (
           viewMode === 'table' ? (
           <div className="bg-white border border-slate-200/90 rounded-3xl shadow-sm overflow-hidden">
@@ -772,12 +776,12 @@ export default function JobsPage() {
               </svg>
             </div>
             <h3 className="text-lg font-bold text-[#1E293B] mb-1">
-              {allJobs.length === 0 ? 'No job requisitions created yet' : 'No matching requisitions found'}
+              {allJobs.length === 0 ? 'No jobs uploaded yet' : 'No matching jobs found'}
             </h3>
             <p className="text-slate-500 text-xs max-w-md mx-auto mb-6">
               {search || filter !== 'All'
                 ? 'Try adjusting your search criteria or active filter tags.'
-                : 'Get started by creating your first job requisition. You can upload a Job Description PDF or paste requirements.'}
+                : 'Get started by uploading your first Job Description (JD). You can upload a PDF or paste requirements.'}
             </p>
             {allJobs.length === 0 && (
               <Link
@@ -787,11 +791,12 @@ export default function JobsPage() {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
                 </svg>
-                Post Your First Job Requisition
+                Upload Your First JD
               </Link>
             )}
           </div>
         )}
+
       </main>
       <Footer />
     </div>

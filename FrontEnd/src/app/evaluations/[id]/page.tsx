@@ -437,8 +437,9 @@ export default function CandidateEvaluationDetailPage() {
                     <p className="text-xs text-slate-500 font-medium flex items-center gap-2 flex-wrap">
                       <span className="font-bold text-slate-800">{evaluation.candidateRole}</span>
                       <span>•</span>
-                      <span>Requisition: <strong className="text-slate-900">{evaluation.jobTitle}</strong> ({evaluation.jobClient})</span>
+                      <span>Job: <strong className="text-slate-900">{evaluation.jobTitle}</strong> ({evaluation.jobClient})</span>
                       <span>•</span>
+
                       <span className="font-mono text-slate-400">Audited: {new Date(evaluation.evaluatedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                     </p>
                   </div>
@@ -516,7 +517,7 @@ export default function CandidateEvaluationDetailPage() {
                       </span>
                     </div>
                     <p className="text-xs text-rose-800 mt-0.5">
-                      This candidate does not satisfy non-negotiable prerequisites confirmed for this requisition.
+                      This candidate does not satisfy non-negotiable prerequisites confirmed for this job.
                     </p>
                   </div>
                 </div>

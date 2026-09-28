@@ -43,7 +43,7 @@ export default function ReportsPage() {
               Internal Recruitment Analytics
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1E293B] tracking-tight">Pipeline Performance &amp; Metrics</h1>
-            <p className="text-sm text-slate-500 mt-1">Real-time candidate conversion ratios, requisition velocity, and deterministic match analytics</p>
+            <p className="text-sm text-slate-500 mt-1">Real-time candidate conversion ratios, job velocity, and deterministic match analytics</p>
           </div>
           
           <select
@@ -81,7 +81,7 @@ export default function ReportsPage() {
                   776 Active
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mb-6">Stage-by-stage candidate progression across all active requisitions</p>
+              <p className="text-xs text-slate-500 mb-6">Stage-by-stage candidate progression across all active jobs & JDs</p>
 
               <div className="space-y-5">
                 {pipeline.map((p, i) => (
@@ -117,7 +117,7 @@ export default function ReportsPage() {
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-[#F1F5F9] text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                      <th className="px-4 py-3 rounded-l-xl">Requisition</th>
+                      <th className="px-4 py-3 rounded-l-xl">Job Position</th>
                       <th className="py-3 text-center">Evaluated</th>
                       <th className="py-3 text-center">Mean Score</th>
                       <th className="px-4 py-3 text-right rounded-r-xl">Submitted</th>
@@ -147,7 +147,7 @@ export default function ReportsPage() {
             </div>
 
             <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-              <span>Active Requisition Volume</span>
+              <span>Active Job Volume</span>
               <span className="font-semibold text-slate-700">4 Core Position Pipelines</span>
             </div>
           </div>

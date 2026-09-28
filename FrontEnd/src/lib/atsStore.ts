@@ -404,7 +404,7 @@ class ATSStore {
       capacity: 'Optimal',
       lastActive: 'Active now',
       strengths: ['AI Resume Analysis', 'Talent Engagement', 'Fast Evaluation'],
-      insightsSummary: `${cleanName} is actively engaged in requisition screening with 6.5 hours logged today. Maintains strong 87% match quality and 1.7 min/CV review velocity.`,
+      insightsSummary: `${cleanName} is actively engaged in candidate screening with 6.5 hours logged today. Maintains strong 87% match quality and 1.7 min/CV review velocity.`,
       topSkills: ['Full-Cycle Recruiting', 'Technical Screening', 'Candidate Calibration'],
       efficiencyScore: 93,
       dailyTimeLogs: [
@@ -415,7 +415,7 @@ class ATSStore {
         { day: 'Fri', date: 'Sep 01', hoursSpent: 6.5, resumesReviewedCount: 32, resumesTimeHours: 3.2, screeningsCount: 8, screeningTimeHours: 2.0, jdsUploadedCount: 1, jdTimeHours: 1.3 },
       ],
       recentActivity: [
-        'Reviewed candidate batch on active requisitions (Took 1.2 hrs)',
+        'Reviewed candidate batch on active jobs (Took 1.2 hrs)',
         'Calibrated ATS scoring rules and candidate match rankings',
       ]
     };
@@ -525,7 +525,7 @@ class ATSStore {
       user: `${creatorName} (${creatorRole === 'ADMIN' ? 'Admin' : creatorRole === 'TEAM_LEAD' ? 'Team Lead' : 'TA Member'})`,
       userRole: creatorRole,
       target: `Job ${newJob.title}`,
-      detail: `Created & uploaded new requisition for ${newJob.client} with ${newJob.mandatoryRequirementsCount} mandatory requirements.`
+      detail: `Created & uploaded new job / JD for ${newJob.client} with ${newJob.mandatoryRequirementsCount} mandatory requirements.`
     });
     this.saveToStorage();
     return newJob;
@@ -541,7 +541,7 @@ class ATSStore {
       user: `${leadName} (Team Lead)`,
       userRole: 'TEAM_LEAD',
       target: `Job ${job.title}`,
-      detail: `Reassigned requisition from ${prevRecruiter} to ${newRecruiterName}.`
+      detail: `Reassigned job from ${prevRecruiter} to ${newRecruiterName}.`
     });
     this.saveToStorage();
   }
@@ -556,7 +556,7 @@ class ATSStore {
       user: `${updaterName} (${updaterRole === 'ADMIN' ? 'Admin' : updaterRole === 'TEAM_LEAD' ? 'Team Lead' : 'TA Member'})`,
       userRole: updaterRole,
       target: `Job ${job.title}`,
-      detail: `Changed requisition status from ${prevStatus} to ${status}.`
+      detail: `Changed job status from ${prevStatus} to ${status}.`
     });
     this.saveToStorage();
   }

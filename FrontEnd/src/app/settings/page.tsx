@@ -3,9 +3,18 @@
 import React, { useState } from 'react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
+import { useAuth } from '@/context/AuthContext';
 
 export default function SettingsPage() {
+  const { user, getUserPassword, updatePassword } = useAuth();
   const [activeTab, setActiveTab] = useState<'scoring' | 'account' | 'notifications'>('scoring');
+  const [showPassword, setShowPassword] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [currentPasswordInput, setCurrentPasswordInput] = useState('');
+  const [accountStatus, setAccountStatus] = useState('');
+  const [accountError, setAccountError] = useState('');
+  const [isUpdatingAccount, setIsUpdatingAccount] = useState(false);
 
   const [scoring, setScoring] = useState({
     mandatoryWeight: 50,
@@ -29,9 +38,10 @@ export default function SettingsPage() {
 
   const tabs = [
     { id: 'scoring', label: 'Scoring Defaults & Rules' },
-    { id: 'account', label: 'Recruiter Profile' },
+    { id: 'account', label: 'My Profile & Credentials' },
     { id: 'notifications', label: 'Alerts & Webhooks' },
   ] as const;
+
 
   return (
     <div className="min-h-screen bg-brand-bg flex flex-col selection:bg-brand-orange-pale selection:text-brand-orange">
@@ -206,41 +216,208 @@ export default function SettingsPage() {
 
         {/* ACCOUNT TAB */}
         {activeTab === 'account' && (
-          <div className="bg-white border border-brand-border rounded-3xl p-7 shadow-sm space-y-5">
-            <h2 className="text-brand-charcoal font-bold text-base mb-4">Recruiter Profile & Organization</h2>
-            {[
-              { label: 'Full Recruiter Name', placeholder: 'Saksham Recruiter', type: 'text', defaultVal: 'Saksham Recruiter' },
-              { label: 'Enterprise Email', placeholder: 'recruiting@tasknera.com', type: 'email', defaultVal: 'recruiting@tasknera.com' },
-              { label: 'Company / Agency Name', placeholder: 'TaskNera Talent Acquisition Group', type: 'text', defaultVal: 'TaskNera Talent Group' },
-            ].map((f, i) => (
-              <div key={i}>
-                <label className="block text-xs font-bold text-brand-charcoal mb-1.5">{f.label}</label>
-                <input type={f.type} defaultValue={f.defaultVal} placeholder={f.placeholder}
-                  className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-xs font-semibold text-brand-charcoal focus:outline-none focus:ring-2 focus:ring-brand-orange/30" />
+          <div className="bg-white border border-brand-border rounded-3xl p-7 shadow-sm space-y-6">
+            <div>
+              <div className="flex items-center justify-between">
+                <h2 className="text-brand-charcoal font-bold text-base">My Profile & Active Credentials</h2>
+                <span className="text-[11px] font-extrabold px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  ● Active Session
+                </span>
               </div>
-            ))}
-            <div className="pt-5 border-t border-brand-border">
-              <h3 className="text-brand-charcoal text-xs font-bold mb-3 uppercase tracking-wider">Security & Access Key</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block text-xs font-bold text-brand-charcoal mb-1.5">Current Password</label>
-                  <input type="password" placeholder="••••••••••••"
-                    className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-xs font-semibold text-brand-charcoal focus:outline-none focus:ring-2 focus:ring-brand-orange/30" />
+              <p className="text-brand-charcoal-3 text-xs mt-1">Review your login username, official password, and system permissions.</p>
+            </div>
+
+            {accountStatus && (
+              <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2">
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <span>{accountStatus}</span>
+              </div>
+            )}
+
+            {accountError && (
+              <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-2">
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>{accountError}</span>
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-brand-charcoal mb-1.5">Full Name</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={user?.name || (user?.email ? user.email.split('@')[0] : 'User')}
+                  className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-xs font-semibold text-brand-charcoal focus:outline-none"
+                />
+              </div>
+
+              {/* Username row */}
+              <div>
+                <label className="block text-xs font-bold text-brand-charcoal mb-1.5">Username</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={user?.email ? user.email.split('@')[0] : ''}
+                    className="flex-1 bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-xs font-mono font-bold text-brand-charcoal focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const uname = user?.email ? user.email.split('@')[0] : '';
+                      if (uname) {
+                        navigator.clipboard.writeText(uname);
+                        setCopiedKey('username');
+                        setTimeout(() => setCopiedKey(null), 2000);
+                      }
+                    }}
+                    className="px-4 py-2.5 bg-white border border-brand-border hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 flex-shrink-0"
+                  >
+                    <span>{copiedKey === 'username' ? '✓ Copied' : 'Copy Username'}</span>
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-brand-charcoal mb-1.5">New Password</label>
-                  <input type="password" placeholder="••••••••••••"
-                    className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-xs font-semibold text-brand-charcoal focus:outline-none focus:ring-2 focus:ring-brand-orange/30" />
+              </div>
+
+              {/* Email row */}
+              <div>
+                <label className="block text-xs font-bold text-brand-charcoal mb-1.5">Enterprise Email</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="email"
+                    readOnly
+                    value={user?.email || ''}
+                    className="flex-1 bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-xs font-semibold text-brand-charcoal focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (user?.email) {
+                        navigator.clipboard.writeText(user.email);
+                        setCopiedKey('email');
+                        setTimeout(() => setCopiedKey(null), 2000);
+                      }
+                    }}
+                    className="px-4 py-2.5 bg-white border border-brand-border hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 flex-shrink-0"
+                  >
+                    <span>{copiedKey === 'email' ? '✓ Copied' : 'Copy Email'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Password row */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-brand-charcoal">Account Password</label>
+                  <span className="text-[11px] text-slate-500">Stored credentials</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      readOnly
+                      value={getUserPassword() || user?.password || '••••••••••••'}
+                      className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-xs font-mono font-bold text-brand-charcoal focus:outline-none pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                      title={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const pwd = getUserPassword() || user?.password || '';
+                      if (pwd) {
+                        navigator.clipboard.writeText(pwd);
+                        setCopiedKey('password');
+                        setTimeout(() => setCopiedKey(null), 2000);
+                      }
+                    }}
+                    className="px-4 py-2.5 bg-white border border-brand-border hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 flex-shrink-0"
+                  >
+                    <span>{copiedKey === 'password' ? '✓ Copied' : 'Copy Password'}</span>
+                  </button>
                 </div>
               </div>
             </div>
+
+            {/* Change Password Sub-section */}
+            <div className="pt-5 border-t border-brand-border">
+              <h3 className="text-brand-charcoal text-xs font-bold mb-3 uppercase tracking-wider">Change Account Password</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-xs font-bold text-brand-charcoal mb-1.5">Current Password</label>
+                  <input
+                    type="password"
+                    value={currentPasswordInput}
+                    onChange={e => setCurrentPasswordInput(e.target.value)}
+                    placeholder="Enter current password"
+                    className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-xs font-semibold text-brand-charcoal focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-brand-charcoal mb-1.5">New Password (8+ chars)</label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    placeholder="Enter new secure password"
+                    className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-xs font-semibold text-brand-charcoal focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="flex justify-end pt-3">
-              <button className="px-6 py-3 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange cursor-pointer">
-                Update Profile & Credentials
+              <button
+                type="button"
+                disabled={isUpdatingAccount || !newPassword}
+                onClick={async () => {
+                  setAccountError('');
+                  setAccountStatus('');
+                  if (newPassword.length < 8) {
+                    setAccountError('New password must be at least 8 characters long.');
+                    return;
+                  }
+                  setIsUpdatingAccount(true);
+                  try {
+                    await updatePassword(newPassword, currentPasswordInput || undefined);
+                    setAccountStatus('Password updated successfully!');
+                    setNewPassword('');
+                    setCurrentPasswordInput('');
+                    setTimeout(() => setAccountStatus(''), 3000);
+                  } catch (err: any) {
+                    setAccountError(err?.message || 'Failed to update password.');
+                  } finally {
+                    setIsUpdatingAccount(false);
+                  }
+                }}
+                className="px-6 py-3 bg-brand-orange hover:bg-brand-orange-hover disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all shadow-orange cursor-pointer"
+              >
+                {isUpdatingAccount ? 'Updating...' : 'Update Password & Credentials'}
               </button>
             </div>
           </div>
         )}
+
 
         {/* NOTIFICATIONS TAB */}
         {activeTab === 'notifications' && (

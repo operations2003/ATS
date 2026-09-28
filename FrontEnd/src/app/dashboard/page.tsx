@@ -394,9 +394,9 @@ export default function DashboardPage() {
 
   const kpis = [
     {
-      label: 'Active Requisitions',
+      label: 'Active Jobs / JDs',
       value: activeJobs.length.toString(),
-      sub: jobs.length === 0 ? 'No active jobs' : `${jobs.length} total requisitions`,
+      sub: jobs.length === 0 ? 'No active jobs' : `${jobs.length} total jobs`,
       accent: 'bg-brand-orange',
       textAccent: 'text-brand-orange',
       bgAccent: 'bg-brand-orange-pale',
@@ -467,7 +467,7 @@ export default function DashboardPage() {
               Recruiter Workspace • {user?.name || user?.email?.split('@')[0] || 'My Workspace'}
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1E293B] tracking-tight">Executive Dashboard</h1>
-            <p className="text-sm text-slate-500 mt-1">Real-time candidate intelligence, active requisitions, and deterministic ATS pipeline</p>
+            <p className="text-sm text-slate-500 mt-1">Real-time candidate intelligence, active jobs, and deterministic ATS pipeline</p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -478,7 +478,7 @@ export default function DashboardPage() {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
               </svg>
-              <span>Post Job Requisition</span>
+              <span>Upload JD</span>
             </Link>
           </div>
         </div>
@@ -511,7 +511,7 @@ export default function DashboardPage() {
           <div className="lg:col-span-2 bg-white border border-slate-200/90 rounded-3xl shadow-sm overflow-hidden flex flex-col">
             <div className="p-5 sm:px-6 sm:py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/70">
               <div>
-                <h2 className="text-base font-bold text-[#1E293B]">Your Active Requisitions & JDs</h2>
+                <h2 className="text-base font-bold text-[#1E293B]">Your Active Jobs & JDs</h2>
                 <p className="text-xs text-slate-500 mt-0.5">Click a position to review requirements or evaluate candidate CVs</p>
               </div>
 
@@ -535,7 +535,7 @@ export default function DashboardPage() {
               {isLoading ? (
                 <div className="py-20 text-center">
                   <div className="w-8 h-8 border-3 border-brand-orange border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                  <p className="text-xs text-slate-400 font-medium">Loading requisitions...</p>
+                  <p className="text-xs text-slate-400 font-medium">Loading jobs...</p>
                 </div>
               ) : jobs.length === 0 ? (
                 <div className="py-16 px-6 text-center">
@@ -544,9 +544,9 @@ export default function DashboardPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                     </svg>
                   </div>
-                  <h3 className="text-base font-bold text-[#1E293B] mb-1">No job requisitions created yet</h3>
+                  <h3 className="text-base font-bold text-[#1E293B] mb-1">No jobs uploaded yet</h3>
                   <p className="text-xs text-slate-500 max-w-sm mx-auto mb-6">
-                    Start by posting your first Job Description. HireIQ by TaskNera will extract criteria and evaluate candidates deterministically.
+                    Start by uploading your first Job Description. HireIQ by TaskNera will extract criteria and evaluate candidates deterministically.
                   </p>
                   <Link
                     href="/jobs/create"
@@ -555,7 +555,7 @@ export default function DashboardPage() {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
                     </svg>
-                    Post Job Requisition
+                    Upload Your First JD
                   </Link>
                 </div>
               ) : filteredJobs.length === 0 ? (
@@ -563,6 +563,7 @@ export default function DashboardPage() {
                   No positions match "{jobSearch}"
                 </div>
               ) : (
+
                 <table className="w-full text-left">
                   <thead>
                     <tr className="border-b border-slate-100 bg-[#F1F5F9] text-[11px] font-bold text-slate-500 uppercase tracking-wider">

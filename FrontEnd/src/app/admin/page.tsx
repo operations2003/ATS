@@ -210,8 +210,20 @@ export default function AdminPage() {
         throw new Error(data.error || 'Failed to create member account.');
       }
 
+      // Persist provisioned credentials so member can view them in My Profile
+      const cleanMemberEmail = newMemberEmail.trim().toLowerCase();
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tasknera_user_pwd_' + cleanMemberEmail, newMemberPassword);
+        try {
+          const reg = JSON.parse(localStorage.getItem('tasknera_credential_registry') || '{}');
+          reg[cleanMemberEmail] = newMemberPassword;
+          localStorage.setItem('tasknera_credential_registry', JSON.stringify(reg));
+        } catch {}
+      }
+
       // Refresh member list from database
       await fetchLiveTAMembers();
+
 
       const skillsArray = newMemberSkills
         .split(',')
@@ -503,16 +515,6 @@ export default function AdminPage() {
             </div>
             <div className="flex items-center gap-3">
               <span className="text-xs text-slate-500 font-bold">{filteredRecruiters.length} Recruiter Profiles Active</span>
-              <button
-                onClick={() => {
-                  setAddMemberError('');
-                  setAddMemberSuccess('');
-                  setShowAddMemberModal(true);
-                }}
-                className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 active:scale-[0.98] text-white text-xs font-bold rounded-xl shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
-              >
-                <span>+ Add Member</span>
-              </button>
             </div>
           </div>
 
@@ -762,11 +764,11 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* Active Requisitions Assigned */}
+                {/* Active Jobs Assigned */}
                 {jobs.filter(j => j.assignedRecruiter.toLowerCase().includes(selectedRecruiter.name.toLowerCase()) || (j.workedBy && j.workedBy.some(w => w.name.toLowerCase().includes(selectedRecruiter.name.toLowerCase())))).length > 0 && (
                   <div>
                     <h4 className="font-black text-slate-900 uppercase text-[11px] tracking-wider mb-2">
-                      🎯 Active Requisitions Assigned ({jobs.filter(j => j.assignedRecruiter.toLowerCase().includes(selectedRecruiter.name.toLowerCase()) || (j.workedBy && j.workedBy.some(w => w.name.toLowerCase().includes(selectedRecruiter.name.toLowerCase())))).length})
+                      🎯 Active Jobs Assigned ({jobs.filter(j => j.assignedRecruiter.toLowerCase().includes(selectedRecruiter.name.toLowerCase()) || (j.workedBy && j.workedBy.some(w => w.name.toLowerCase().includes(selectedRecruiter.name.toLowerCase())))).length})
                     </h4>
                     <div className="space-y-2">
                       {jobs.filter(j => j.assignedRecruiter.toLowerCase().includes(selectedRecruiter.name.toLowerCase()) || (j.workedBy && j.workedBy.some(w => w.name.toLowerCase().includes(selectedRecruiter.name.toLowerCase())))).map(j => (
@@ -797,7 +799,7 @@ export default function AdminPage() {
                     Recent Operations with Time Estimates
                   </h4>
                   <div className="space-y-2">
-                    {(selectedRecruiter.recentActivity || ['Shortlisted Michael Chen for SAP CO (94% Fit)', 'Uploaded 32 candidate resumes (Took 1.2 hrs)', 'Created SAP Requisition (Took 45 min)']).map((act, idx) => (
+                    {(selectedRecruiter.recentActivity || ['Shortlisted Michael Chen for SAP CO (94% Fit)', 'Uploaded 32 candidate resumes (Took 1.2 hrs)', 'Uploaded SAP JD (Took 45 min)']).map((act, idx) => (
                       <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-2.5">
                         <span className="w-2 h-2 rounded-full bg-brand-orange flex-shrink-0" />
                         <span className="text-slate-700 font-medium">{act}</span>
@@ -1041,7 +1043,7 @@ export default function AdminPage() {
                   Deleting this employee will immediately revoke their access and <strong className="font-extrabold">permanently remove all data associated with them</strong> from the database, including:
                 </p>
                 <ul className="text-rose-800 space-y-1 list-disc list-inside text-[11px] font-medium pl-1">
-                  <li>Job requisitions and requirements uploaded or created by this member</li>
+                  <li>Jobs, JDs, and criteria uploaded or created by this member</li>
                   <li>Candidate profiles and resumes sourced or managed by this member</li>
                   <li>Resume screening logs, match scores, and AI evaluation records</li>
                   <li>Recruiter performance activity logs and tracked metric entries</li>

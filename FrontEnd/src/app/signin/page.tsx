@@ -77,8 +77,9 @@ export default function SignInPage() {
                 Sign In to HireIQ by TaskNera
               </h1>
               <p className="text-slate-500 text-xs mt-1">
-                Enter your credentials to access your requisitions and workspace
+                Enter your credentials to access your jobs, JDs, and workspace
               </p>
+
             </div>
 
             {error && (

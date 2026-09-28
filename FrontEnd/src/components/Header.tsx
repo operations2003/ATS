@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
 import { AuthModal } from './AuthModal';
+import { MyProfileModal } from './MyProfileModal';
 import Logo from './Logo';
 
 const Header: React.FC = () => {
@@ -13,8 +14,10 @@ const Header: React.FC = () => {
   const [authOpen, setAuthOpen]         = useState(false);
   const [authMode, setAuthMode]         = useState<'signin' | 'signup'>('signin');
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [profileOpen, setProfileOpen]   = useState(false);
   const pathname   = usePathname();
   const { user, isAuthenticated, logout } = useAuth();
+
   const currentRole = user?.role || 'RECRUITER_MEMBER';
 
   const isAdmin = currentRole === 'ADMIN';
@@ -23,15 +26,16 @@ const Header: React.FC = () => {
   const nav = isAdmin
     ? [
         { label: 'Admin Hub', href: '/admin', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
-        { label: 'Requisitions', href: '/jobs', icon: 'M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
+        { label: 'All Jobs', href: '/jobs', icon: 'M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
         { label: 'Candidate Pool', href: '/candidates', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z' },
       ]
     : [
         { label: 'My Workspace', href: '/dashboard', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
-        { label: 'My Requisitions', href: '/jobs', icon: 'M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
-        { label: 'Post Job', href: '/jobs/create', icon: 'M12 4v16m8-8H4' },
+        { label: 'My Jobs', href: '/jobs', icon: 'M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
+        { label: 'Upload JD', href: '/jobs/create', icon: 'M12 4v16m8-8H4' },
         { label: 'Candidate Pool', href: '/candidates', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z' },
       ];
+
 
   const active = (href: string) => {
     if (!pathname) return false;
@@ -108,9 +112,10 @@ const Header: React.FC = () => {
                 <div className="relative" onClick={e => e.stopPropagation()}>
                   <button
                     onClick={() => setDropdownOpen(v => !v)}
-                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer"
+                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer group"
+                    title="Account & Profile Details"
                   >
-                    <div className={`w-7 h-7 rounded-lg text-white text-xs font-bold flex items-center justify-center flex-shrink-0 ${
+                    <div className={`w-7 h-7 rounded-lg text-white text-xs font-bold flex items-center justify-center flex-shrink-0 shadow-2xs ${
                       isAdmin ? 'bg-violet-600' : 'bg-brand-orange'
                     }`}>
                       {(user.name || user.email)[0].toUpperCase()}
@@ -119,40 +124,73 @@ const Header: React.FC = () => {
                       <span className="text-xs font-bold text-slate-800 block max-w-[110px] truncate">
                         {user.name || user.email.split('@')[0]}
                       </span>
-                      <span className={`text-[9px] font-semibold uppercase tracking-wider ${
+                      <span className={`text-[9px] font-bold uppercase tracking-wider block mt-0.5 ${
                         isAdmin ? 'text-violet-600' : 'text-brand-orange'
                       }`}>
-                        {isAdmin ? 'Admin' : 'TA Member'}
+                        My Profile ▾
                       </span>
                     </div>
-                    <svg className={`w-3 h-3 text-slate-400 transition-transform flex-shrink-0 ${dropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className={`w-3 h-3 text-slate-400 group-hover:text-slate-600 transition-transform flex-shrink-0 ${dropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
 
                   {dropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-2xl shadow-xl py-1 z-[200]">
-                      <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60">
+                    <div className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl py-1 z-[200] overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+                      {/* User identity summary */}
+                      <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/70">
                         <p className="text-xs font-bold text-slate-800 truncate">{user.name || 'User'}</p>
                         <p className="text-[11px] text-slate-500 truncate mt-0.5">{user.email}</p>
                         <span className={`inline-block mt-2 px-2 py-0.5 rounded-md text-[10px] font-extrabold border ${
                           isAdmin
                             ? 'bg-violet-50 text-violet-700 border-violet-200'
-                            : 'bg-blue-50 text-blue-700 border-blue-200'
+                            : 'bg-orange-50 text-brand-orange border-orange-200'
                         }`}>
                           {isAdmin ? '👑 Administrator (Reviewer)' : '👤 TA Team Member'}
                         </span>
                       </div>
 
-                      <button
-                        onClick={() => { setDropdownOpen(false); logout(); }}
-                        className="w-full text-left px-4 py-2.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer flex items-center gap-2"
-                      >
-                        <svg className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                        </svg>
-                        <span>Sign Out / Switch Account</span>
-                      </button>
+                      {/* My Profile Action - View Username & Password */}
+                      <div className="p-1.5 border-b border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDropdownOpen(false);
+                            setProfileOpen(true);
+                          }}
+                          className="w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold text-slate-800 hover:bg-orange-50/80 hover:text-brand-orange transition-all cursor-pointer flex items-center justify-between group"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-lg bg-orange-100/70 text-brand-orange flex items-center justify-center group-hover:bg-brand-orange group-hover:text-white transition-all flex-shrink-0">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                              </svg>
+                            </div>
+                            <div>
+                              <span className="block font-bold leading-tight">My Profile</span>
+                              <span className="block text-[10px] text-slate-400 group-hover:text-brand-orange/80 font-normal leading-tight mt-0.5">
+                                View username & password
+                              </span>
+                            </div>
+                          </div>
+                          <svg className="w-3.5 h-3.5 text-slate-400 group-hover:text-brand-orange group-hover:translate-x-0.5 transition-all flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      </div>
+
+                      {/* Sign Out Button */}
+                      <div className="p-1.5">
+                        <button
+                          onClick={() => { setDropdownOpen(false); logout(); }}
+                          className="w-full text-left px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer flex items-center gap-2"
+                        >
+                          <svg className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                          </svg>
+                          <span>Sign Out / Switch Account</span>
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -203,13 +241,33 @@ const Header: React.FC = () => {
 
             <div className="border-t border-slate-100 pt-3 mt-2 space-y-2">
               {isAuth ? (
-                <button onClick={() => { setMobileOpen(false); logout(); }}
-                  className="w-full text-left px-3.5 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer flex items-center gap-2">
-                  <svg className="w-4 h-4 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
-                  <span>Sign Out / Switch Account</span>
-                </button>
+                <>
+                  <button
+                    onClick={() => { setMobileOpen(false); setProfileOpen(true); }}
+                    className="w-full text-left px-3.5 py-2.5 text-xs font-bold text-slate-800 hover:bg-orange-50 rounded-xl transition-colors cursor-pointer flex items-center justify-between border border-slate-200 bg-slate-50/50"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-orange-100 text-brand-orange flex items-center justify-center">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <span className="block font-bold">My Profile</span>
+                        <span className="block text-[10px] text-slate-500 font-normal">View username and password</span>
+                      </div>
+                    </div>
+                    <span className="text-slate-400 text-xs">→</span>
+                  </button>
+
+                  <button onClick={() => { setMobileOpen(false); logout(); }}
+                    className="w-full text-left px-3.5 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer flex items-center gap-2">
+                    <svg className="w-4 h-4 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                    <span>Sign Out / Switch Account</span>
+                  </button>
+                </>
               ) : (
                 <Link
                   href="/signin"
@@ -225,6 +283,7 @@ const Header: React.FC = () => {
       </nav>
 
       <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} initialMode={authMode} />
+      <MyProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
     </>
   );
 };

@@ -622,7 +622,7 @@ export default function CandidatesPage() {
               </span>
             </div>
             <p className="text-slate-500 text-xs md:text-sm mt-1">
-              Browse candidate profiles parsed across all requisitions. Select any candidate to evaluate specifically against a Job Description.
+              Browse candidate profiles parsed across all jobs & JDs. Select any candidate to evaluate specifically against a Job Description.
             </p>
           </div>
 
@@ -906,20 +906,11 @@ export default function CandidatesPage() {
             <h3 className="text-lg font-bold text-[#1E293B] mb-1">
               {allCandidates.length === 0 ? 'No CVs uploaded in the database yet' : 'No matching candidate profiles found'}
             </h3>
-            <p className="text-slate-500 text-xs max-w-md mx-auto mb-6">
+            <p className="text-slate-500 text-xs max-w-md mx-auto">
               {allCandidates.length === 0
-                ? 'Upload resume files to any active job opening. They will be stored in PostgreSQL and listed in this central candidate pool.'
+                ? 'Upload resume files to any active job opening using the button above. They will be stored in PostgreSQL and listed in this central candidate pool.'
                 : 'Try adjusting your search terms.'}
             </p>
-            <Link
-              href="/jobs"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-              </svg>
-              Go to Jobs & Upload Resumes
-            </Link>
           </div>
         )}
 
@@ -996,12 +987,12 @@ export default function CandidatesPage() {
                   {isLoadingJobs ? (
                     <div className="py-12 text-center">
                       <div className="w-8 h-8 border-2 border-brand-orange border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                      <p className="text-xs text-slate-500 font-medium">Fetching authorized job requisitions...</p>
+                      <p className="text-xs text-slate-500 font-medium">Fetching authorized jobs & JDs...</p>
                     </div>
                   ) : filteredAvailableJobs.length === 0 ? (
                     <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200">
                       <p className="text-xs font-bold text-slate-600 mb-1">No matching Job Descriptions found</p>
-                      <p className="text-[11px] text-slate-400">Create a job requisition with confirmed requirements to enable evaluation.</p>
+                      <p className="text-[11px] text-slate-400">Upload a Job Description (JD) with confirmed requirements to enable evaluation.</p>
                     </div>
                   ) : (
                     <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
@@ -1088,7 +1079,7 @@ export default function CandidatesPage() {
                 <div className="p-6 space-y-5">
                   <div className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-5 space-y-3">
                     <div className="text-[10px] uppercase font-black tracking-wider text-slate-400">
-                      Evaluation Requisition Summary
+                      Evaluation Job Summary
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 text-xs pt-1">
@@ -1418,7 +1409,7 @@ export default function CandidatesPage() {
                             Job-Specific ATS Evaluations
                           </h4>
                           <p className="text-[11px] text-slate-500 mt-0.5">
-                            ATS match scores are specifically evaluated against each individual Job Description requisition.
+                            ATS match scores are specifically evaluated against each individual Job Description (JD).
                           </p>
                         </div>
                         <button

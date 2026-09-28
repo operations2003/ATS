@@ -488,8 +488,9 @@ export default function RequirementsReviewPage() {
                 : 'text-slate-600 hover:text-slate-900 bg-white border border-slate-200'
             }`}
           >
-            Original Requisition Document
+            Original JD Document
           </button>
+
         </div>
 
         {/* Global Success / Error Banners */}
@@ -872,8 +873,9 @@ export default function RequirementsReviewPage() {
                         </span>
                       </div>
                       <p className="text-xs text-slate-600 leading-relaxed">
-                        {normalizedJd.experience?.description || 'General professional background as stated in requisition.'}
+                        {normalizedJd.experience?.description || 'General professional background as stated in JD.'}
                       </p>
+
                     </div>
                   </div>
 
@@ -994,7 +996,7 @@ export default function RequirementsReviewPage() {
           </div>
         )}
 
-        {/* Tab 3: Original Requisition Document */}
+        {/* Tab 3: Original JD Document */}
         {activeTab === 'original_jd' && (
           <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 flex-wrap gap-2">
@@ -1018,8 +1020,9 @@ export default function RequirementsReviewPage() {
             </div>
 
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 font-mono text-xs text-slate-800 whitespace-pre-wrap leading-relaxed max-h-[600px] overflow-y-auto">
-              {originalJdText || 'No original JD text recorded for this job requisition.'}
+              {originalJdText || 'No original JD text recorded for this job.'}
             </div>
+
           </div>
         )}
       </main>

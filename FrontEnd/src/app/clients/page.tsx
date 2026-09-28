@@ -153,7 +153,7 @@ export default function ClientProfilesPage() {
               </div>
 
               <div className="flex items-center justify-between text-xs text-slate-500 pt-3 border-t border-slate-100">
-                <span className="font-semibold">{p.jobsUsed} Active Requisitions</span>
+                <span className="font-semibold">{p.jobsUsed} Active Jobs</span>
                 <span>Used {p.lastUsed}</span>
               </div>
             </div>

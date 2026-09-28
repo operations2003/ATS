@@ -239,8 +239,9 @@ export default function EvaluationsPage() {
               <table className="w-full text-left">
                 <thead>
                   <tr className="border-b border-slate-200 bg-[#F1F5F9] text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    <th className="px-6 py-4">Candidate & Requisition</th>
+                    <th className="px-6 py-4">Candidate & Job</th>
                     <th className="px-4 py-4 text-center">JD Match</th>
+
                     <th className="px-4 py-4 text-center">ATS Format</th>
                     <th className="px-4 py-4 text-center">Mandatory Met</th>
                     <th className="px-4 py-4 text-center">Decision</th>
@@ -318,7 +319,7 @@ export default function EvaluationsPage() {
             </div>
             <h3 className="text-lg font-bold text-[#1E293B] mb-2">No Evaluations Available</h3>
             <p className="text-slate-500 text-xs max-w-md mx-auto mb-6">
-              Upload candidate CVs to your active job requisitions to run automated deterministic scoring, requirement matching, and evidence verification.
+              Upload candidate CVs to your active jobs to run automated deterministic scoring, requirement matching, and evidence verification.
             </p>
             <div className="flex items-center justify-center gap-3">
               <Link
@@ -331,10 +332,11 @@ export default function EvaluationsPage() {
                 href="/jobs/create"
                 className="px-5 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange"
               >
-                Create New Job Requisition
+                Upload New JD
               </Link>
             </div>
           </div>
+
         )}
       </main>
       <Footer />

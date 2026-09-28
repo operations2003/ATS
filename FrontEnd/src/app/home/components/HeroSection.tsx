@@ -119,7 +119,7 @@ const HeroSection: React.FC = () => {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold leading-tight">SAP CO Lead Consultant</h3>
-                    <p className="text-[11px] text-white/70">TechCorp Global • Requisition #JD-408</p>
+                    <p className="text-[11px] text-white/70">TechCorp Global • Job #JD-408</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 px-2.5 py-1 bg-white/10 rounded-full text-[11px] font-medium text-white/90">

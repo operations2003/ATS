@@ -11,7 +11,9 @@ export interface User {
   teamName?: string;
   createdAt?: string;
   updatedAt?: string;
+  password?: string;
 }
+
 
 export interface AuthResponse {
   message: string;

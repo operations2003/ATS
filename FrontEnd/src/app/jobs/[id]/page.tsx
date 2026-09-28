@@ -212,8 +212,9 @@ export default function JobDetailPage() {
             <div className="p-6 rounded-3xl bg-gradient-to-r from-orange-50 to-amber-50 border border-brand-orange-border flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
               <div>
                 <h3 className="text-base font-extrabold text-[#1E293B]">Candidates & Bulk CV Upload</h3>
-                <p className="text-xs text-slate-600 mt-0.5">Upload candidate resumes (PDF, DOCX, TXT) and view parsing status for this requisition.</p>
+                <p className="text-xs text-slate-600 mt-0.5">Upload candidate resumes (PDF, DOCX, TXT) and view parsing status for this job.</p>
               </div>
+
               <Link
                 href={`/jobs/${jobId}/candidates`}
                 className="px-6 py-3 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange hover:shadow-orange-lg whitespace-nowrap"

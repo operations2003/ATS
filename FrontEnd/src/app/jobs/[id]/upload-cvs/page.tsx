@@ -625,8 +625,9 @@ export default function BatchCVUploadPage() {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-brand-charcoal">
-                  {loadingJob ? 'Loading Requisition Details...' : (job?.position || 'Salesforce Developer')}
+                  {loadingJob ? 'Loading Job Details...' : (job?.position || 'Salesforce Developer')}
                 </h2>
+
                 {job?.status && (
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
                     {job.status}
@@ -844,8 +845,9 @@ export default function BatchCVUploadPage() {
                   CV Parsing & ATS Evaluation Results Ready!
                 </h2>
                 <p className="text-sm text-slate-300 mt-1 max-w-2xl">
-                  {successCount} candidate {successCount === 1 ? 'resume has' : 'resumes have'} been parsed, verified against this requisition&apos;s criteria, and assigned ATS match scores.
+                  {successCount} candidate {successCount === 1 ? 'resume has' : 'resumes have'} been parsed, verified against this job&apos;s criteria, and assigned ATS match scores.
                 </p>
+
 
                 {/* Quick summary stats */}
                 <div className="flex flex-wrap items-center gap-3 mt-4 text-xs font-semibold">

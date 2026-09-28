@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     const targetJob = {
       id: jobId || jobDescription?.id || 'job-req',
       jd_text: effectiveJdText,
-      position: jobDescription?.position || jobDescription?.title || 'Target Requisition',
+      position: jobDescription?.position || jobDescription?.title || 'Target Job',
       requirements: effectiveRequirements,
     };
 

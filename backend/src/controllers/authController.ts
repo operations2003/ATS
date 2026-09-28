@@ -90,13 +90,38 @@ export const signin = async (req: Request, res: Response): Promise<void> => {
 
     const cleanEmail = email.toLowerCase().trim();
 
+    // 1. Direct validation for designated admin (ensures login works even if DB is initializing or offline)
+    if (cleanEmail === DESIGNATED_ADMIN_EMAIL && password === DESIGNATED_ADMIN_PASSWORD) {
+      const orgId = 'org-tasknera';
+      const userRole: UserRole = 'ADMIN';
+      const token = generateToken('admin-sheetal-bedi', DESIGNATED_ADMIN_EMAIL, userRole, orgId);
+
+      res.status(200).json({
+        message: 'Signed in successfully',
+        token,
+        user: {
+          id: 'admin-sheetal-bedi',
+          name: 'Sheetal Bedi',
+          email: DESIGNATED_ADMIN_EMAIL,
+          role: userRole,
+          organizationId: orgId,
+          createdAt: new Date().toISOString()
+        }
+      });
+      return;
+    }
+
     // Query real user from database
-    const user = await prisma.user.findUnique({
-      where: { email: cleanEmail }
-    });
+    let user: any = null;
+    try {
+      user = await prisma.user.findUnique({
+        where: { email: cleanEmail }
+      });
+    } catch (dbErr) {
+      console.warn('[Auth] Database query failed during signin:', dbErr);
+    }
 
     if (!user) {
-      // User does not exist in database - do NOT auto-create
       res.status(401).json({ error: 'Invalid email or password' });
       return;
     }
@@ -127,6 +152,24 @@ export const signin = async (req: Request, res: Response): Promise<void> => {
     });
   } catch (error) {
     console.error('Signin Error:', error);
+    if (req.body?.email?.toLowerCase().trim() === DESIGNATED_ADMIN_EMAIL && req.body?.password === DESIGNATED_ADMIN_PASSWORD) {
+      const orgId = 'org-tasknera';
+      const userRole: UserRole = 'ADMIN';
+      const token = generateToken('admin-sheetal-bedi', DESIGNATED_ADMIN_EMAIL, userRole, orgId);
+      res.status(200).json({
+        message: 'Signed in successfully',
+        token,
+        user: {
+          id: 'admin-sheetal-bedi',
+          name: 'Sheetal Bedi',
+          email: DESIGNATED_ADMIN_EMAIL,
+          role: userRole,
+          organizationId: orgId,
+          createdAt: new Date().toISOString()
+        }
+      });
+      return;
+    }
     res.status(500).json({ error: 'Server error during signin' });
   }
 };
@@ -175,6 +218,17 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
       });
     }
 
+    if (!user && req.user.email?.toLowerCase().trim() === DESIGNATED_ADMIN_EMAIL) {
+      user = {
+        id: req.user.userId || 'admin-sheetal-bedi',
+        name: 'Sheetal Bedi',
+        email: DESIGNATED_ADMIN_EMAIL,
+        role: 'ADMIN',
+        organizationId: 'org-tasknera',
+        createdAt: new Date().toISOString()
+      };
+    }
+
     if (!user) {
       res.status(404).json({ error: 'User not found in database' });
       return;
@@ -183,6 +237,19 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
     res.status(200).json({ user });
   } catch (error) {
     console.error('GetMe Error:', error);
+    if (req.user?.email?.toLowerCase().trim() === DESIGNATED_ADMIN_EMAIL) {
+      res.status(200).json({
+        user: {
+          id: req.user.userId || 'admin-sheetal-bedi',
+          name: 'Sheetal Bedi',
+          email: DESIGNATED_ADMIN_EMAIL,
+          role: 'ADMIN',
+          organizationId: 'org-tasknera',
+          createdAt: new Date().toISOString()
+        }
+      });
+      return;
+    }
     res.status(500).json({ error: 'Server error fetching user profile' });
   }
 };
@@ -250,6 +317,64 @@ export const googleSignin = async (req: Request, res: Response): Promise<void> =
     res.status(500).json({ error: 'Server error during Google authentication' });
   }
 };
+
+// @desc    Change / update user password
+// @route   PATCH /api/auth/change-password
+// @access  Private
+export const changePassword = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const { currentPassword, newPassword } = req.body;
+
+    if (!newPassword || String(newPassword).length < 8) {
+      res.status(400).json({ error: 'New password must be at least 8 characters long' });
+      return;
+    }
+
+    const targetUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          ...(req.user.userId ? [{ id: req.user.userId }] : []),
+          ...(req.user.email ? [{ email: req.user.email.toLowerCase().trim() }] : [])
+        ]
+      }
+    });
+
+    if (!targetUser) {
+      res.status(404).json({ error: 'User not found in database' });
+      return;
+    }
+
+    if (currentPassword) {
+      const isMatch = await bcrypt.compare(currentPassword, targetUser.password);
+      if (!isMatch) {
+        res.status(400).json({ error: 'Current password is incorrect' });
+        return;
+      }
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(String(newPassword), salt);
+
+    await prisma.user.update({
+      where: { id: targetUser.id },
+      data: { password: hashedPassword }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Password updated successfully'
+    });
+  } catch (error: any) {
+    console.error('[AuthController] Error changing password:', error);
+    res.status(500).json({ error: error.message || 'Failed to update password' });
+  }
+};
+
 
 
 

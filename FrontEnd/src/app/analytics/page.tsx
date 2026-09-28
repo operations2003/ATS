@@ -189,7 +189,7 @@ export default function AnalyticsPage() {
           <div className="flex items-center justify-between mb-6 pb-4 border-b border-brand-border">
             <div>
               <h2 className="text-base font-bold text-brand-charcoal">Performance by Practice Area / Department</h2>
-              <p className="text-xs text-brand-charcoal-3 mt-0.5">Active requisition volume, candidate scores, and benchmark metrics</p>
+              <p className="text-xs text-brand-charcoal-3 mt-0.5">Active job volume, candidate scores, and benchmark metrics</p>
             </div>
             <Link href="/jobs" className="text-xs text-brand-orange font-bold hover:underline">
               Manage Practice Areas →

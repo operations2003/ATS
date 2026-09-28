@@ -418,7 +418,7 @@ export default function HowScoringWorksPage() {
       {/* Action Footer */}
       <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 p-6 bg-slate-900 rounded-3xl text-white">
         <div>
-          <h4 className="text-base font-bold">Ready to evaluate a requisition?</h4>
+          <h4 className="text-base font-bold">Ready to evaluate a job?</h4>
           <p className="text-xs text-slate-400">Run candidate CVs through our deterministic scoring pipeline with zero score drift.</p>
         </div>
         <div className="flex gap-3">
@@ -426,7 +426,7 @@ export default function HowScoringWorksPage() {
             href="/jobs"
             className="px-4 py-2.5 rounded-xl bg-brand-orange hover:bg-orange-600 text-white text-xs font-semibold shadow-md transition-colors"
           >
-            Go to Requisitions
+            Go to Jobs
           </Link>
           <Link
             href="/evaluations"
