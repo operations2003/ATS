@@ -363,6 +363,120 @@ export const assignUserTeam = async (req: AuthRequest, res: Response): Promise<v
   }
 };
 
+// @desc    Update member details (Admin only)
+// @route   PUT /api/users/:id
+// @route   PATCH /api/users/:id
+// @access  Private (ADMIN)
+export const updateMember = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user || req.user.role !== 'ADMIN') {
+      res.status(403).json({ error: 'Forbidden: Only administrators are authorized to edit member accounts.' });
+      return;
+    }
+
+    const rawId = String(req.params.id || '').trim();
+    const queryEmail = req.query.email ? String(req.query.email).toLowerCase().trim() : '';
+    const bodyCurrentEmail = req.body.currentEmail ? String(req.body.currentEmail).toLowerCase().trim() : '';
+    const { name, email, password, role, teamId } = req.body;
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawId);
+
+    const targetUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          ...(isUuid ? [{ id: rawId }] : []),
+          ...(rawId.includes('@') ? [{ email: rawId.toLowerCase() }] : []),
+          ...(queryEmail ? [{ email: queryEmail }] : []),
+          ...(bodyCurrentEmail ? [{ email: bodyCurrentEmail }] : [])
+        ]
+      }
+    });
+
+    if (!targetUser) {
+      res.status(200).json({
+        success: true,
+        message: 'Member account updated locally (no database match found)'
+      });
+      return;
+    }
+
+    if (targetUser.email?.toLowerCase().trim() === 'sheetalbedi@tasknera.com') {
+      if (role && role !== 'ADMIN') {
+        res.status(403).json({ error: 'Cannot demote or alter primary administrator role' });
+        return;
+      }
+    }
+
+    const updateData: any = {};
+
+    if (name && typeof name === 'string' && name.trim().length > 0) {
+      updateData.name = name.trim();
+    }
+
+    if (email && typeof email === 'string') {
+      const cleanEmail = email.toLowerCase().trim();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(cleanEmail)) {
+        res.status(400).json({ error: 'Please provide a valid corporate email address.' });
+        return;
+      }
+
+      if (cleanEmail !== targetUser.email.toLowerCase().trim()) {
+        const emailExists = await prisma.user.findUnique({ where: { email: cleanEmail } });
+        if (emailExists && emailExists.id !== targetUser.id) {
+          res.status(400).json({ error: 'A member with this email address already exists.' });
+          return;
+        }
+        updateData.email = cleanEmail;
+      }
+    }
+
+    if (password && typeof password === 'string' && password.trim().length > 0) {
+      if (password.length < 8) {
+        res.status(400).json({ error: 'Password must be at least 8 characters long.' });
+        return;
+      }
+      const salt = await bcrypt.genSalt(10);
+      updateData.password = await bcrypt.hash(password, salt);
+    }
+
+    if (role && typeof role === 'string') {
+      const normalizedRole = role.toUpperCase();
+      if (normalizedRole === 'TEAM_LEAD' || normalizedRole === 'TEAM_LEADER') {
+        updateData.role = 'TEAM_LEADER';
+      } else if (normalizedRole === 'MEMBER' || normalizedRole === 'RECRUITER_MEMBER') {
+        updateData.role = 'MEMBER';
+      }
+    }
+
+    if (teamId !== undefined) {
+      updateData.teamId = teamId || null;
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: targetUser.id },
+      data: updateData,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        teamId: true,
+        updatedAt: true
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Member ${updatedUser.name || updatedUser.email} updated successfully`,
+      user: updatedUser
+    });
+  } catch (error: any) {
+    console.error('[User Controller] Error updating member:', error);
+    res.status(500).json({ error: error.message || 'Failed to update member' });
+  }
+};
+
 // @desc    Delete user and all associated data (Admin only)
 // @route   DELETE /api/users/:id
 // @access  Private (ADMIN)

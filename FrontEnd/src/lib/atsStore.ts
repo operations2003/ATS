@@ -442,10 +442,43 @@ class ATSStore {
     return newMember;
   }
 
-  public updateRecruiter(id: string, updates: Partial<RecruiterMetric>): RecruiterMetric | undefined {
-    const rec = this.recruiters.find(r => r.id === id);
+  public updateRecruiter(id: string, updates: Partial<RecruiterMetric>, oldEmail?: string): RecruiterMetric | undefined {
+    const cleanId = String(id || '').trim();
+    const cleanOldEmail = String(oldEmail || '').toLowerCase().trim();
+
+    const rec = this.recruiters.find(r => 
+      (cleanId && r.id === cleanId) || 
+      (cleanOldEmail && r.email?.toLowerCase().trim() === cleanOldEmail)
+    );
     if (!rec) return undefined;
+
+    const previousName = rec.name;
+    const previousEmail = rec.email;
+
     Object.assign(rec, updates);
+
+    // Cascade update jobs assigned to this recruiter if name changed
+    if (updates.name && updates.name !== previousName) {
+      this.jobs.forEach(j => {
+        if (j.assignedRecruiter === previousName) {
+          j.assignedRecruiter = updates.name!;
+        }
+      });
+      this.candidates.forEach(c => {
+        if (c.assignedRecruiter === previousName) {
+          c.assignedRecruiter = updates.name!;
+        }
+      });
+    }
+
+    this.logAudit({
+      action: 'USER_ROLE_UPDATED',
+      user: 'Administrator',
+      userRole: 'ADMIN',
+      target: `Member ${rec.name}`,
+      detail: `Updated profile details for team member ${rec.name} (${rec.email || previousEmail}).`
+    });
+
     this.saveToStorage();
     return rec;
   }

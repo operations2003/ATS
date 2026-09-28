@@ -32,12 +32,26 @@ export default function AdminPage() {
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [newMemberPassword, setNewMemberPassword] = useState('');
   const [showNewMemberPassword, setShowNewMemberPassword] = useState(false);
-  const [newMemberTeam, setNewMemberTeam] = useState('Talent Acquisition');
+  const [newMemberTeam, setNewMemberTeam] = useState('Cloud & Engineering Pod');
   const [newMemberRole, setNewMemberRole] = useState<'RECRUITER_MEMBER' | 'TEAM_LEAD'>('RECRUITER_MEMBER');
   const [newMemberSkills, setNewMemberSkills] = useState('');
   const [addMemberLoading, setAddMemberLoading] = useState(false);
   const [addMemberError, setAddMemberError] = useState('');
   const [addMemberSuccess, setAddMemberSuccess] = useState('');
+
+  // Edit Member Modal State
+  const [memberToEdit, setMemberToEdit] = useState<RecruiterMetric | null>(null);
+  const [showEditMemberModal, setShowEditMemberModal] = useState(false);
+  const [editMemberName, setEditMemberName] = useState('');
+  const [editMemberEmail, setEditMemberEmail] = useState('');
+  const [editMemberPassword, setEditMemberPassword] = useState('');
+  const [showEditMemberPassword, setShowEditMemberPassword] = useState(false);
+  const [editMemberTeam, setEditMemberTeam] = useState('Cloud & Engineering Pod');
+  const [editMemberRole, setEditMemberRole] = useState<'RECRUITER_MEMBER' | 'TEAM_LEAD'>('RECRUITER_MEMBER');
+  const [editMemberSkills, setEditMemberSkills] = useState('');
+  const [editMemberLoading, setEditMemberLoading] = useState(false);
+  const [editMemberError, setEditMemberError] = useState('');
+  const [editMemberSuccess, setEditMemberSuccess] = useState('');
 
   // Delete Member Confirmation State
   const [memberToDelete, setMemberToDelete] = useState<RecruiterMetric | null>(null);
@@ -83,6 +97,151 @@ export default function AdminPage() {
       console.warn('Failed to fetch live TA members from database:', err);
     } finally {
       setLoadingMembers(false);
+    }
+  };
+
+  const handleInitiateEdit = (member: RecruiterMetric) => {
+    setMemberToEdit(member);
+    setEditMemberName(member.name || '');
+    setEditMemberEmail(member.email || '');
+    setEditMemberTeam(member.team || 'Cloud & Engineering Pod');
+    setEditMemberRole(member.role === 'TEAM_LEAD' ? 'TEAM_LEAD' : 'RECRUITER_MEMBER');
+    setEditMemberSkills(
+      Array.isArray(member.topSkills) && member.topSkills.length > 0
+        ? member.topSkills.join(', ')
+        : Array.isArray(member.strengths) && member.strengths.length > 0
+        ? member.strengths.join(', ')
+        : ''
+    );
+
+    let existingPassword = '';
+    if (typeof window !== 'undefined' && member.email) {
+      const cleanEmail = member.email.toLowerCase().trim();
+      existingPassword = localStorage.getItem('tasknera_user_pwd_' + cleanEmail) || '';
+      if (!existingPassword) {
+        try {
+          const reg = JSON.parse(localStorage.getItem('tasknera_credential_registry') || '{}');
+          existingPassword = reg[cleanEmail] || '';
+        } catch {}
+      }
+    }
+    setEditMemberPassword(existingPassword);
+    setShowEditMemberPassword(false);
+    setEditMemberError('');
+    setEditMemberSuccess('');
+    setShowEditMemberModal(true);
+  };
+
+  const handleSaveEditMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!memberToEdit) return;
+
+    setEditMemberError('');
+    setEditMemberSuccess('');
+
+    if (!editMemberName.trim() || !editMemberEmail.trim()) {
+      setEditMemberError('Name and corporate email are required.');
+      return;
+    }
+
+    if (editMemberPassword && editMemberPassword.trim().length > 0 && editMemberPassword.trim().length < 8) {
+      setEditMemberError('Password must be at least 8 characters long if provided.');
+      return;
+    }
+
+    setEditMemberLoading(true);
+
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
+      const cleanNewEmail = editMemberEmail.trim().toLowerCase();
+      const cleanOldEmail = memberToEdit.email.trim().toLowerCase();
+
+      // Call backend API update
+      const updateEndpoint = `${backendUrl}/users/${encodeURIComponent(memberToEdit.id)}?email=${encodeURIComponent(cleanOldEmail)}`;
+      try {
+        const res = await fetch(updateEndpoint, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({
+            name: editMemberName.trim(),
+            email: cleanNewEmail,
+            currentEmail: cleanOldEmail,
+            password: editMemberPassword.trim() ? editMemberPassword.trim() : undefined,
+            role: editMemberRole === 'TEAM_LEAD' ? 'TEAM_LEADER' : 'MEMBER',
+            teamId: null,
+          })
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          if (res.status === 400 && data.error) {
+            throw new Error(data.error);
+          }
+        }
+      } catch (backendErr: any) {
+        if (backendErr?.message && !backendErr.message.includes('fetch')) {
+          throw backendErr;
+        }
+        console.warn('Backend update server non-critical error or offline:', backendErr);
+      }
+
+      // Update password in local credential registry
+      if (editMemberPassword.trim() && typeof window !== 'undefined') {
+        localStorage.setItem('tasknera_user_pwd_' + cleanNewEmail, editMemberPassword.trim());
+        try {
+          const reg = JSON.parse(localStorage.getItem('tasknera_credential_registry') || '{}');
+          if (cleanOldEmail !== cleanNewEmail) {
+            delete reg[cleanOldEmail];
+          }
+          reg[cleanNewEmail] = editMemberPassword.trim();
+          localStorage.setItem('tasknera_credential_registry', JSON.stringify(reg));
+        } catch {}
+      }
+
+      const skillsArray = editMemberSkills
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      // Update in atsStore
+      atsStore.updateRecruiter(memberToEdit.id, {
+        name: editMemberName.trim(),
+        email: cleanNewEmail,
+        role: editMemberRole,
+        team: editMemberTeam,
+        topSkills: skillsArray.length > 0 ? skillsArray : memberToEdit.topSkills,
+        strengths: skillsArray.length > 0 ? skillsArray : memberToEdit.strengths,
+      }, cleanOldEmail);
+
+      // Refresh live member list and sync
+      await fetchLiveTAMembers();
+      syncData();
+
+      // If drill-down modal had this member selected, update selectedRecruiter
+      if (selectedRecruiter?.id === memberToEdit.id || selectedRecruiter?.email.toLowerCase() === cleanOldEmail) {
+        setSelectedRecruiter(prev => prev ? {
+          ...prev,
+          name: editMemberName.trim(),
+          email: cleanNewEmail,
+          role: editMemberRole,
+          team: editMemberTeam,
+          topSkills: skillsArray.length > 0 ? skillsArray : prev.topSkills,
+        } : null);
+      }
+
+      setEditMemberSuccess(`Member ${editMemberName.trim()} updated successfully!`);
+      setTimeout(() => {
+        setShowEditMemberModal(false);
+        setMemberToEdit(null);
+        setEditMemberSuccess('');
+      }, 1000);
+    } catch (err: any) {
+      setEditMemberError(err?.message || 'Failed to update member profile.');
+    } finally {
+      setEditMemberLoading(false);
     }
   };
 
@@ -584,7 +743,17 @@ export default function AdminPage() {
                           </td>
 
                           <td className="px-6 py-4 text-center whitespace-nowrap">
-                            <div className="flex items-center justify-center" onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center justify-center gap-1.5" onClick={e => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={() => handleInitiateEdit(r)}
+                                title={`Edit ${r.name}'s profile and access`}
+                                className="p-2 text-slate-400 hover:text-brand-orange hover:bg-orange-50 rounded-lg transition-colors border border-transparent hover:border-orange-200 cursor-pointer"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => handleInitiateDelete(r)}
@@ -809,20 +978,36 @@ export default function AdminPage() {
                 </div>
 
                 <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const rec = selectedRecruiter;
-                      setShowRecruiterModal(false);
-                      handleInitiateDelete(rec);
-                    }}
-                    className="px-3.5 py-2 text-rose-600 hover:text-white hover:bg-rose-600 border border-rose-200 hover:border-rose-600 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                    <span>Delete Member &amp; Associated Data</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const rec = selectedRecruiter;
+                        setShowRecruiterModal(false);
+                        handleInitiateEdit(rec);
+                      }}
+                      className="px-3.5 py-2 text-brand-orange hover:text-white hover:bg-brand-orange border border-orange-200 hover:border-brand-orange text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                      <span>Edit Member Profile</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const rec = selectedRecruiter;
+                        setShowRecruiterModal(false);
+                        handleInitiateDelete(rec);
+                      }}
+                      className="px-3.5 py-2 text-rose-600 hover:text-white hover:bg-rose-600 border border-rose-200 hover:border-rose-600 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      <span>Delete Member</span>
+                    </button>
+                  </div>
                   <button
                     type="button"
                     onClick={() => setShowRecruiterModal(false)}
@@ -922,16 +1107,32 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Role / Authority</label>
-                  <select
-                    value={newMemberRole}
-                    onChange={e => setNewMemberRole(e.target.value as any)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 cursor-pointer"
-                  >
-                    <option value="RECRUITER_MEMBER">TA Team Member (MEMBER)</option>
-                    <option value="TEAM_LEAD">Team Lead</option>
-                  </select>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Assigned Pod</label>
+                    <select
+                      value={newMemberTeam}
+                      onChange={e => setNewMemberTeam(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 cursor-pointer"
+                    >
+                      <option value="Cloud & Engineering Pod">Cloud &amp; Engineering Pod</option>
+                      <option value="SAP & Enterprise Practice">SAP &amp; Enterprise Practice</option>
+                      <option value="Sales & Growth Practice">Sales &amp; Growth Practice</option>
+                      <option value="Talent Operations & Sourcing">Talent Operations &amp; Sourcing</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Role / Authority</label>
+                    <select
+                      value={newMemberRole}
+                      onChange={e => setNewMemberRole(e.target.value as any)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 cursor-pointer"
+                    >
+                      <option value="RECRUITER_MEMBER">TA Team Member (MEMBER)</option>
+                      <option value="TEAM_LEAD">Team Lead</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 mt-5">
@@ -962,6 +1163,176 @@ export default function AdminPage() {
                       </>
                     ) : (
                       <span>Save &amp; Create Member</span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ── MODAL: EDIT TEAM MEMBER ── */}
+        {showEditMemberModal && memberToEdit && (
+          <div className="fixed inset-0 z-[210] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-brand-orange text-white font-black text-base flex items-center justify-center shadow-orange">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900">Edit Team Member</h3>
+                    <p className="text-xs text-slate-500">Update {memberToEdit.name}&apos;s profile, assigned pod, role, and credentials</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditMemberModal(false);
+                    setMemberToEdit(null);
+                    setEditMemberError('');
+                    setEditMemberSuccess('');
+                  }}
+                  className="text-slate-400 hover:text-slate-600 font-bold p-1 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {editMemberError && (
+                <div className="mb-4 p-3 bg-rose-50 rounded-xl border border-rose-200 text-xs text-rose-700 flex items-center gap-2">
+                  <span className="font-bold">✕</span>
+                  <span>{editMemberError}</span>
+                </div>
+              )}
+
+              {editMemberSuccess && (
+                <div className="mb-4 p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-700 flex items-center gap-2">
+                  <span className="font-bold">✓</span>
+                  <span>{editMemberSuccess}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSaveEditMember} className="space-y-3.5 text-xs">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Alex Morales"
+                    value={editMemberName}
+                    onChange={e => setEditMemberName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Corporate Email</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="e.g. alex.m@tasknera.com"
+                    value={editMemberEmail}
+                    onChange={e => setEditMemberEmail(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Assigned Pod</label>
+                    <select
+                      value={editMemberTeam}
+                      onChange={e => setEditMemberTeam(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 cursor-pointer"
+                    >
+                      <option value="Cloud & Engineering Pod">Cloud &amp; Engineering Pod</option>
+                      <option value="SAP & Enterprise Practice">SAP &amp; Enterprise Practice</option>
+                      <option value="Sales & Growth Practice">Sales &amp; Growth Practice</option>
+                      <option value="Talent Operations & Sourcing">Talent Operations &amp; Sourcing</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Role / Authority</label>
+                    <select
+                      value={editMemberRole}
+                      onChange={e => setEditMemberRole(e.target.value as any)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 cursor-pointer"
+                    >
+                      <option value="RECRUITER_MEMBER">TA Team Member (MEMBER)</option>
+                      <option value="TEAM_LEAD">Team Lead</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-bold text-slate-700">Password / Reset Credentials</label>
+                    <span className="text-[10px] text-slate-400">Min 8 characters (leave as-is to keep current)</span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={showEditMemberPassword ? 'text' : 'password'}
+                      minLength={8}
+                      placeholder="Enter new password or keep existing"
+                      value={editMemberPassword}
+                      onChange={e => setEditMemberPassword(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 pr-12"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowEditMemberPassword(!showEditMemberPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-semibold cursor-pointer"
+                    >
+                      {showEditMemberPassword ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Key Competencies / Skills (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Sourcing, Full-Cycle Recruiting, Technical Screening"
+                    value={editMemberSkills}
+                    onChange={e => setEditMemberSkills(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">Separate competencies with commas</p>
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 mt-5">
+                  <button
+                    type="button"
+                    disabled={editMemberLoading}
+                    onClick={() => {
+                      setShowEditMemberModal(false);
+                      setMemberToEdit(null);
+                      setEditMemberError('');
+                      setEditMemberSuccess('');
+                    }}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editMemberLoading}
+                    className="px-5 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-black rounded-xl shadow-orange transition-all cursor-pointer disabled:opacity-60 flex items-center gap-2"
+                  >
+                    {editMemberLoading ? (
+                      <>
+                        <svg className="animate-spin w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        <span>Saving Changes...</span>
+                      </>
+                    ) : (
+                      <span>Save Changes</span>
                     )}
                   </button>
                 </div>
