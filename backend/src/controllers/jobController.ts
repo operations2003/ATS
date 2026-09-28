@@ -86,7 +86,7 @@ export const parseJobDescriptionController = async (req: AuthRequest, res: Respo
         }
 
         // Direct requirement synchronization from Gemini:
-        // Use Gemini's clean, semantic requirements as the canonical candidate evaluation rubric
+        // Use Gemini's clean, semantic requirements as the canonical candidate evaluation criteria
         const geminiMandatoryList = semRes.requirements
           .filter(r => r.is_mandatory)
           .map(r => r.requirement);
