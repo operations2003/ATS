@@ -12,7 +12,7 @@ const BIAS_ROWS = [
   {
     metric: 'EEOC alignment',
     manual: { value: 'Ad hoc',    bar: 30, note: 'Depends on individual training compliance' },
-    ai:     { value: 'Built-in',  bar: 100, note: 'EEOC-aligned scoring rubric, every role' },
+    ai:     { value: 'Built-in',  bar: 100, note: 'EEOC-aligned scoring criteria, every role' },
   },
   {
     metric: 'Name/school blind',
@@ -67,7 +67,7 @@ const BiasGuardSection: React.FC = () => {
                 { col: 'Candidate ID',     val: '0x4F2A',         ok: true  },
                 { col: 'Name signal',      val: 'STRIPPED',        ok: true  },
                 { col: 'School signal',    val: 'STRIPPED',        ok: true  },
-                { col: 'EEOC rubric',      val: 'v4.2 applied',    ok: true  },
+                { col: 'EEOC criteria',    val: 'v4.2 applied',    ok: true  },
                 { col: 'Disparate impact', val: 'p=0.82 (pass)',   ok: true  },
                 { col: 'Score',            val: '94.2 / 100',      ok: true  },
               ].map((row) => (

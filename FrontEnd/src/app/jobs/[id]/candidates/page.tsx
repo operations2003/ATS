@@ -1665,7 +1665,7 @@ export default function JobCandidatesPage() {
                 href={`/jobs/${jobId}/requirements`}
                 className="px-4 py-2.5 bg-white/10 hover:bg-white/15 text-white text-xs font-bold rounded-xl border border-white/20 transition-all cursor-pointer backdrop-blur-sm"
               >
-                Configure Rubric Criteria
+                Configure Job Criteria
               </Link>
               <button
                 onClick={() => setShowUploadZone(prev => !prev)}

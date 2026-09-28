@@ -776,7 +776,7 @@ export default function CreateJobPage() {
               {/* Header Stats */}
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-lg font-bold text-[#1E293B]">Candidate Evaluation Rubric ({requirements.length})</h2>
+                  <h2 className="text-lg font-bold text-[#1E293B]">Candidate Evaluation Criteria ({requirements.length})</h2>
                   <p className="text-xs text-slate-500 mt-0.5">Section-aware classification automatically derived from Job Description.</p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap text-xs">

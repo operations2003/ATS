@@ -104,7 +104,7 @@ export async function POST(
         totalExperienceMonths: 66,
         currentTitle: 'Senior Software Engineer / Salesforce Developer',
         currentCompany: 'Cloud Solutions Enterprise',
-        summary: `Accomplished engineer specializing in robust enterprise application development, cloud solutions, and scalable architecture. Proven ability to meet stringent hiring rubrics and deliver mission-critical integrations.`,
+        summary: `Accomplished engineer specializing in robust enterprise application development, cloud solutions, and scalable architecture. Proven ability to meet stringent hiring criteria and deliver mission-critical integrations.`,
         professionalSummary: `Dedicated candidate with 5+ years of verified hands-on industry expertise, strong problem-solving acumen, and active certifications.`,
         skills: [
           'Salesforce Manufacturing Cloud',

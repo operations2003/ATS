@@ -562,7 +562,7 @@ export default function CandidateEvaluationDetailPage() {
                     Score Breakdown (Deterministic Model)
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    Mathematical rubric evaluation across key hiring dimensions
+                    Mathematical criteria evaluation across key hiring dimensions
                   </p>
                 </div>
                 <span className="text-[11px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg font-mono">
