@@ -9,7 +9,7 @@ interface MyProfileModalProps {
 }
 
 export const MyProfileModal: React.FC<MyProfileModalProps> = ({ isOpen, onClose }) => {
-  const { user, getUserPassword, updatePassword } = useAuth();
+  const { user, getUserPassword, updatePassword, logout } = useAuth();
 
   const [showPassword, setShowPassword] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -412,9 +412,20 @@ export const MyProfileModal: React.FC<MyProfileModalProps> = ({ isOpen, onClose 
 
         {/* Modal Footer */}
         <div className="px-6 py-4 bg-slate-50/90 border-t border-slate-100 flex items-center justify-between">
-          <span className="text-[11px] text-slate-400">
-            Press <kbd className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px] font-mono text-slate-600 shadow-2xs">ESC</kbd> to close
-          </span>
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              logout();
+            }}
+            className="px-4 py-2 text-rose-600 hover:bg-rose-50 border border-rose-200 text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+          >
+            <svg className="w-3.5 h-3.5 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            <span>Sign Out</span>
+          </button>
+          
           <button
             type="button"
             onClick={onClose}

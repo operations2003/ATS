@@ -778,22 +778,11 @@ export default function JobsPage() {
             <h3 className="text-lg font-bold text-[#1E293B] mb-1">
               {allJobs.length === 0 ? 'No jobs uploaded yet' : 'No matching jobs found'}
             </h3>
-            <p className="text-slate-500 text-xs max-w-md mx-auto mb-6">
+            <p className="text-slate-500 text-xs max-w-md mx-auto">
               {search || filter !== 'All'
                 ? 'Try adjusting your search criteria or active filter tags.'
-                : 'Get started by uploading your first Job Description (JD). You can upload a PDF or paste requirements.'}
+                : 'Get started by uploading your first Job Description (JD) using the "Upload New JD" button above.'}
             </p>
-            {allJobs.length === 0 && (
-              <Link
-                href="/jobs/create"
-                className="inline-flex items-center gap-2 px-6 py-3 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                </svg>
-                Upload Your First JD
-              </Link>
-            )}
           </div>
         )}
 

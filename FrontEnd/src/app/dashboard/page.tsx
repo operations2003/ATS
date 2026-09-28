@@ -544,19 +544,9 @@ export default function DashboardPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                     </svg>
                   </div>
-                  <h3 className="text-base font-bold text-[#1E293B] mb-1">No jobs uploaded yet</h3>
-                  <p className="text-xs text-slate-500 max-w-sm mx-auto mb-6">
-                    Start by uploading your first Job Description. HireIQ by TaskNera will extract criteria and evaluate candidates deterministically.
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    Start by uploading your first Job Description using the "Upload JD" button above. HireIQ by TaskNera will extract criteria and evaluate candidates deterministically.
                   </p>
-                  <Link
-                    href="/jobs/create"
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                    </svg>
-                    Upload Your First JD
-                  </Link>
                 </div>
               ) : filteredJobs.length === 0 ? (
                 <div className="py-12 text-center text-xs text-slate-400">

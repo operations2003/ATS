@@ -2062,9 +2062,9 @@ export default function JobCandidatesPage() {
             <p className="text-slate-500 text-xs max-w-md mx-auto mb-6">
               {searchQuery
                 ? 'Try adjusting your search keywords or clear the active status filter.'
-                : 'Upload resumes (PDF, DOCX, TXT) to automatically extract candidate profiles and score them against this job.'}
+                : 'Upload resumes (PDF, DOCX, TXT) using the "Bulk Upload CVs" button above to score candidates against this job.'}
             </p>
-            {searchQuery ? (
+            {searchQuery && (
               <button
                 onClick={() => {
                   setSearchQuery('');
@@ -2073,16 +2073,6 @@ export default function JobCandidatesPage() {
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
               >
                 Reset Filters
-              </button>
-            ) : (
-              <button
-                onClick={() => setShowUploadZone(true)}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand-orange hover:bg-orange-600 text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                </svg>
-                Upload Candidate CVs
               </button>
             )}
           </div>
