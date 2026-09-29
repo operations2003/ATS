@@ -2,10 +2,24 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import BookDemoModal from '@/components/BookDemoModal';
 
-const HeroSection: React.FC = () => {
+interface HeroSectionProps {
+  onBookDemo?: () => void;
+}
+
+const HeroSection: React.FC<HeroSectionProps> = ({ onBookDemo }) => {
   const [visible, setVisible] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState(0);
+  const [internalDemoOpen, setInternalDemoOpen] = useState(false);
+
+  const handleBookDemo = () => {
+    if (onBookDemo) {
+      onBookDemo();
+    } else {
+      setInternalDemoOpen(true);
+    }
+  };
 
   useEffect(() => { setVisible(true); }, []);
 
@@ -79,22 +93,44 @@ const HeroSection: React.FC = () => {
               A deterministic scoring engine ensuring identical evaluations for identical requirements. Every single match score is validated with extracted citations from candidate resumes.
             </p>
 
-            <div className="flex flex-wrap items-center gap-3.5 mb-10">
+            <div className="flex flex-wrap items-center gap-3.5 mb-6">
+              <button
+                type="button"
+                onClick={handleBookDemo}
+                className="flex items-center gap-2.5 px-6 py-3.5 bg-brand-orange hover:bg-brand-orange-hover text-white font-bold rounded-xl transition-all shadow-orange hover:shadow-orange-lg hover:-translate-y-0.5 text-sm cursor-pointer group"
+              >
+                <svg className="w-4 h-4 text-white group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                <span>Book a Demo Session</span>
+              </button>
               <Link
                 href="/jobs/create"
-                className="flex items-center gap-2 px-6 py-3.5 bg-brand-orange hover:bg-brand-orange-hover text-white font-semibold rounded-xl transition-all shadow-orange hover:shadow-orange-lg hover:-translate-y-0.5 text-sm"
+                className="flex items-center gap-2 px-6 py-3.5 bg-brand-white hover:bg-brand-bg-2 border border-brand-border text-brand-charcoal font-semibold rounded-xl transition-all hover:-translate-y-0.5 text-sm shadow-xs"
               >
                 Start Free Evaluation
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                 </svg>
               </Link>
               <Link
                 href="/dashboard"
-                className="flex items-center gap-2 px-6 py-3.5 bg-brand-white hover:bg-brand-bg-2 border border-brand-border text-brand-charcoal font-semibold rounded-xl transition-all hover:-translate-y-0.5 text-sm shadow-xs"
+                className="flex items-center gap-2 px-5 py-3.5 text-slate-600 hover:text-slate-900 text-sm font-semibold transition-colors"
               >
-                Explore Dashboard
+                Explore Dashboard →
               </Link>
+            </div>
+
+            {/* Direct contact note for enterprise/Capterra visitors */}
+            <div className="flex items-center gap-2 text-xs text-slate-500 mb-8">
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span>Enterprise demo scheduling &amp; queries:</span>
+              <a 
+                href="mailto:operations@tasknera.com?subject=HireIQ%20Demo%20Session%20Request&body=Hi%20HireIQ%20Team%2C%0A%0AI%20would%20like%20to%20schedule%20a%20demo%20session%20for%20HireIQ.%0A%0ACompany%3A%20%0AName%3A%20%0APreferred%20Time%3A%20" 
+                className="font-bold text-brand-orange hover:underline"
+              >
+                operations@tasknera.com
+              </a>
             </div>
 
             <div className="flex flex-wrap items-center gap-5 text-xs sm:text-sm font-medium text-brand-charcoal-3">
@@ -240,6 +276,10 @@ const HeroSection: React.FC = () => {
         </div>
       </div>
 
+      <BookDemoModal
+        isOpen={internalDemoOpen}
+        onClose={() => setInternalDemoOpen(false)}
+      />
     </section>
   );
 };

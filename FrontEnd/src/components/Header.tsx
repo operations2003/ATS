@@ -6,12 +6,14 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
 import { AuthModal } from './AuthModal';
 import { MyProfileModal } from './MyProfileModal';
+import BookDemoModal from './BookDemoModal';
 import Logo from './Logo';
 
 const Header: React.FC = () => {
   const [scrolled, setScrolled]         = useState(false);
   const [mobileOpen, setMobileOpen]     = useState(false);
   const [authOpen, setAuthOpen]         = useState(false);
+  const [demoOpen, setDemoOpen]         = useState(false);
   const [authMode, setAuthMode]         = useState<'signin' | 'signup'>('signin');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [profileOpen, setProfileOpen]   = useState(false);
@@ -147,6 +149,16 @@ const Header: React.FC = () => {
               </>
             ) : (
               <>
+                <button
+                  type="button"
+                  onClick={() => setDemoOpen(true)}
+                  className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold rounded-xl transition-all hover:border-brand-orange hover:text-brand-orange cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                >
+                  <svg className="w-3.5 h-3.5 text-brand-orange" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  <span>Book a Demo</span>
+                </button>
                 <Link
                   href="/signin"
                   className="px-5 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-black rounded-xl transition-all shadow-orange hover:shadow-orange-lg cursor-pointer flex items-center gap-1.5"
@@ -219,13 +231,25 @@ const Header: React.FC = () => {
                   </button>
                 </>
               ) : (
-                <Link
-                  href="/signin"
-                  onClick={() => setMobileOpen(false)}
-                  className="block w-full text-center px-4 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white rounded-xl text-xs font-black shadow-orange transition-all cursor-pointer"
-                >
-                  Sign In to Account →
-                </Link>
+                <div className="space-y-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => { setMobileOpen(false); setDemoOpen(true); }}
+                    className="w-full text-center px-4 py-2.5 bg-white border border-slate-300 hover:border-brand-orange text-slate-800 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-4 h-4 text-brand-orange" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    <span>Book a Demo Session</span>
+                  </button>
+                  <Link
+                    href="/signin"
+                    onClick={() => setMobileOpen(false)}
+                    className="block w-full text-center px-4 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white rounded-xl text-xs font-black shadow-orange transition-all cursor-pointer"
+                  >
+                    Sign In to Account →
+                  </Link>
+                </div>
               )}
             </div>
           </div>
@@ -234,6 +258,7 @@ const Header: React.FC = () => {
 
       <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} initialMode={authMode} />
       <MyProfileModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
+      <BookDemoModal isOpen={demoOpen} onClose={() => setDemoOpen(false)} />
     </>
   );
 };

@@ -8,6 +8,7 @@ import Footer from '@/components/Footer';
 import HeroSection from './components/HeroSection';
 import { useAuth } from '@/context/AuthContext';
 import { AuthModal } from '@/components/AuthModal';
+import BookDemoModal from '@/components/BookDemoModal';
 
 const features = [
   {
@@ -95,6 +96,7 @@ const testimonials = [
 
 export default function HomePage() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [demoModalOpen, setDemoModalOpen] = useState(false);
   const [biasGuardActive, setBiasGuardActive] = useState(true);
   const [activeTab, setActiveTab] = useState<'all' | 'scoring' | 'auditing' | 'speed'>('all');
   const { isAuthenticated } = useAuth();
@@ -119,7 +121,7 @@ export default function HomePage() {
 
       <main className="flex-1">
         {/* Hero */}
-        <HeroSection />
+        <HeroSection onBookDemo={() => setDemoModalOpen(true)} />
 
         {/* Features Interactive Showcase */}
         <section className="bg-brand-white border-t border-brand-border py-24 relative overflow-hidden">
@@ -428,6 +430,43 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* Enterprise Demo CTA Banner for Capterra & Direct Inquiries */}
+        <section className="bg-gradient-to-br from-brand-charcoal via-slate-900 to-brand-charcoal text-white py-16 border-t border-slate-800">
+          <div className="max-w-screen-xl mx-auto px-6 text-center">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-xs font-semibold text-brand-orange mb-4 border border-white/15">
+              <span className="w-2 h-2 rounded-full bg-brand-orange animate-ping" />
+              Direct Operations Consultation
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-4">
+              See HireIQ in Action on Your Real Resumes
+            </h2>
+            <p className="text-slate-300 text-sm sm:text-base max-w-2xl mx-auto mb-8 leading-relaxed">
+              Book a live 20-minute walkthrough tailored to your talent acquisition workflows. 
+              Our team will benchmark your current hiring rubrics against our deterministic scoring engine.
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-4">
+              <button
+                type="button"
+                onClick={() => setDemoModalOpen(true)}
+                className="flex items-center gap-2.5 px-7 py-3.5 bg-brand-orange hover:bg-brand-orange-hover text-white font-bold rounded-xl transition-all shadow-orange hover:shadow-orange-lg hover:-translate-y-0.5 text-sm cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                <span>Book a Demo Session</span>
+              </button>
+              <a
+                href="mailto:operations@tasknera.com?subject=HireIQ%20Demo%20Session%20Request&body=Hi%20HireIQ%20Team%2C%0A%0AI%20would%20like%20to%20schedule%20a%20demo%20session%20for%20HireIQ.%0A%0ACompany%3A%20%0AName%3A%20%0APreferred%20Date%2FTime%3A%20"
+                className="flex items-center gap-2 px-6 py-3.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold rounded-xl transition-all text-sm"
+              >
+                <svg className="w-4 h-4 text-brand-orange" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                <span>Email operations@tasknera.com</span>
+              </a>
+            </div>
+          </div>
+        </section>
 
       </main>
 
@@ -437,6 +476,10 @@ export default function HomePage() {
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
         initialMode="signin"
+      />
+      <BookDemoModal
+        isOpen={demoModalOpen}
+        onClose={() => setDemoModalOpen(false)}
       />
     </div>
   );
