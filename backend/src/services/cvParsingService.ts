@@ -1167,23 +1167,39 @@ export function extractStructuredCandidateFromText(
   }
 
   if (!currentTitle || currentTitle.trim().length === 0) {
-    const titleCandidates = [
-      'Web Development Intern', 'Software Development Intern', 'Software Engineer Intern', 'Engineering Intern',
-      'Full Stack Developer', 'Full-Stack Developer', 'Full Stack Engineer', 'Full-Stack Engineer',
-      'Senior Frontend Engineer', 'Senior Frontend Developer', 'Frontend Engineer', 'Frontend Developer',
-      'Senior Backend Engineer', 'Senior Backend Developer', 'Backend Engineer', 'Backend Developer',
-      'Senior Software Engineer', 'Software Engineer', 'Software Developer', 'Web Developer', 'Web Developer Intern',
-      'React Developer', 'Java Developer', 'Python Developer', 'DevOps Engineer', 'Cloud Architect',
-      'UI/UX Designer', 'Product Designer', 'Data Scientist', 'Data Engineer', 'Intern'
-    ];
+    // Check top 8 lines for title patterns like "... Consultant", "... Manager", "... Developer", "... Engineer", etc.
+    for (let i = 0; i < Math.min(lines.length, 8); i++) {
+      const l = lines[i].trim();
+      if (l.length >= 3 && l.length <= 60 && !l.includes('@') && !/\d{5,}/.test(l) && !l.includes('http') && !l.includes('www') && !l.includes('|')) {
+        if (/\b(consultant|engineer|developer|architect|manager|lead|specialist|analyst|administrator|director|executive|officer|scientist|designer|intern|associate)\b/i.test(l)) {
+          if (!/^(?:experience|skills|education|projects|summary|profile|about|curriculum|resume|contact)/i.test(l)) {
+            currentTitle = l;
+            sourceEvidence['currentTitle'] = l;
+            break;
+          }
+        }
+      }
+    }
 
-    const headerText = lines.slice(0, 8).join('\n');
-    for (const t of titleCandidates) {
-      const reg = new RegExp(`\\b${t.replace('/', '\\/')}\\b`, 'i');
-      if (reg.test(headerText)) {
-        currentTitle = t;
-        sourceEvidence['currentTitle'] = t;
-        break;
+    if (!currentTitle) {
+      const titleCandidates = [
+        'Web Development Intern', 'Software Development Intern', 'Software Engineer Intern', 'Engineering Intern',
+        'Full Stack Developer', 'Full-Stack Developer', 'Full Stack Engineer', 'Full-Stack Engineer',
+        'Senior Frontend Engineer', 'Senior Frontend Developer', 'Frontend Engineer', 'Frontend Developer',
+        'Senior Backend Engineer', 'Senior Backend Developer', 'Backend Engineer', 'Backend Developer',
+        'Senior Software Engineer', 'Software Engineer', 'Software Developer', 'Web Developer', 'Web Developer Intern',
+        'React Developer', 'Java Developer', 'Python Developer', 'DevOps Engineer', 'Cloud Architect',
+        'UI/UX Designer', 'Product Designer', 'Data Scientist', 'Data Engineer', 'Intern'
+      ];
+
+      const headerText = lines.slice(0, 8).join('\n');
+      for (const t of titleCandidates) {
+        const reg = new RegExp(`\\b${t.replace('/', '\\/')}\\b`, 'i');
+        if (reg.test(headerText)) {
+          currentTitle = t;
+          sourceEvidence['currentTitle'] = t;
+          break;
+        }
       }
     }
   }

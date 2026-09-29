@@ -8,6 +8,7 @@ try {
     pdfParseFn = pkg;
   }
 } catch {}
+import zlib from 'zlib';
 import mammoth from 'mammoth';
 import { createWorker } from 'tesseract.js';
 
@@ -187,7 +188,61 @@ export const calculateDocumentMetrics = (
 };
 
 /**
- * 1. EXTRACT TEXT FROM BUFFER (PDF, DOCX, TXT) WITH OCR FALLBACK
+ * Deep PDF stream text recovery: decompresses FlateDecode streams and parses TJ / Tj operator text.
+ * Essential for damaged, linearized, or corrupted xref PDFs (e.g. "Page dictionary kid reference points to wrong type of object").
+ */
+export const recoverTextFromPdfStreams = (buffer: Buffer): string => {
+  try {
+    const str = buffer.toString('binary');
+    const streamRegex = /stream[\r\n]+([\s\S]*?)[\r\n]+endstream/g;
+    let match;
+    const textPieces: string[] = [];
+
+    while ((match = streamRegex.exec(str)) !== null) {
+      const rawStream = Buffer.from(match[1], 'binary');
+      let decomp: Buffer | null = null;
+      try {
+        decomp = zlib.inflateSync(rawStream);
+      } catch {
+        try {
+          decomp = zlib.inflateRawSync(rawStream);
+        } catch {}
+      }
+
+      if (decomp) {
+        const decompStr = decomp.toString('latin1');
+        // Match both [(...)...] TJ and (...) Tj
+        const tjRegex = /(?:\[([\s\S]*?)\]\s*TJ|\(([\s\S]*?)\)\s*Tj)/g;
+        let m;
+        while ((m = tjRegex.exec(decompStr)) !== null) {
+          if (m[1] !== undefined) {
+            // It's a TJ array: extract all ( ... ) strings
+            const subRegex = /\(([\s\S]*?)(?<!\\)\)/g;
+            let sub;
+            let piece = '';
+            while ((sub = subRegex.exec(m[1])) !== null) {
+              piece += sub[1].replace(/\\([\\()])/g, '$1');
+            }
+            if (piece && piece.trim()) textPieces.push(piece.trim());
+          } else if (m[2] !== undefined) {
+            const piece = m[2].replace(/\\([\\()])/g, '$1');
+            if (piece && piece.trim()) textPieces.push(piece.trim());
+          }
+        }
+      }
+    }
+
+    if (textPieces.length > 5) {
+      return textPieces.join(' ');
+    }
+  } catch (err) {
+    console.warn('[PDF Stream Recovery Notice]:', err);
+  }
+  return '';
+};
+
+/**
+ * 1. EXTRACT TEXT FROM BUFFER (PDF, DOCX, TXT) WITH STREAM RECOVERY & OCR FALLBACK
  */
 export const extractTextFromBuffer = async (
   buffer: Buffer,
@@ -219,30 +274,46 @@ export const extractTextFromBuffer = async (
         }
       }
     } catch (err: any) {
-      console.warn('[PDF Extractor] pdf-parse warning, attempting stream text extraction:', err.message || String(err));
+      console.warn('[PDF Extractor] pdf-parse warning, attempting stream recovery:', err.message || String(err));
     }
 
-    // Direct Stream Extraction Fallback if pdf-parse text is insufficient
+    // Direct Stream Extraction & FlateDecode Stream Recovery if pdf-parse text is insufficient
     if (!extractedText || extractedText.trim().length < 30) {
-      method = 'pdf-stream-extractor';
-      try {
-        const rawString = buffer.toString('latin1');
-        const textChunks: string[] = [];
+      method = 'pdf-stream-recovery';
+      const streamText = recoverTextFromPdfStreams(buffer);
+      if (streamText && streamText.trim().length > 30) {
+        extractedText = streamText;
+      } else {
+        try {
+          const rawString = buffer.toString('latin1');
+          const textChunks: string[] = [];
 
-        const tjMatches = rawString.match(/\(([^()]{2,})\)\s*(?:Tj|TJ|\')/g) || [];
-        for (const m of tjMatches) {
-          const s = m.replace(/^\(/, '').replace(/\)\s*(?:Tj|TJ|\')$/, '').trim();
-          if (s && !s.startsWith('/') && !s.startsWith('%PDF') && !s.includes('FontName')) {
-            textChunks.push(s);
+          const tjMatches = rawString.match(/\(([^()]{2,})\)\s*(?:Tj|TJ|\')/g) || [];
+          for (const m of tjMatches) {
+            const s = m.replace(/^\(/, '').replace(/\)\s*(?:Tj|TJ|\')$/, '').trim();
+            if (s && !s.startsWith('/') && !s.startsWith('%PDF') && !s.includes('FontName')) {
+              textChunks.push(s);
+            }
           }
-        }
 
-        if (textChunks.length > 3) {
-          extractedText = textChunks.join('\n');
+          if (textChunks.length > 3) {
+            extractedText = textChunks.join('\n');
+          }
+        } catch (e: any) {
+          console.error('[PDF Extractor] Stream fallback error:', e);
         }
-      } catch (e: any) {
-        console.error('[PDF Extractor] Stream fallback error:', e);
       }
+    }
+
+    // If PDF was actually a renamed DOCX file or contains Word document payload
+    if ((!extractedText || extractedText.trim().length < 30) && (lowerName.includes('.docx') || lowerName.includes('.doc'))) {
+      try {
+        const mammothRes = await mammoth.extractRawText({ buffer });
+        if (mammothRes && mammothRes.value && mammothRes.value.trim().length > 30) {
+          extractedText = mammothRes.value;
+          method = 'mammoth-docx-fallback';
+        }
+      } catch {}
     }
 
     // OCR Fallback if PDF text is still empty or scanned image PDF (< 30 characters or < 8 words)
@@ -272,8 +343,18 @@ export const extractTextFromBuffer = async (
       const result = await mammoth.extractRawText({ buffer });
       extractedText = result.value || '';
     } catch (err: any) {
-      console.error('DOCX parsing error:', err);
-      throw new Error(`Failed to extract text from Word document: ${err.message || String(err)}`);
+      console.warn('DOCX parsing warning, trying stream/plain text fallback:', err.message || String(err));
+      // Fallback if file was actually a PDF with a .docx extension
+      try {
+        if (PDFParseClass) {
+          const parser = new PDFParseClass({ data: buffer });
+          const res = await parser.getText();
+          if (res && res.text) extractedText = res.text;
+        }
+      } catch {}
+      if (!extractedText) {
+        extractedText = recoverTextFromPdfStreams(buffer);
+      }
     }
     return { text: extractedText, pageCount: 1, method, ocrUsed: false };
   }

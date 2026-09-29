@@ -125,19 +125,59 @@ def parse_pdf_bytes(pdf_bytes: bytes, filename: str = "") -> Dict[str, Any]:
 
     metrics = analyze_document_quality(cleaned_normalized, page_count, filename)
 
-    # Trigger OCR fallback if text is INSUFFICIENT or FAILED (< 50 chars or < 10 words)
+    # Trigger Stream Recovery & OCR fallback if text is INSUFFICIENT or FAILED (< 50 chars or < 10 words)
     if (metrics["textQuality"] in ["INSUFFICIENT", "FAILED"] or len(cleaned_normalized) < 40) and len(pdf_bytes) > 0:
+        # Step 1: FlateDecode stream decompression recovery (handles corrupted xref / malformed page trees)
         try:
-            ocr_text = perform_pdf_ocr(pdf_bytes)
-            cleaned_ocr = clean_extracted_text(ocr_text)
-            if len(cleaned_ocr.strip()) > len(cleaned_normalized.strip()):
-                cleaned_normalized = cleaned_ocr
-                extracted_layout = cleaned_ocr
-                metrics = analyze_document_quality(cleaned_ocr, page_count, filename)
-                extraction_method = "pymupdf+tesseract-ocr"
-                ocr_used = True
+            import zlib
+            import re
+            stream_regex = re.compile(b'stream[\r\n]+([\s\S]*?)[\r\n]+endstream')
+            streams = stream_regex.findall(pdf_bytes)
+            stream_pieces = []
+            for s in streams:
+                try:
+                    decomp = zlib.decompress(s)
+                except Exception:
+                    try:
+                        decomp = zlib.decompress(s, -zlib.MAX_WBITS)
+                    except Exception:
+                        continue
+                decomp_str = decomp.decode('latin1', errors='ignore')
+                tj_matches = re.finditer(r'(?:\[([\s\S]*?)\]\s*TJ|\(([\s\S]*?)\)\s*Tj)', decomp_str)
+                for m in tj_matches:
+                    if m.group(1):
+                        subs = re.findall(r'\(([\s\S]*?)(?<!\\)\)', m.group(1))
+                        clean_piece = ''.join([sub.replace('\\(', '(').replace('\\)', ')') for sub in subs]).strip()
+                        if clean_piece:
+                            stream_pieces.append(clean_piece)
+                    elif m.group(2):
+                        clean_piece = m.group(2).replace('\\(', '(').replace('\\)', ')').strip()
+                        if clean_piece:
+                            stream_pieces.append(clean_piece)
+            if len(stream_pieces) > 5:
+                recovered_stream_text = ' '.join(stream_pieces)
+                cleaned_rec = clean_extracted_text(recovered_stream_text)
+                if len(cleaned_rec) > len(cleaned_normalized):
+                    cleaned_normalized = cleaned_rec
+                    extracted_layout = cleaned_rec
+                    metrics = analyze_document_quality(cleaned_rec, page_count, filename)
+                    extraction_method = "pdf-stream-recovery"
         except Exception:
             pass
+
+        # Step 2: OCR Fallback if text is still insufficient
+        if (metrics["textQuality"] in ["INSUFFICIENT", "FAILED"] or len(cleaned_normalized) < 40):
+            try:
+                ocr_text = perform_pdf_ocr(pdf_bytes)
+                cleaned_ocr = clean_extracted_text(ocr_text)
+                if len(cleaned_ocr.strip()) > len(cleaned_normalized.strip()):
+                    cleaned_normalized = cleaned_ocr
+                    extracted_layout = cleaned_ocr
+                    metrics = analyze_document_quality(cleaned_ocr, page_count, filename)
+                    extraction_method = "pymupdf+tesseract-ocr"
+                    ocr_used = True
+            except Exception:
+                pass
 
     return {
         "text": cleaned_raw or cleaned_normalized,

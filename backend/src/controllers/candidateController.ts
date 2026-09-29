@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import prisma from '../config/prisma';
-import { extractDocumentTextViaPython, PythonDocumentResponse } from '../services/pythonDocumentClient';
+import { extractDocumentTextViaPython, extractDocumentTextLocally, PythonDocumentResponse } from '../services/pythonDocumentClient';
 import { AuthRequest } from '../middleware/authMiddleware';
 import {
   extractStructuredCandidateFromText,
@@ -47,6 +47,34 @@ for (const [jobId, list] of Object.entries(DEFAULT_INITIAL_CANDIDATES)) {
     GLOBAL_CANDIDATES.set(c.id, c);
   }
 }
+
+/**
+ * Cleans filenames into professional human candidate names by stripping compound extensions,
+ * remove noise keywords (resume, cv), and capitalizing.
+ */
+export const cleanFileNameForDisplay = (fileName: string): string => {
+  if (!fileName) return 'Candidate Profile';
+  let name = fileName.trim();
+  // Strip compound extensions like .docx.pdf, .doc.pdf, .pdf, .docx, .doc, .txt
+  name = name.replace(/\.(docx?|pdf|txt|rtf)(\.(docx?|pdf|txt|rtf))?$/i, '');
+  name = name.replace(/\.[^/.]+$/, '');
+  // Remove (1), [1], etc.
+  name = name.replace(/\s*\(\d+\)\s*/g, ' ');
+  // Remove "Resume", "CV", "Profile" prefixes and suffixes
+  name = name.replace(/^(?:resume|cv|profile|candidate)[\s_\-]+/i, '');
+  name = name.replace(/[\s_\-]+(?:resume|cv|profile|candidate)$/i, '');
+  // CamelCase to spaces
+  name = name.replace(/([a-z])([A-Z])/g, '$1 $2');
+  // Underscores and hyphens to spaces
+  name = name.replace(/[_\-]+/g, ' ');
+  // Collapse spaces
+  name = name.replace(/\s+/g, ' ').trim();
+  // Capitalize words
+  if (name.length > 0) {
+    name = name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+  }
+  return name || 'Candidate Profile';
+};
 
 /**
  * Helper to convert Prisma Candidate DB entity to CandidateRecord,
@@ -159,9 +187,9 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
     }
   }
 
-  const cleanName = c.name && c.name.trim() && c.name.toLowerCase() !== 'candidate'
+  const cleanName = c.name && c.name.trim() && !['candidate', 'candidate profile', 'applicant'].includes(c.name.trim().toLowerCase())
     ? c.name.trim()
-    : (c.resume_file_url ? c.resume_file_url.replace(/\.[^/.]+$/, '').replace(/[_\-]/g, ' ') : 'Candidate Profile');
+    : cleanFileNameForDisplay(c.resume_file_url || '');
 
   // Calculate exact experience months from verified role entries
   let roleMonths = 0;
@@ -1305,7 +1333,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           const initialDbCand = await prisma.candidate.create({
             data: {
               job_id: dbJobId,
-              name: fileName.replace(/\.[^/.]+$/, '').replace(/[_\-]/g, ' '),
+              name: cleanFileNameForDisplay(fileName),
               resume_file_url: fileName,
               file_hash: fileHash,
               parsing_status: 'PROCESSING',
@@ -1339,6 +1367,20 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           rawText = pythonResult.normalizedText || pythonResult.text;
         }
 
+        // Secondary fallback to local extractor if pythonResult was insufficient or empty
+        if (!rawText || rawText.trim().length < 20) {
+          console.log(`[CV Processing Fallback] Attempting direct local extraction for ${fileName}...`);
+          const localFallback = await extractDocumentTextLocally(file.buffer, fileName, fileMime);
+          if (localFallback.text && localFallback.text.trim().length > 20) {
+            rawText = localFallback.normalizedText || localFallback.text;
+            extractionMethod = localFallback.extractionMethod;
+            pageCount = localFallback.pageCount;
+            charCount = localFallback.characterCount;
+            wordCount = localFallback.wordCount;
+            ocrUsed = localFallback.ocrUsed;
+          }
+        }
+
         // Step 2: Quality validation of raw extracted text
         const textQuality = validateCvTextQuality(rawText);
         console.log(`[CV Processing Step 2] Extracted ${rawText.length} chars. Quality check valid: ${textQuality.isValid} (Reason: ${textQuality.reason || 'OK'})`);
@@ -1348,7 +1390,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           const failRecord: CandidateRecord = {
             id: dbCandidateId || candidateId,
             jobId,
-            name: null,
+            name: cleanFileNameForDisplay(fileName),
             email: null,
             phone: null,
             location: null,
@@ -1762,7 +1804,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         const errRecord: CandidateRecord = {
           id: dbCandidateId || candidateId,
           jobId,
-          name: null,
+          name: cleanFileNameForDisplay(fileName),
           email: null,
           phone: null,
           location: null,

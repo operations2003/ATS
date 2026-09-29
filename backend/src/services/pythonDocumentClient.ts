@@ -38,7 +38,7 @@ export interface PythonBatchResponse {
   results: PythonDocumentResponse[];
 }
 
-const REQUEST_TIMEOUT_MS = parseInt(process.env.PYTHON_TIMEOUT_MS || '12000', 10);
+const REQUEST_TIMEOUT_MS = parseInt(process.env.PYTHON_TIMEOUT_MS || '4000', 10);
 
 let lastPythonHealthCheck = 0;
 let pythonServiceAvailable = false;

@@ -126,7 +126,7 @@ const getPythonServiceUrls = (): string[] => {
   return urls;
 };
 
-const EVAL_TIMEOUT_MS = parseInt(process.env.PYTHON_TIMEOUT_MS || '15000', 10);
+const EVAL_TIMEOUT_MS = parseInt(process.env.PYTHON_TIMEOUT_MS || '4000', 10);
 
 let lastEvaluationHealthCheck = 0;
 let evaluationServiceHealthyUrl: string | null = null;

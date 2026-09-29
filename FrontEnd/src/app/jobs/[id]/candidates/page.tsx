@@ -661,6 +661,46 @@ export default function JobCandidatesPage() {
     }
   };
 
+  // Handler to delete a candidate
+  const handleDeleteCandidate = async (candidateId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!confirm('Are you sure you want to remove this candidate?')) return;
+
+    try {
+      const authToken = token || (typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null);
+      await fetch(`${backendUrl}/jobs/${jobId}/candidates/${candidateId}`, {
+        method: 'DELETE',
+        headers: {
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+        }
+      }).catch(() => null);
+
+      setCandidates(prev => {
+        const updated = prev.filter(c => c.id !== candidateId);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(`tasknera_candidates_${jobId}`, JSON.stringify(updated));
+          localStorage.setItem(`tasknera_candidates_count_${jobId}`, String(updated.length));
+          const created = JSON.parse(localStorage.getItem('tasknera_created_jobs') || '[]');
+          const updatedCreated = created.map((cj: any) => {
+            if (String(cj.id) === String(jobId)) {
+              return { ...cj, candidatesCount: updated.length, candidates: updated.length };
+            }
+            return cj;
+          });
+          localStorage.setItem('tasknera_created_jobs', JSON.stringify(updatedCreated));
+        }
+        return updated;
+      });
+
+      if (selectedCandidate?.id === candidateId) {
+        setSelectedCandidate(null);
+      }
+    } catch (err) {
+      console.error('Failed to delete candidate:', err);
+    }
+  };
+
+
   // Handler to persist edited company name
   const handleSaveCompany = async (newCompany: string) => {
     const trimmed = newCompany.trim();
@@ -1303,13 +1343,16 @@ export default function JobCandidatesPage() {
       }
       seenBatchKeys.add(batchKey);
 
-      // Check if file is already in current candidates list for this job
-      const alreadyInCandidates = candidates.some(c =>
-        c.fileName && c.fileName.trim().toLowerCase() === normName && (c.fileSize ? c.fileSize === file.size : true)
-      );
+      // Check if file is already in current candidates list for this job (allow re-upload if previous attempt failed)
+      const alreadyInCandidates = candidates.some(c => {
+        const matches = c.fileName && c.fileName.trim().toLowerCase() === normName && (c.fileSize ? c.fileSize === file.size : true);
+        if (!matches) return false;
+        const isFailed = c.parsingStatus === 'FAILED' || (c as any).status === 'FAILED' || (!c.skills?.length && (!c.rawText || c.rawText.length < 30));
+        return !isFailed;
+      });
 
       // Check if file is already in the upload queue
-      const alreadyInQueue = uploadQueue.some(q => q.name.trim().toLowerCase() === normName && q.size === file.size);
+      const alreadyInQueue = uploadQueue.some(q => q.name.trim().toLowerCase() === normName && q.size === file.size && q.status !== 'FAILED');
 
       if (alreadyInCandidates || alreadyInQueue) {
         duplicateFiles.push(file.name);
@@ -1405,8 +1448,12 @@ export default function JobCandidatesPage() {
         : (result.candidates && result.candidates.length > 0)
           ? (() => {
               const map = new Map<string, CandidateRecord>();
-              for (const c of [...result.candidates, ...candidates]) {
-                const key = c.id || c.fileName || `${c.name}_${c.email}`;
+              for (const c of result.candidates) {
+                const key = (c.fileName || c.id || `${c.name}_${c.email}`).toLowerCase();
+                map.set(key, c);
+              }
+              for (const c of candidates) {
+                const key = (c.fileName || c.id || `${c.name}_${c.email}`).toLowerCase();
                 if (!map.has(key)) map.set(key, c);
               }
               return Array.from(map.values());
@@ -2072,6 +2119,15 @@ export default function JobCandidatesPage() {
                               <span>View Profile</span>
                               <span className="text-slate-400">→</span>
                             </button>
+                            <button
+                              onClick={(e) => handleDeleteCandidate(c.id, e)}
+                              className="p-2 text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-all border border-transparent hover:border-rose-200 cursor-pointer"
+                              title="Delete candidate"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -2199,6 +2255,16 @@ export default function JobCandidatesPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
                       </svg>
                       {copiedEmail ? 'Copied' : 'Copy'}
+                    </button>
+                    <button
+                      onClick={(e) => handleDeleteCandidate(selectedCandidate.id, e)}
+                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg text-xs font-semibold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5"
+                      title="Delete candidate"
+                    >
+                      <svg className="w-3.5 h-3.5 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Delete
                     </button>
                     <button
                       onClick={() => setSelectedCandidate(null)}
