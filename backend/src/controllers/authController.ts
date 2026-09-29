@@ -61,6 +61,40 @@ export const ensureDefaultAdmin = async (): Promise<void> => {
         role: 'MEMBER'
       }
     });
+
+    // 3. Permanently purge any user accounts matching Harsh or Aditya
+    try {
+      const purgedUsers = await prisma.user.findMany({
+        where: {
+          OR: [
+            { email: { contains: 'harsh', mode: 'insensitive' } },
+            { name: { contains: 'harsh', mode: 'insensitive' } },
+            { email: { contains: 'aditya', mode: 'insensitive' } },
+            { name: { contains: 'aditya', mode: 'insensitive' } }
+          ]
+        },
+        select: { id: true, name: true, email: true }
+      });
+
+      for (const u of purgedUsers) {
+        if (u.email.toLowerCase().trim() === adminEmail) continue;
+        await prisma.evaluation.deleteMany({
+          where: {
+            OR: [
+              { createdByUserId: u.id },
+              { evaluatedBy: u.id },
+              { assignedToUserId: u.id }
+            ]
+          }
+        });
+        await prisma.candidate.deleteMany({ where: { created_by: u.id } });
+        await prisma.job.deleteMany({ where: { created_by: u.id } });
+        await prisma.user.delete({ where: { id: u.id } });
+        console.log(`[Auth] Purged user ${u.name} (${u.email}) from database.`);
+      }
+    } catch (purgeErr) {
+      console.warn('[Auth] Note on user purge:', purgeErr);
+    }
   } catch (err) {
     console.error('[Auth] Failed to initialize default admin account:', err);
   }

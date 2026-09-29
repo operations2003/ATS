@@ -213,7 +213,35 @@ class ATSStore {
           'alex.m@tasknera.com',
           'alex.c@tasknera.com'
         ];
-        parsed = parsed.filter(p => !dummyEmails.includes(p.email?.toLowerCase()) && p.email?.toLowerCase().trim() !== 'sheetalbedi@tasknera.com' && p.role !== 'ADMIN');
+        parsed = parsed.filter(p => {
+          const email = String(p.email || '').toLowerCase().trim();
+          const name = String(p.name || '').toLowerCase().trim();
+          if (dummyEmails.includes(email)) return false;
+          if (email === 'sheetalbedi@tasknera.com' || p.role === 'ADMIN') return false;
+          if (email.includes('harsh') || name.includes('harsh')) return false;
+          if (email.includes('aditya') || name.includes('aditya')) return false;
+          return true;
+        });
+
+        // Also purge any jobs or candidates assigned to or screened by harsh or aditya
+        this.jobs = this.jobs.filter(j => {
+          const assigned = String(j.assignedRecruiter || '').toLowerCase().trim();
+          const worked = j.workedBy?.some(w => {
+            const n = String(w.name || '').toLowerCase();
+            const e = String(w.email || '').toLowerCase();
+            return n.includes('harsh') || e.includes('harsh') || n.includes('aditya') || e.includes('aditya');
+          });
+          if (assigned.includes('harsh') || assigned.includes('aditya') || worked) return false;
+          return true;
+        });
+
+        this.candidates = this.candidates.filter(c => {
+          const assigned = String(c.assignedRecruiter || '').toLowerCase().trim();
+          const screened = String(c.screeningInfo?.screenedBy || '').toLowerCase().trim();
+          if (assigned.includes('harsh') || assigned.includes('aditya')) return false;
+          if (screened.includes('harsh') || screened.includes('aditya')) return false;
+          return true;
+        });
 
         if (parsed.length === 0) {
           this.recruiters = INITIAL_RECRUITERS;
@@ -221,13 +249,20 @@ class ATSStore {
           this.recruiters = parsed;
           // Ensure all real database initial recruiters are present
           for (const ir of INITIAL_RECRUITERS) {
+            const irEmail = String(ir.email || '').toLowerCase().trim();
+            const irName = String(ir.name || '').toLowerCase().trim();
+            if (irEmail.includes('harsh') || irName.includes('harsh') || irEmail.includes('aditya') || irName.includes('aditya')) continue;
             if (!this.recruiters.some(r => r.id === ir.id || r.email.toLowerCase() === ir.email.toLowerCase())) {
               this.recruiters.push(ir);
             }
           }
         }
       } else {
-        this.recruiters = INITIAL_RECRUITERS;
+        this.recruiters = INITIAL_RECRUITERS.filter(r => {
+          const e = String(r.email || '').toLowerCase();
+          const n = String(r.name || '').toLowerCase();
+          return !e.includes('harsh') && !n.includes('harsh') && !e.includes('aditya') && !n.includes('aditya');
+        });
       }
       
       // Resave clean arrays to localStorage
@@ -294,12 +329,26 @@ class ATSStore {
 
   public setRecruitersFromDatabase(members: RecruiterMetric[]): void {
     if (!Array.isArray(members)) return;
-    this.recruiters = members.filter(m => m.email?.toLowerCase().trim() !== 'sheetalbedi@tasknera.com' && m.role !== 'ADMIN');
+    this.recruiters = members.filter(m => {
+      const email = String(m.email || '').toLowerCase().trim();
+      const name = String(m.name || '').toLowerCase().trim();
+      if (email === 'sheetalbedi@tasknera.com' || m.role === 'ADMIN') return false;
+      if (email.includes('harsh') || name.includes('harsh')) return false;
+      if (email.includes('aditya') || name.includes('aditya')) return false;
+      return true;
+    });
     this.saveToStorage();
   }
 
   public getRecruiters(): RecruiterMetric[] {
-    return this.recruiters.filter(r => r.email?.toLowerCase().trim() !== 'sheetalbedi@tasknera.com' && r.role !== 'ADMIN');
+    return this.recruiters.filter(r => {
+      const email = String(r.email || '').toLowerCase().trim();
+      const name = String(r.name || '').toLowerCase().trim();
+      if (email === 'sheetalbedi@tasknera.com' || r.role === 'ADMIN') return false;
+      if (email.includes('harsh') || name.includes('harsh')) return false;
+      if (email.includes('aditya') || name.includes('aditya')) return false;
+      return true;
+    });
   }
 
   public getRecruiter(id: string): RecruiterMetric | undefined {
@@ -378,7 +427,9 @@ class ATSStore {
     if (!user || !user.email) return null;
     const cleanEmail = user.email.toLowerCase().trim();
     if (cleanEmail === 'sheetalbedi@tasknera.com' || user.role === 'ADMIN') return null;
+    if (cleanEmail.includes('harsh') || cleanEmail.includes('aditya')) return null;
     const cleanName = user.name?.trim() || cleanEmail.split('@')[0].replace('.', ' ').replace(/\b\w/g, l => l.toUpperCase());
+    if (cleanName.toLowerCase().includes('harsh') || cleanName.toLowerCase().includes('aditya')) return null;
 
     const existing = this.recruiters.find(r => r.email.toLowerCase() === cleanEmail || r.name.toLowerCase() === cleanName.toLowerCase());
     if (existing) {
