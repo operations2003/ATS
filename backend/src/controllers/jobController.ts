@@ -523,6 +523,14 @@ export const getAllJobs = async (req: AuthRequest, res: Response): Promise<void>
       whereClause.created_by = req.user.userId;
     }
 
+    whereClause.AND = [
+      ...(whereClause.AND || []),
+      { user: { email: { not: { contains: 'harsh', mode: 'insensitive' } } } },
+      { user: { name: { not: { contains: 'harsh', mode: 'insensitive' } } } },
+      { user: { email: { not: { contains: 'aditya', mode: 'insensitive' } } } },
+      { user: { name: { not: { contains: 'aditya', mode: 'insensitive' } } } },
+    ];
+
     let jobs: any[] = [];
     try {
       jobs = await prisma.job.findMany({

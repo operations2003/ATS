@@ -149,13 +149,90 @@ class ATSStore {
 
   constructor() {
     if (typeof window !== 'undefined') {
+      this.sanitizeLocalStorage();
       this.loadFromStorage();
+      this.purgeHarshAndAditya();
+      this.saveToStorage();
     } else {
       this.jobs = INITIAL_JOBS;
       this.candidates = INITIAL_CANDIDATES;
       this.auditEvents = INITIAL_AUDIT_EVENTS;
       this.recruiters = INITIAL_RECRUITERS;
+      this.purgeHarshAndAditya();
     }
+  }
+
+  public purgeHarshAndAditya(): void {
+    const isTarget = (val?: any): boolean => {
+      if (!val) return false;
+      const s = String(val).toLowerCase().trim();
+      return s.includes('harsh') || s.includes('aditya');
+    };
+
+    // 1. Purge Recruiters
+    this.recruiters = this.recruiters.filter(r => !isTarget(r.name) && !isTarget(r.email) && !isTarget(r.id));
+
+    // 2. Purge Jobs
+    const purgedJobIds = new Set<string>();
+    this.jobs = this.jobs.filter(j => {
+      const assigned = isTarget(j.assignedRecruiter);
+      const title = isTarget(j.title);
+      const client = isTarget(j.client);
+      const worked = j.workedBy?.some(w => isTarget(w.name) || isTarget(w.email) || isTarget(w.id));
+      if (assigned || title || client || worked) {
+        purgedJobIds.add(j.id);
+        return false;
+      }
+      return true;
+    });
+
+    // 3. Purge Candidates
+    this.candidates = this.candidates.filter(c => {
+      if (c.jobId && purgedJobIds.has(c.jobId)) return false;
+      if (isTarget(c.name) || isTarget(c.email) || isTarget(c.role)) return false;
+      if (isTarget(c.assignedRecruiter)) return false;
+      if (isTarget(c.screeningInfo?.screenedBy)) return false;
+      if (isTarget(c.tlReviewedBy)) return false;
+      return true;
+    });
+
+    // 4. Purge Audit Events
+    this.auditEvents = this.auditEvents.filter(a => {
+      if (isTarget(a.user) || isTarget(a.target) || isTarget(a.detail)) return false;
+      return true;
+    });
+  }
+
+  private sanitizeLocalStorage(): void {
+    if (typeof window === 'undefined') return;
+    const isTarget = (str?: any): boolean => {
+      if (!str) return false;
+      const s = String(str).toLowerCase().trim();
+      return s.includes('harsh') || s.includes('aditya');
+    };
+
+    try {
+      ['tasknera_ats_recruiters', 'tasknera_ats_jobs', 'tasknera_ats_candidates', 'tasknera_ats_audits'].forEach(key => {
+        const raw = localStorage.getItem(key);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return;
+
+        if (key === 'tasknera_ats_recruiters') {
+          const clean = parsed.filter((r: any) => !isTarget(r.name) && !isTarget(r.email));
+          localStorage.setItem(key, JSON.stringify(clean));
+        } else if (key === 'tasknera_ats_jobs') {
+          const clean = parsed.filter((j: any) => !isTarget(j.assignedRecruiter) && !isTarget(j.title) && !j.workedBy?.some((w: any) => isTarget(w.name) || isTarget(w.email)));
+          localStorage.setItem(key, JSON.stringify(clean));
+        } else if (key === 'tasknera_ats_candidates') {
+          const clean = parsed.filter((c: any) => !isTarget(c.name) && !isTarget(c.email) && !isTarget(c.assignedRecruiter) && !isTarget(c.screeningInfo?.screenedBy) && !isTarget(c.tlReviewedBy));
+          localStorage.setItem(key, JSON.stringify(clean));
+        } else if (key === 'tasknera_ats_audits') {
+          const clean = parsed.filter((a: any) => !isTarget(a.user) && !isTarget(a.target) && !isTarget(a.detail));
+          localStorage.setItem(key, JSON.stringify(clean));
+        }
+      });
+    } catch (_) {}
   }
 
   private loadFromStorage() {

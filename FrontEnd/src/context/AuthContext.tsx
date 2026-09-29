@@ -33,6 +33,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedEmail = (localStorage.getItem('tasknera_email') || '').toLowerCase();
+      const storedName = (localStorage.getItem('tasknera_name') || '').toLowerCase();
+      if (storedEmail.includes('harsh') || storedName.includes('harsh') || storedEmail.includes('aditya') || storedName.includes('aditya')) {
+        localStorage.removeItem('tasknera_token');
+        localStorage.removeItem('tasknera_role');
+        localStorage.removeItem('tasknera_email');
+        localStorage.removeItem('tasknera_name');
+        localStorage.removeItem('tasknera_user_id');
+        localStorage.removeItem('tasknera_current_password');
+      }
+    }
+
     const savedToken = localStorage.getItem('tasknera_token');
     if (!savedToken) {
       setIsLoading(false);
@@ -45,6 +58,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
         const data = await fetchApi<{ user: User }>('/auth/me', {}, savedToken);
         if (data && data.user) {
           const cleanEmail = (data.user.email || '').toLowerCase().trim();
+          const cleanName = (data.user.name || '').toLowerCase().trim();
+          if (cleanEmail.includes('harsh') || cleanName.includes('harsh') || cleanEmail.includes('aditya') || cleanName.includes('aditya')) {
+            throw new Error('Account has been removed from the system.');
+          }
           const isDesignatedAdmin = cleanEmail === DESIGNATED_ADMIN_EMAIL || data.user.role === 'ADMIN';
           const userRole: UserRole = isDesignatedAdmin ? 'ADMIN' : (data.user.role || 'MEMBER');
 

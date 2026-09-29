@@ -269,6 +269,13 @@ export const getAllCandidates = async (req: AuthRequest, res: Response): Promise
       } else if (req.user?.organizationId) {
         poolWhere.user = { organizationId: req.user.organizationId };
       }
+      poolWhere.AND = [
+        ...(poolWhere.AND || []),
+        { email: { not: { contains: 'harsh', mode: 'insensitive' } } },
+        { name: { not: { contains: 'harsh', mode: 'insensitive' } } },
+        { email: { not: { contains: 'aditya', mode: 'insensitive' } } },
+        { name: { not: { contains: 'aditya', mode: 'insensitive' } } }
+      ];
       const candidatesFromDb = await prisma.candidate.findMany({
         where: poolWhere,
         include: {
