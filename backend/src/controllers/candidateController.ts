@@ -475,10 +475,10 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
       memCandidates = [];
       CANDIDATE_STORE.set(jobId, memCandidates);
     }
-    if (!isAdmin) {
+    if (!isAdmin && currentUserId) {
       memCandidates = memCandidates.filter(c => {
         const owner = c.uploadedBy || c.createdBy;
-        return Boolean(owner && owner === currentUserId);
+        return !owner || owner === currentUserId;
       });
     }
 
@@ -761,7 +761,183 @@ export const getCandidateById = async (req: Request, res: Response): Promise<voi
 };
 
 /**
- * Bulk upload CVs for a specific job
+ * Automatically evaluates candidate against job requirements upon upload or linking to requisition
+ */
+export async function evaluateAndEnrichCandidateRecord(
+  candidateRecord: CandidateRecord,
+  jobId: string,
+  req: Request,
+  defaultUserId: string | null
+): Promise<CandidateRecord> {
+  if (!jobId || jobId === 'pool') return candidateRecord;
+
+  try {
+    let targetJob: any = await getJobFromStoreOrDb(jobId);
+    if (!targetJob && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(jobId)) {
+      targetJob = await prisma.job.findUnique({
+        where: { id: jobId },
+        include: { requirements: true, user: true }
+      }).catch(() => null);
+    }
+
+    const reqJobPosition = (req.body?.jobPosition || req.body?.position || '').trim();
+    const reqJobClient = (req.body?.jobClient || req.body?.client || '').trim();
+
+    let customReqs: any[] = [];
+    if (req.body?.requirements) {
+      try {
+        const parsed = typeof req.body.requirements === 'string' ? JSON.parse(req.body.requirements) : req.body.requirements;
+        if (Array.isArray(parsed) && parsed.length > 0) customReqs = parsed;
+      } catch {}
+    }
+
+    const jobTitle = targetJob?.position || targetJob?.title || reqJobPosition || 'Job Requisition';
+    const jobClient = targetJob?.client || targetJob?.company || reqJobClient || 'Client Organization';
+    let reqs: any[] = (targetJob?.requirements && targetJob.requirements.length > 0)
+      ? targetJob.requirements
+      : (customReqs.length > 0 ? customReqs : getStandardRequirementsForPosition(jobTitle, jobClient));
+
+    if (!targetJob && (reqJobPosition || customReqs.length > 0)) {
+      targetJob = {
+        id: jobId,
+        position: jobTitle,
+        title: jobTitle,
+        client: jobClient,
+        company: jobClient,
+        requirements: reqs
+      };
+      GLOBAL_JOB_STORE.set(jobId, targetJob);
+    }
+
+    if (reqs && reqs.length > 0) {
+      const jobData = {
+        id: targetJob?.id || jobId,
+        position: jobTitle,
+        title: jobTitle,
+        client: jobClient,
+        company: jobClient,
+        jd_text: targetJob?.jd_text || undefined,
+        created_by: targetJob?.created_by || defaultUserId
+      };
+
+      const evalPayload = await evaluateCandidateAgainstRequirements(candidateRecord, jobData, reqs);
+      const finalScore = evalPayload.overallScore ?? evalPayload.overallMatch ?? 0;
+      const complianceStr = evalPayload.mandatoryCompliance
+        ? `${evalPayload.mandatoryCompliance.met}/${evalPayload.mandatoryCompliance.total}`
+        : 'N/A';
+      const decision = evalPayload.recommendation || (finalScore >= 80 ? 'SUBMIT' : (finalScore >= 60 ? 'REVIEW' : 'DO NOT SUBMIT'));
+
+      (candidateRecord as any).matchScore = finalScore;
+      (candidateRecord as any).atsScore = evalPayload.atsScore ?? finalScore;
+      (candidateRecord as any).matchLevel = evalPayload.matchLevel;
+      (candidateRecord as any).mandatoryCompliance = complianceStr;
+      (candidateRecord as any).decision = decision;
+      (candidateRecord as any).recommendation = decision;
+      (candidateRecord as any).evaluation = evalPayload;
+
+      // Save permanently to database with evaluatedBy attribution
+      try {
+        const evalOwner = (req as any).user?.userId || defaultUserId;
+        const orgId = (req as any).user?.organizationId || targetJob?.user?.organizationId || 'org-tasknera';
+
+        if (evalOwner) {
+          let dbJobRecord = targetJob;
+          if (!dbJobRecord?.id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(dbJobRecord.id)) {
+            dbJobRecord = await prisma.job.findFirst({
+              where: {
+                created_by: evalOwner,
+                position: jobTitle
+              }
+            }).catch(() => null);
+
+            if (!dbJobRecord) {
+              dbJobRecord = await prisma.job.create({
+                data: {
+                  client: jobClient,
+                  position: jobTitle,
+                  created_by: evalOwner,
+                  status: 'active'
+                }
+              }).catch(() => null);
+            }
+          }
+
+          let validCandId = candidateRecord.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidateRecord.id) ? candidateRecord.id : null;
+          if (dbJobRecord?.id && validCandId) {
+            const existingCandidateEval = await prisma.evaluation.findFirst({
+              where: {
+                candidateId: validCandId,
+                jobId: dbJobRecord.id,
+                OR: [
+                  { evaluatedBy: evalOwner },
+                  { createdByUserId: evalOwner }
+                ]
+              }
+            });
+
+            if (existingCandidateEval) {
+              await prisma.evaluation.update({
+                where: { id: existingCandidateEval.id },
+                data: {
+                  score: finalScore,
+                  atsScore: evalPayload.atsScore ?? finalScore,
+                  matchLevel: evalPayload.matchLevel,
+                  mandatoryCompliance: complianceStr,
+                  mandatoryFailed: Boolean(evalPayload.mandatoryRequirementFailed),
+                  decision,
+                  evaluatedBy: evalOwner,
+                  auditData: evalPayload as any,
+                  updatedAt: new Date()
+                }
+              }).catch(() => null);
+            } else {
+              await prisma.evaluation.create({
+                data: {
+                  candidateId: validCandId,
+                  jobId: dbJobRecord.id,
+                  candidateJobId: jobId,
+                  createdByUserId: evalOwner,
+                  evaluatedBy: evalOwner,
+                  organizationId: orgId,
+                  score: finalScore,
+                  atsScore: evalPayload.atsScore ?? finalScore,
+                  matchLevel: evalPayload.matchLevel,
+                  mandatoryCompliance: complianceStr,
+                  mandatoryFailed: Boolean(evalPayload.mandatoryRequirementFailed),
+                  decision,
+                  status: 'COMPLETED',
+                  auditData: evalPayload as any
+                }
+              }).catch((err) => console.warn('[Evaluation DB Save Notice]:', err));
+            }
+          }
+        }
+      } catch (saveEvalErr) {
+        console.warn('[Evaluation Persistence Warning]:', saveEvalErr);
+      }
+
+      const targetId = candidateRecord.id;
+      if (targetJob?.id && targetId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId)) {
+        const stage = finalScore >= 80 ? 'SHORTLISTED' : (finalScore >= 55 ? 'REVIEW' : 'REJECTED');
+        await prisma.candidateApplication.upsert({
+          where: {
+            job_id_candidate_id: {
+              job_id: targetJob.id,
+              candidate_id: targetId
+            }
+          },
+          update: { stage, match_score: finalScore, status: 'active' },
+          create: { job_id: targetJob.id, candidate_id: targetId, stage, match_score: finalScore, status: 'active' }
+        }).catch(() => null);
+      }
+    }
+  } catch (evalErr) {
+    console.warn('[CV Upload Automatic Evaluation Notice]:', evalErr);
+  }
+
+  return candidateRecord;
+}
+
 /**
  * Bulk upload CVs for a specific job
  * POST /api/jobs/:jobId/candidates/upload
@@ -863,11 +1039,36 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
       
       // ── DUPLICATE CANDIDATE CHECK (FILE HASH / FILENAME / CLIENT VALIDATION) ──
       const normalizedFileName = fileName.trim().toLowerCase();
-      const existingInJob = existingCandidates.find(c =>
+      let dbCandidateId: string | null = null;
+
+      const isValidProfile = (p: any): boolean => {
+        if (!p) return false;
+        const status = p.parsingStatus || p.status || p.parsing_status;
+        if (status === 'FAILED' || status === 'failed' || status === 'PROCESSING' || status === 'processing' || status === 'UPLOADED') return false;
+        const txt = p.rawText || p.raw_text || '';
+        if (txt.trim().length < 30 && (!p.skills || p.skills.length === 0)) return false;
+        return true;
+      };
+
+      const genericNames = ['candidate', 'candidate profile', 'applicant', 'unknown', 'resume', 'cv'];
+      const isGeneric = (n?: string | null): boolean => {
+        if (!n) return true;
+        const clean = n.trim().toLowerCase();
+        return clean.length <= 2 || genericNames.includes(clean);
+      };
+
+      let existingInJob: CandidateRecord | undefined = existingCandidates.find(c =>
         (c.fileHash && (c.fileHash === fileHash || c.fileHash === fileMd5)) ||
-        (c.fileName && c.fileName.trim().toLowerCase() === normalizedFileName) ||
-        (c.name && normalizedFileName.includes(c.name.trim().toLowerCase()) && c.name.trim().length > 3)
+        (c.fileName && c.fileName.trim().toLowerCase() === normalizedFileName && (c.fileSize ? c.fileSize === fileSize : true)) ||
+        (!isGeneric(c.name) && normalizedFileName.replace(/[^a-z0-9]/gi, '').includes((c.name || '').trim().toLowerCase().replace(/[^a-z0-9]/gi, '')) && (c.name || '').trim().length > 4)
       );
+
+      // If candidate in job previously failed, clear it out so it can be cleanly re-parsed with results
+      if (existingInJob && !isValidProfile(existingInJob)) {
+        existingCandidates = existingCandidates.filter(c => c !== existingInJob);
+        CANDIDATE_STORE.set(jobId, existingCandidates);
+        existingInJob = undefined;
+      }
 
       let existingDbCandidate: any = null;
       if (!existingInJob) {
@@ -893,9 +1094,15 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         }
       }
 
+      // If existing DB candidate previously failed or has no text, re-parse with fresh file
+      if (existingDbCandidate && !isValidProfile(existingDbCandidate)) {
+        dbCandidateId = existingDbCandidate.id;
+        existingDbCandidate = null;
+      }
+
       const existingMemProfile = GLOBAL_CANDIDATES.get(fileHash) || GLOBAL_CANDIDATES.get(fileMd5);
       const isMemOwner = !existingMemProfile || !defaultUserId || existingMemProfile.uploadedBy === defaultUserId || existingMemProfile.createdBy === defaultUserId;
-      const validMemProfile = isMemOwner ? existingMemProfile : null;
+      const validMemProfile = (isMemOwner && isValidProfile(existingMemProfile)) ? existingMemProfile : null;
 
       const existingProfile = existingInJob || validMemProfile || (existingDbCandidate ? {
         id: existingDbCandidate.id,
@@ -993,12 +1200,17 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         ));
 
         if (isAlreadyInJob) {
+          // If already in this job but lacks evaluation score, evaluate now!
+          if (existingProfile && !(existingProfile as any).matchScore && jobId !== 'pool') {
+            await evaluateAndEnrichCandidateRecord(existingProfile, jobId, req, defaultUserId);
+          }
+
           console.log(`[Batch Upload] jobId=${jobId} file=${fileName} size=${fileSize} status=duplicate`);
           const dupCandidate: CandidateRecord = {
             ...existingProfile,
             jobId,
             isDuplicate: true,
-            parsingStatus: 'DUPLICATE' as any,
+            parsingStatus: (existingProfile?.parsingStatus || 'PARSED') as any,
             errorMessage: 'This CV is already uploaded to this JD.',
             fileName,
             fileSize,
@@ -1063,6 +1275,9 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           uploadedAt: new Date().toISOString()
         };
 
+        // Automatically evaluate linked candidate against this job requisition!
+        await evaluateAndEnrichCandidateRecord(linkedRecord, jobId, req, defaultUserId);
+
         existingCandidates.push(linkedRecord);
         processedCandidates.push(linkedRecord);
         candidateIds.push(existingCandId);
@@ -1083,10 +1298,9 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
       const candidateId = `cand-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       candidateIds.push(candidateId);
 
-      // Step 0: Record initial candidate in Prisma database with status PROCESSING
-      let dbCandidateId: string | null = null;
+      // Step 0: Record initial candidate in Prisma database with status PROCESSING if not updating existing row
       const dbJobId = (!isPoolUpload && jobId && jobId !== 'pool' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) ? jobId : null;
-      if (defaultUserId) {
+      if (defaultUserId && !dbCandidateId) {
         try {
           const initialDbCand = await prisma.candidate.create({
             data: {
@@ -1244,7 +1458,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         const dupInJob = existingCandidates.find(ec =>
           (structuredProfile.email && ec.email && ec.email.toLowerCase() === structuredProfile.email.toLowerCase()) ||
           (structuredProfile.phone && ec.phone && ec.phone.replace(/[^0-9]/g, '') === structuredProfile.phone.replace(/[^0-9]/g, '') && structuredProfile.phone.length > 5) ||
-          (structuredProfile.name && ec.name && ec.name.trim().toLowerCase() === structuredProfile.name.trim().toLowerCase())
+          (!isGeneric(structuredProfile.name) && !isGeneric(ec.name) && ec.name!.trim().toLowerCase() === structuredProfile.name!.trim().toLowerCase())
         );
 
         if (dupInJob) {
@@ -1370,6 +1584,8 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
                   fileHash,
                   uploadedAt: new Date().toISOString(),
                 };
+
+                await evaluateAndEnrichCandidateRecord(linkedRecord, jobId, req, defaultUserId);
 
                 existingCandidates.unshift(linkedRecord);
                 processedCandidates.push(linkedRecord);
@@ -1516,209 +1732,28 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
               }).catch(() => null);
             }
           }
-                 // Automatically evaluate candidate against job requirements upon upload to requisition
-          if (jobId && jobId !== 'pool') {
-            try {
-              let targetJob: any = await getJobFromStoreOrDb(jobId);
-              if (!targetJob && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(jobId)) {
-                targetJob = await prisma.job.findUnique({
-                  where: { id: jobId },
-                  include: { requirements: true, user: true }
-                }).catch(() => null);
-              }
-
-              const reqJobPosition = (req.body?.jobPosition || req.body?.position || '').trim();
-              const reqJobClient = (req.body?.jobClient || req.body?.client || '').trim();
-
-              let customReqs: any[] = [];
-              if (req.body?.requirements) {
-                try {
-                  const parsed = typeof req.body.requirements === 'string' ? JSON.parse(req.body.requirements) : req.body.requirements;
-                  if (Array.isArray(parsed) && parsed.length > 0) customReqs = parsed;
-                } catch {}
-              }
-
-              const jobTitle = targetJob?.position || targetJob?.title || reqJobPosition || 'Job Requisition';
-              const jobClient = targetJob?.client || targetJob?.company || reqJobClient || 'Client Organization';
-              let reqs: any[] = (targetJob?.requirements && targetJob.requirements.length > 0)
-                ? targetJob.requirements
-                : (customReqs.length > 0 ? customReqs : getStandardRequirementsForPosition(jobTitle, jobClient));
-
-              if (!targetJob && (reqJobPosition || customReqs.length > 0)) {
-                targetJob = {
-                  id: jobId,
-                  position: jobTitle,
-                  title: jobTitle,
-                  client: jobClient,
-                  company: jobClient,
-                  requirements: reqs
-                };
-                GLOBAL_JOB_STORE.set(jobId, targetJob);
-              }
-
-              if (reqs.length > 0) {
-                const jobData = {
-                  id: targetJob?.id || jobId,
-                  position: jobTitle,
-                  title: jobTitle,
-                  client: jobClient,
-                  company: jobClient,
-                  jd_text: targetJob?.jd_text || undefined,
-                  created_by: targetJob?.created_by || defaultUserId
-                };
-
-                const evalPayload = await evaluateCandidateAgainstRequirements(newRecord, jobData, reqs);
-                const finalScore = evalPayload.overallScore ?? evalPayload.overallMatch ?? 0;
-                const complianceStr = evalPayload.mandatoryCompliance
-                  ? `${evalPayload.mandatoryCompliance.met}/${evalPayload.mandatoryCompliance.total}`
-                  : 'N/A';
-                const decision = evalPayload.recommendation || (finalScore >= 80 ? 'SUBMIT' : (finalScore >= 60 ? 'REVIEW' : 'DO NOT SUBMIT'));
-
-                // Attach evaluation directly to newRecord so candidate object returned in API has scores!
-                (newRecord as any).matchScore = finalScore;
-                (newRecord as any).atsScore = evalPayload.atsScore ?? finalScore;
-                (newRecord as any).matchLevel = evalPayload.matchLevel;
-                (newRecord as any).mandatoryCompliance = complianceStr;
-                (newRecord as any).decision = decision;
-                (newRecord as any).recommendation = decision;
-                (newRecord as any).evaluation = evalPayload;
-
-                // Save permanently to database with evaluatedBy attribution
-                try {
-                  const evalOwner = (req as any).user?.userId || defaultUserId;
-                  const orgId = (req as any).user?.organizationId || targetJob?.user?.organizationId || 'org-tasknera';
-
-                  if (evalOwner) {
-                    // 1. Ensure backing DB Job exists
-                    let dbJobRecord = targetJob;
-                    if (!dbJobRecord?.id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(dbJobRecord.id)) {
-                      dbJobRecord = await prisma.job.findFirst({
-                        where: {
-                          created_by: evalOwner,
-                          position: jobTitle
-                        }
-                      }).catch(() => null);
-
-                      if (!dbJobRecord) {
-                        dbJobRecord = await prisma.job.create({
-                          data: {
-                            client: jobClient,
-                            position: jobTitle,
-                            created_by: evalOwner,
-                            status: 'active'
-                          }
-                        }).catch(() => null);
-                      }
-                    }
-
-                    // 2. Ensure backing DB Candidate exists
-                    let validCandId = targetId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId) ? targetId : null;
-                    if (!validCandId) {
-                      const dbCand = await prisma.candidate.create({
-                        data: {
-                          name: newRecord.name || 'Candidate',
-                          email: newRecord.email || null,
-                          phone: newRecord.phone || null,
-                          location: newRecord.location || null,
-                          current_title: newRecord.currentTitle || null,
-                          current_company: newRecord.currentCompany || null,
-                          total_experience: newRecord.totalExperience || null,
-                          summary: newRecord.summary || null,
-                          raw_text: rawText || '',
-                          resume_file_url: fileName,
-                          file_hash: fileHash,
-                          parsing_status: 'PARSED',
-                          created_by: evalOwner
-                        }
-                      }).catch(() => null);
-                      if (dbCand) validCandId = dbCand.id;
-                    }
-
-                    // 3. Upsert Evaluation record in PostgreSQL
-                    if (dbJobRecord?.id && validCandId) {
-                      const existingCandidateEval = await prisma.evaluation.findFirst({
-                        where: {
-                          candidateId: validCandId,
-                          jobId: dbJobRecord.id,
-                          OR: [
-                            { evaluatedBy: evalOwner },
-                            { createdByUserId: evalOwner }
-                          ]
-                        }
-                      });
-
-                      if (existingCandidateEval) {
-                        await prisma.evaluation.update({
-                          where: { id: existingCandidateEval.id },
-                          data: {
-                            score: finalScore,
-                            atsScore: evalPayload.atsScore ?? finalScore,
-                            matchLevel: evalPayload.matchLevel,
-                            mandatoryCompliance: complianceStr,
-                            mandatoryFailed: Boolean(evalPayload.mandatoryRequirementFailed),
-                            decision,
-                            evaluatedBy: evalOwner,
-                            auditData: evalPayload as any,
-                            updatedAt: new Date()
-                          }
-                        }).catch(() => null);
-                      } else {
-                        await prisma.evaluation.create({
-                          data: {
-                            candidateId: validCandId,
-                            jobId: dbJobRecord.id,
-                            candidateJobId: jobId,
-                            createdByUserId: evalOwner,
-                            evaluatedBy: evalOwner,
-                            organizationId: orgId,
-                            score: finalScore,
-                            atsScore: evalPayload.atsScore ?? finalScore,
-                            matchLevel: evalPayload.matchLevel,
-                            mandatoryCompliance: complianceStr,
-                            mandatoryFailed: Boolean(evalPayload.mandatoryRequirementFailed),
-                            decision,
-                            status: 'COMPLETED',
-                            auditData: evalPayload as any
-                          }
-                        }).catch((err) => console.warn('[Evaluation DB Save Notice]:', err));
-                      }
-                    }
-                  }
-                } catch (saveEvalErr) {
-                  console.warn('[Evaluation Persistence Warning]:', saveEvalErr);
-                }
-
-                if (targetJob?.id && targetId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId)) {
-                  const stage = finalScore >= 80 ? 'SHORTLISTED' : (finalScore >= 55 ? 'REVIEW' : 'REJECTED');
-                  await prisma.candidateApplication.upsert({
-                    where: {
-                      job_id_candidate_id: {
-                        job_id: targetJob.id,
-                        candidate_id: targetId
-                      }
-                    },
-                    update: { stage, match_score: finalScore, status: 'active' },
-                    create: { job_id: targetJob.id, candidate_id: targetId, stage, match_score: finalScore, status: 'active' }
-                  }).catch(() => null);
-                }
-              }
-            } catch (evalErr) {
-              console.warn('[CV Upload Automatic Evaluation Notice]:', evalErr);
-            }
-          }
         } catch (dbSaveErr) {
           console.warn('[Prisma DB Save Notice] Candidate metadata stored in memory cache:', dbSaveErr);
+        }
+
+        // Automatically evaluate candidate against job requirements upon upload to requisition
+        if (jobId && jobId !== 'pool') {
+          try {
+            await evaluateAndEnrichCandidateRecord(newRecord, jobId, req, defaultUserId);
+          } catch (evalErr) {
+            console.warn('[Evaluation Notice] Automatic evaluation error:', evalErr);
+          }
         }
 
         console.log(`[Batch Upload] jobId=${jobId} file=${fileName} size=${fileSize} status=success`);
         existingCandidates.unshift(newRecord);
         processedCandidates.push(newRecord);
 
-        // Also ensure candidate is present in central candidate pool store
+        // Keep candidate attached to jobId in poolStore so it's queryable by both
         if (jobId !== 'pool') {
           const poolStore = CANDIDATE_STORE.get('pool') || [];
           if (!poolStore.some(c => c.id === newRecord.id || (c.fileHash && c.fileHash === newRecord.fileHash))) {
-            poolStore.unshift({ ...newRecord, jobId: 'pool' });
+            poolStore.unshift({ ...newRecord, jobId });
             CANDIDATE_STORE.set('pool', poolStore);
           }
         }

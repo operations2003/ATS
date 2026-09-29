@@ -177,7 +177,8 @@ ATS/
 │   ├── app/
 │   │   ├── services/             # Document parsing, OCR fallback, and AI matcher
 │   │   └── main.py               # FastAPI application router & endpoints
-│   └── requirements.txt          # Python dependencies (PyMuPDF, pdfplumber, pytesseract, etc.)
+│   ├── requirements.txt          # Python dependencies (PyMuPDF, pdfplumber, pytesseract, etc.)
+│   └── README.md                 # Document intelligence service documentation
 │
 ├── package.json                  # Root workspace runner (concurrent orchestration)
 └── README.md                     # System documentation

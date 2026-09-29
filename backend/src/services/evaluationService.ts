@@ -128,6 +128,33 @@ const getPythonServiceUrls = (): string[] => {
 
 const EVAL_TIMEOUT_MS = parseInt(process.env.PYTHON_TIMEOUT_MS || '15000', 10);
 
+let lastEvaluationHealthCheck = 0;
+let evaluationServiceHealthyUrl: string | null = null;
+
+async function getHealthyEvaluationServiceUrl(): Promise<string | null> {
+  const now = Date.now();
+  if (now - lastEvaluationHealthCheck < 25000) {
+    return evaluationServiceHealthyUrl;
+  }
+  const urls = getPythonServiceUrls();
+  for (const url of urls) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1200);
+      const res = await fetch(`${url}/health`, { signal: controller.signal }).catch(() => null);
+      clearTimeout(timeoutId);
+      if (res && res.ok) {
+        evaluationServiceHealthyUrl = url;
+        lastEvaluationHealthCheck = now;
+        return url;
+      }
+    } catch {}
+  }
+  evaluationServiceHealthyUrl = null;
+  lastEvaluationHealthCheck = now;
+  return null;
+}
+
 /**
  * Evaluates a single candidate against a job's confirmed requirements
  * Prioritizes Local Free AI Semantic Matching (all-MiniLM-L6-v2) with robust fallback
@@ -179,12 +206,11 @@ export async function evaluateCandidateAgainstRequirements(
     };
   });
 
-  // 1. Attempt AI-Powered Semantic Evaluation via Python Service with retries
+  // 1. Attempt AI-Powered Semantic Evaluation via Python Service if available
   let lastError: any = null;
-  const candidateUrls = getPythonServiceUrls();
+  const serviceUrl = await getHealthyEvaluationServiceUrl();
 
-  for (let uIdx = 0; uIdx < candidateUrls.length; uIdx++) {
-    const serviceUrl = candidateUrls[uIdx];
+  if (serviceUrl) {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), EVAL_TIMEOUT_MS);
@@ -350,10 +376,7 @@ export async function evaluateCandidateAgainstRequirements(
       }
     } catch (err: any) {
       lastError = err;
-      console.warn(`[EvaluationService] Python service (${serviceUrl}) attempt ${uIdx + 1}/${candidateUrls.length} failed:`, err.message);
-      if (uIdx + 1 < candidateUrls.length) {
-        await new Promise(res => setTimeout(res, 500));
-      }
+      console.warn(`[EvaluationService] Python service (${serviceUrl}) evaluation failed:`, err.message);
     }
   }
 

@@ -98,10 +98,10 @@ export const getAllUsers = async (req: AuthRequest, res: Response): Promise<void
     const users = await prisma.user.findMany({
       where: {
         AND: [
-          { email: { not: { contains: 'harsh', mode: 'insensitive' } } },
-          { name: { not: { contains: 'harsh', mode: 'insensitive' } } },
-          { email: { not: { contains: 'aditya', mode: 'insensitive' } } },
-          { name: { not: { contains: 'aditya', mode: 'insensitive' } } }
+          { email: { not: { contains: 'harsh' } } },
+          { name: { not: { contains: 'harsh' } } },
+          { email: { not: { contains: 'aditya' } } },
+          { name: { not: { contains: 'aditya' } } }
         ]
       },
       select: {
@@ -143,10 +143,10 @@ export const getTAMembers = async (req: AuthRequest, res: Response): Promise<voi
         AND: [
           { email: { not: 'sheetalbedi@tasknera.com' } },
           { role: { not: 'ADMIN' } },
-          { email: { not: { contains: 'harsh', mode: 'insensitive' } } },
-          { name: { not: { contains: 'harsh', mode: 'insensitive' } } },
-          { email: { not: { contains: 'aditya', mode: 'insensitive' } } },
-          { name: { not: { contains: 'aditya', mode: 'insensitive' } } }
+          { email: { not: { contains: 'harsh' } } },
+          { name: { not: { contains: 'harsh' } } },
+          { email: { not: { contains: 'aditya' } } },
+          { name: { not: { contains: 'aditya' } } }
         ]
       },
       include: {

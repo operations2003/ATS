@@ -897,12 +897,25 @@ export default function JobCandidatesPage() {
         });
         if (candRes.ok) {
           const candData = await candRes.json();
-          setCandidates(candData.candidates || []);
+          const list = candData.candidates || [];
+          if (list.length > 0) {
+            setCandidates(list);
+            if (typeof window !== 'undefined') {
+              try {
+                localStorage.setItem(`tasknera_candidates_${jobId}`, JSON.stringify(list));
+              } catch {}
+            }
+          } else {
+            const localSaved = JSON.parse(localStorage.getItem(`tasknera_candidates_${jobId}`) || '[]');
+            setCandidates(localSaved);
+          }
         } else {
-          setCandidates([]);
+          const localSaved = JSON.parse(localStorage.getItem(`tasknera_candidates_${jobId}`) || '[]');
+          setCandidates(localSaved);
         }
       } catch {
-        setCandidates([]);
+        const localSaved = JSON.parse(localStorage.getItem(`tasknera_candidates_${jobId}`) || '[]');
+        setCandidates(localSaved);
       }
     } catch (err: any) {
       console.error('Error loading candidates:', err);
@@ -1292,12 +1305,11 @@ export default function JobCandidatesPage() {
 
       // Check if file is already in current candidates list for this job
       const alreadyInCandidates = candidates.some(c =>
-        (c.fileName && c.fileName.trim().toLowerCase() === normName) ||
-        (c.name && normName.includes(c.name.trim().toLowerCase()) && c.name.trim().length > 3)
+        c.fileName && c.fileName.trim().toLowerCase() === normName && (c.fileSize ? c.fileSize === file.size : true)
       );
 
       // Check if file is already in the upload queue
-      const alreadyInQueue = uploadQueue.some(q => q.name.trim().toLowerCase() === normName);
+      const alreadyInQueue = uploadQueue.some(q => q.name.trim().toLowerCase() === normName && q.size === file.size);
 
       if (alreadyInCandidates || alreadyInQueue) {
         duplicateFiles.push(file.name);
@@ -1336,6 +1348,11 @@ export default function JobCandidatesPage() {
     try {
       const formData = new FormData();
       formData.append('jobId', jobId);
+      if (job?.position) formData.append('jobPosition', job.position);
+      if (job?.client) formData.append('jobClient', job.client);
+      if (job?.requirements && Array.isArray(job.requirements)) {
+        formData.append('requirements', JSON.stringify(job.requirements));
+      }
       items.forEach(item => {
         formData.append('files', item.file);
       });
@@ -1383,16 +1400,29 @@ export default function JobCandidatesPage() {
         })
       );
 
-      if (result.allCandidates) {
-        setCandidates(result.allCandidates);
+      const finalCandidatesList = (result.allCandidates && result.allCandidates.length > 0)
+        ? result.allCandidates
+        : (result.candidates && result.candidates.length > 0)
+          ? (() => {
+              const map = new Map<string, CandidateRecord>();
+              for (const c of [...result.candidates, ...candidates]) {
+                const key = c.id || c.fileName || `${c.name}_${c.email}`;
+                if (!map.has(key)) map.set(key, c);
+              }
+              return Array.from(map.values());
+            })()
+          : null;
+
+      if (finalCandidatesList) {
+        setCandidates(finalCandidatesList);
         if (typeof window !== 'undefined') {
           try {
-            localStorage.setItem(`tasknera_candidates_${jobId}`, JSON.stringify(result.allCandidates));
-            localStorage.setItem(`tasknera_candidates_count_${jobId}`, String(result.allCandidates.length));
+            localStorage.setItem(`tasknera_candidates_${jobId}`, JSON.stringify(finalCandidatesList));
+            localStorage.setItem(`tasknera_candidates_count_${jobId}`, String(finalCandidatesList.length));
             const created = JSON.parse(localStorage.getItem('tasknera_created_jobs') || '[]');
             const updatedCreated = created.map((cj: any) => {
               if (String(cj.id) === String(jobId)) {
-                return { ...cj, candidatesCount: result.allCandidates.length, candidates: result.allCandidates.length };
+                return { ...cj, candidatesCount: finalCandidatesList.length, candidates: finalCandidatesList.length };
               }
               return cj;
             });

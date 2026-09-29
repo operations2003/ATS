@@ -296,7 +296,7 @@ export default function CandidatesPage() {
       let duplicateCount = 0;
       const failedFiles: { file: File; reason: string }[] = [];
 
-      const CONCURRENCY = 2; // Process 2 files concurrently to respect serverless memory & timeout limits
+      const CONCURRENCY = 4; // Process up to 4 files concurrently for instant 4-CV batch parsing
       let cursor = 0;
 
       const worker = async (): Promise<void> => {

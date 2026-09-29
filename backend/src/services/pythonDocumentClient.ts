@@ -40,6 +40,47 @@ export interface PythonBatchResponse {
 
 const REQUEST_TIMEOUT_MS = parseInt(process.env.PYTHON_TIMEOUT_MS || '12000', 10);
 
+let lastPythonHealthCheck = 0;
+let pythonServiceAvailable = false;
+
+export const isPythonDocumentProcessorAvailable = async (): Promise<boolean> => {
+  const config = getPythonServiceConfig();
+  if (!config) return false;
+  const now = Date.now();
+  if (now - lastPythonHealthCheck < 25000) {
+    return pythonServiceAvailable;
+  }
+  return new Promise((resolve) => {
+    const httpModule = config.isHttps ? https : http;
+    const req = httpModule.request(
+      {
+        hostname: config.hostname,
+        port: config.port,
+        path: `${config.basePath}/health`,
+        method: 'GET',
+        timeout: 1200,
+      },
+      (res) => {
+        pythonServiceAvailable = Boolean(res.statusCode && res.statusCode >= 200 && res.statusCode < 300);
+        lastPythonHealthCheck = Date.now();
+        resolve(pythonServiceAvailable);
+      }
+    );
+    req.on('timeout', () => {
+      req.destroy();
+      pythonServiceAvailable = false;
+      lastPythonHealthCheck = Date.now();
+      resolve(false);
+    });
+    req.on('error', () => {
+      pythonServiceAvailable = false;
+      lastPythonHealthCheck = Date.now();
+      resolve(false);
+    });
+    req.end();
+  });
+};
+
 export const getPythonServiceConfig = () => {
   const rawUrl = process.env.DOCUMENT_PROCESSOR_URL;
   if (rawUrl) {
@@ -130,6 +171,11 @@ export const extractDocumentTextViaPython = async (
   filename: string,
   mimeType: string
 ): Promise<PythonDocumentResponse> => {
+  const isHealthy = await isPythonDocumentProcessorAvailable();
+  if (!isHealthy) {
+    return extractDocumentTextLocally(buffer, filename, mimeType);
+  }
+
   return new Promise((resolve) => {
     let resolved = false;
     const safeResolve = (res: PythonDocumentResponse) => {

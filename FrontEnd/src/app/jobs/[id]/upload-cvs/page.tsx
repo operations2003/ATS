@@ -47,7 +47,7 @@ interface JobDetails {
 
 const MAX_BATCH_FILES = 25;
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB per CV
-const MAX_CONCURRENT_UPLOADS = 3;
+const MAX_CONCURRENT_UPLOADS = 4;
 const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.doc', '.txt'];
 const ALLOWED_MIME_TYPES = [
   'application/pdf',
