@@ -68,11 +68,20 @@ export default function AdminPage() {
 
   const [loadingMembers, setLoadingMembers] = useState(false);
 
+  const isPurgedMember = (email?: string, name?: string): boolean => {
+    const e = String(email || '').toLowerCase().trim();
+    const n = String(name || '').toLowerCase().trim();
+    if (e === 'sheetalbedi@tasknera.com') return true;
+    if (e.includes('harsh') || n.includes('harsh')) return true;
+    if (e.includes('aditya') || n.includes('aditya')) return true;
+    return false;
+  };
+
   const syncData = () => {
-    setRecruiters(atsStore.getRecruiters().filter(r => r.email?.toLowerCase().trim() !== 'sheetalbedi@tasknera.com' && r.role !== 'ADMIN'));
-    setJobs(atsStore.getJobs());
-    setCandidates(atsStore.getCandidates());
-    setAuditEvents(atsStore.getAuditEvents());
+    setRecruiters(atsStore.getRecruiters().filter(r => !isPurgedMember(r.email, r.name) && r.role !== 'ADMIN'));
+    setJobs(atsStore.getJobs().filter(j => !isPurgedMember(j.assignedRecruiter, j.assignedRecruiter)));
+    setCandidates(atsStore.getCandidates().filter(c => !isPurgedMember(c.assignedRecruiter, c.assignedRecruiter)));
+    setAuditEvents(atsStore.getAuditEvents().filter(a => !isPurgedMember(a.user, a.user)));
   };
 
   const fetchLiveTAMembers = async () => {
@@ -88,7 +97,19 @@ export default function AdminPage() {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.members)) {
-          const nonAdmin = data.members.filter((m: any) => m.email?.toLowerCase().trim() !== 'sheetalbedi@tasknera.com' && m.role !== 'ADMIN');
+          // Cascade delete purged members from backend database if found
+          data.members.forEach(async (m: any) => {
+            if (isPurgedMember(m.email, m.name) && m.email?.toLowerCase().trim() !== 'sheetalbedi@tasknera.com') {
+              try {
+                await fetch(`${backendUrl}/users/${encodeURIComponent(m.id)}?email=${encodeURIComponent(m.email)}`, {
+                  method: 'DELETE',
+                  headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+                });
+              } catch (_) {}
+            }
+          });
+
+          const nonAdmin = data.members.filter((m: any) => !isPurgedMember(m.email, m.name) && m.role !== 'ADMIN');
           atsStore.setRecruitersFromDatabase(nonAdmin);
           setRecruiters(nonAdmin);
         }
@@ -302,6 +323,18 @@ export default function AdminPage() {
 
   useEffect(() => {
     setMounted(true);
+    if (typeof window !== 'undefined') {
+      try {
+        const storedRec = localStorage.getItem('tasknera_ats_recruiters');
+        if (storedRec) {
+          const parsed = JSON.parse(storedRec);
+          if (Array.isArray(parsed)) {
+            const clean = parsed.filter((r: any) => !isPurgedMember(r.email, r.name));
+            localStorage.setItem('tasknera_ats_recruiters', JSON.stringify(clean));
+          }
+        }
+      } catch (_) {}
+    }
     syncData();
     fetchLiveTAMembers();
     const unsubscribe = atsStore.subscribe(syncData);
@@ -312,7 +345,7 @@ export default function AdminPage() {
 
   // Filtered recruiters
   const filteredRecruiters = recruiters.filter(r => {
-    if (r.email?.toLowerCase().trim() === 'sheetalbedi@tasknera.com' || r.role === 'ADMIN' || r.name?.toLowerCase().trim() === 'admin') {
+    if (isPurgedMember(r.email, r.name) || r.role === 'ADMIN' || r.name?.toLowerCase().trim() === 'admin') {
       return false;
     }
     const q = searchRecruiter.toLowerCase();
