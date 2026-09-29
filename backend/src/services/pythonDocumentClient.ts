@@ -38,7 +38,7 @@ export interface PythonBatchResponse {
   results: PythonDocumentResponse[];
 }
 
-const REQUEST_TIMEOUT_MS = parseInt(process.env.PYTHON_TIMEOUT_MS || '25000', 10);
+const REQUEST_TIMEOUT_MS = parseInt(process.env.PYTHON_TIMEOUT_MS || '12000', 10);
 
 export const getPythonServiceConfig = () => {
   const rawUrl = process.env.DOCUMENT_PROCESSOR_URL;
@@ -55,6 +55,10 @@ export const getPythonServiceConfig = () => {
     } catch (e) {
       console.warn('[Python Client] Invalid DOCUMENT_PROCESSOR_URL provided:', rawUrl);
     }
+  }
+  // In production, do not attempt to contact 127.0.0.1:8000 if DOCUMENT_PROCESSOR_URL is not provided
+  if (process.env.NODE_ENV === 'production') {
+    return null;
   }
   const host = process.env.PYTHON_HOST || '127.0.0.1';
   const port = parseInt(process.env.PYTHON_PORT || '8000', 10);
@@ -136,6 +140,11 @@ export const extractDocumentTextViaPython = async (
     };
 
     const config = getPythonServiceConfig();
+    if (!config) {
+      // In production without DOCUMENT_PROCESSOR_URL, extract immediately with built-in Node extractor
+      return extractDocumentTextLocally(buffer, filename, mimeType).then(safeResolve);
+    }
+
     const httpModule = config.isHttps ? https : http;
 
     const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2);

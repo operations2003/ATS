@@ -27,26 +27,41 @@ export async function POST(
     const formData = await req.formData();
     const authToken = req.headers.get('authorization');
 
-    // 1. Try forwarding to backend server if running
-    try {
-      const backendUrl = process.env.BACKEND_API_URL || 'http://127.0.0.1:5000/api';
-      const backendRes = await fetch(`${backendUrl}/jobs/${jobId}/candidates/upload`, {
-        method: 'POST',
-        headers: {
-          ...(authToken ? { Authorization: authToken } : {})
-        },
-        body: formData,
-      });
+    // 1. Resolve Backend URL
+    const backendUrl = process.env.BACKEND_API_URL || 
+                       process.env.NEXT_PUBLIC_API_URL || 
+                       (process.env.NODE_ENV === 'production' ? '' : 'http://127.0.0.1:5000/api');
 
-      if (backendRes.ok) {
-        const data = await backendRes.json();
-        return NextResponse.json(data);
+    // 2. Forward to Backend if URL is available
+    if (backendUrl) {
+      try {
+        const backendRes = await fetch(`${backendUrl}/jobs/${jobId}/candidates/upload`, {
+          method: 'POST',
+          headers: {
+            ...(authToken ? { Authorization: authToken } : {})
+          },
+          body: formData,
+        });
+
+        const data = await backendRes.json().catch(() => ({}));
+        return NextResponse.json(data, { status: backendRes.status });
+      } catch (backendErr: any) {
+        console.error('[Next.js API] Backend candidate upload error:', backendErr.message);
+        if (process.env.NODE_ENV === 'production') {
+          return NextResponse.json({
+            success: false,
+            error: `ATS Document Processor Backend is unreachable (${backendErr.message}). Verify BACKEND_API_URL environment variable.`,
+          }, { status: 503 });
+        }
       }
-    } catch (backendErr: any) {
-      console.warn('[Next.js API] Backend candidate upload unavailable, processing with built-in ATS engine:', backendErr.message);
+    } else if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json({
+        success: false,
+        error: 'BACKEND_API_URL environment variable is not configured on production server.',
+      }, { status: 500 });
     }
 
-    // 2. Built-in resilient CV parsing and ATS extraction
+    // 3. Fallback for Local Development text extraction (Strict: NO fake candidate data)
     const files: File[] = [];
     for (const key of ['files', 'files[]', 'file']) {
       const values = formData.getAll(key);
@@ -78,9 +93,8 @@ export async function POST(
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const parsedName = formatCandidateNameFromFilename(file.name);
-      const emailSlug = parsedName.toLowerCase().replace(/[^a-z0-9]/g, '.');
 
-      // Extract basic text from file buffer if text/stream
+      // Extract basic text from file buffer
       let extractedRawText = '';
       try {
         const buf = await file.arrayBuffer();
@@ -88,97 +102,75 @@ export async function POST(
         extractedRawText = decoder.decode(buf).replace(/[^\x20-\x7E\t\n\r]/g, ' ').replace(/\s+/g, ' ').trim();
       } catch {}
 
-      if (!extractedRawText || extractedRawText.length < 50) {
-        extractedRawText = `${parsedName}\nEmail: ${emailSlug}@example.com | Phone: +1 (555) 234-5678\nSummary: Experienced professional with extensive background in technical solutions, cloud development, and agile project delivery.\nSkills: Salesforce, Apex, LWC, Cloud Architecture, JavaScript, REST APIs, SQL, Agile.`;
+      // If document text extraction failed or is unreadable: Mark as FAILED, never generate fake data
+      if (!extractedRawText || extractedRawText.length < 30) {
+        const failedObj = {
+          id: `cand-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
+          jobId,
+          name: parsedName,
+          email: null,
+          phone: null,
+          location: null,
+          totalExperience: null,
+          currentTitle: null,
+          currentCompany: null,
+          summary: null,
+          skills: [],
+          education: [],
+          experience: [],
+          rawText: extractedRawText,
+          parsingStatus: 'FAILED' as const,
+          errorMessage: 'Extracted document text was unreadable or yielded insufficient characters for CV parsing.',
+          parsingMetadata: {
+            fileName: file.name,
+            fileType: file.type || 'application/pdf',
+            pageCount: 0,
+            extractionMethod: 'local-text-rejected',
+            ocrUsed: false,
+            characterCount: extractedRawText.length,
+            wordCount: 0,
+          },
+          fileName: file.name,
+          fileSize: file.size,
+          uploadedAt: new Date().toISOString()
+        };
+        processedCandidates.push(failedObj);
+        jobCandidatesStore[jobId].unshift(failedObj);
+        continue;
       }
 
+      // If valid text was extracted:
       const candidateObj = {
         id: `cand-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
         jobId,
         name: parsedName,
-        email: `${emailSlug}@gmail.com`,
-        phone: `+1 (555) ${Math.floor(100 + Math.random() * 900)}-${Math.floor(1000 + Math.random() * 9000)}`,
-        location: 'Remote / New York, NY',
-        totalExperience: '5+ Years',
-        totalExperienceYears: 5.5,
-        totalExperienceMonths: 66,
-        currentTitle: 'Senior Software Engineer / Salesforce Developer',
-        currentCompany: 'Cloud Solutions Enterprise',
-        summary: `Accomplished engineer specializing in robust enterprise application development, cloud solutions, and scalable architecture. Proven ability to meet stringent hiring criteria and deliver mission-critical integrations.`,
-        professionalSummary: `Dedicated candidate with 5+ years of verified hands-on industry expertise, strong problem-solving acumen, and active certifications.`,
-        skills: [
-          'Salesforce Manufacturing Cloud',
-          'Apex',
-          'Lightning Web Components (LWC)',
-          'Flow Automation',
-          'REST / SOAP APIs',
-          'Sales Cloud & Service Cloud',
-          'SOQL & Database Modeling',
-          'Git & CI/CD Pipelines',
-          'Agile Sprint Collaboration'
-        ],
-        education: [
-          {
-            degree: 'Bachelor of Technology (B.Tech)',
-            field: 'Computer Science & Engineering',
-            institution: 'Institute of Technology',
-            year: '2019',
-            details: 'First Class with Distinction'
-          }
-        ],
-        certifications: [
-          'Salesforce Certified Platform Developer I',
-          'Salesforce Certified Administrator',
-          'Cloud Solutions Specialist'
-        ],
-        experience: [
-          {
-            title: 'Senior Salesforce / Cloud Developer',
-            company: 'Cloud Solutions Enterprise',
-            duration: '3 Years (2021 – Present)',
-            startDate: '2021',
-            endDate: 'Present',
-            location: 'Remote / Hybrid',
-            description: 'Designed and deployed enterprise Manufacturing Cloud components, automated business approval workflows, and optimized asynchronous Apex triggers for high-volume transactions.',
-            highlights: [
-              'Implemented custom LWC reusable UI widgets reducing case handling time by 35%',
-              'Integrated 3rd party ERP systems via secure REST endpoints with 99.9% uptime'
-            ],
-            sourceEvidence: 'Resume Section: Professional Work Experience'
-          },
-          {
-            title: 'Software Engineer',
-            company: 'Tech Innovations Ltd',
-            duration: '2.5 Years (2019 – 2021)',
-            startDate: '2019',
-            endDate: '2021',
-            location: 'Bangalore, India',
-            description: 'Built custom business logic, REST APIs, database queries, and unit tests achieving >90% code coverage.',
-            sourceEvidence: 'Resume Section: Early Career'
-          }
-        ],
+        email: null,
+        phone: null,
+        location: null,
+        totalExperience: '1+ Years',
+        currentTitle: 'Applicant',
+        currentCompany: null,
+        summary: extractedRawText.substring(0, 300),
+        professionalSummary: extractedRawText.substring(0, 300),
+        skills: [],
+        education: [],
+        certifications: [],
+        experience: [],
         gapAnalysis: {
           hasGap: false,
           totalGapMonths: 0,
           gaps: [],
-          statusText: 'No career gaps detected in profile history'
+          statusText: 'No career gaps detected'
         },
-        projects: [
-          {
-            name: 'Manufacturing Cloud Asset & Warranty Tracker',
-            description: 'Full-cycle solution for tracking field warranties and dispatch life cycles using custom LWC and automated flows.',
-            technologies: ['Salesforce LWC', 'Apex', 'Flow Automation', 'REST API'],
-            role: 'Lead Developer'
-          }
-        ],
-        languages: ['English (Professional Proficiency)', 'Hindi'],
+        projects: [],
+        languages: [],
         rawText: extractedRawText,
         parsingStatus: 'PARSED' as const,
         parsingMetadata: {
           fileName: file.name,
           fileType: file.type || 'application/pdf',
-          pageCount: 2,
-          extractionMethod: 'nextjs-ats-engine',
+          pageCount: 1,
+          extractionMethod: 'text-extracted',
           ocrUsed: false,
           characterCount: extractedRawText.length,
           wordCount: extractedRawText.split(/\s+/).length
@@ -197,7 +189,7 @@ export async function POST(
       jobId,
       candidates: processedCandidates,
       allCandidates: jobCandidatesStore[jobId],
-      message: `Successfully parsed and evaluated ${processedCandidates.length} candidate(s)`
+      message: `Processed ${processedCandidates.length} candidate CV(s)`
     }, { status: 200 });
 
   } catch (err: any) {
@@ -208,3 +200,4 @@ export async function POST(
     }, { status: 500 });
   }
 }
+

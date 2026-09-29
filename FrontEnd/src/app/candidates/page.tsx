@@ -287,35 +287,87 @@ export default function CandidatesPage() {
     try {
       setIsUploading(true);
       setUploadError(null);
-      setUploadStatusMsg(`Uploading & parsing ${uploadFiles.length} resume(s)...`);
 
-      const formData = new FormData();
-      for (const file of uploadFiles) {
-        formData.append('files', file);
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' ? '/api' : 'http://localhost:5000/api');
+      const filesToProcess = [...uploadFiles];
+      const totalFiles = filesToProcess.length;
+      let completedCount = 0;
+      let successCount = 0;
+      let duplicateCount = 0;
+      const failedFiles: { file: File; reason: string }[] = [];
+
+      const CONCURRENCY = 2; // Process 2 files concurrently to respect serverless memory & timeout limits
+      let cursor = 0;
+
+      const worker = async (): Promise<void> => {
+        while (cursor < filesToProcess.length) {
+          const fileIndex = cursor++;
+          const currentFile = filesToProcess[fileIndex];
+          if (!currentFile) break;
+
+          setUploadStatusMsg(`Processing CV ${completedCount + 1} of ${totalFiles}: "${currentFile.name}"...`);
+
+          try {
+            const formData = new FormData();
+            formData.append('files', currentFile);
+            formData.append('jobId', 'pool');
+
+            const res = await fetch(`${backendUrl}/candidates/upload`, {
+              method: 'POST',
+              headers: getHeaders(),
+              body: formData,
+            });
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              throw new Error(data.error || `Server error (${res.status})`);
+            }
+
+            const isDuplicate = data.status === 'duplicate' || data.isDuplicate || data.candidates?.[0]?.isDuplicate || data.candidates?.[0]?.status === 'duplicate';
+            const isFailed = data.candidates?.[0]?.parsingStatus === 'FAILED' || data.candidates?.[0]?.status === 'failed';
+
+            if (isDuplicate) {
+              duplicateCount++;
+              console.log(`[Batch Pool Upload] file=${currentFile.name} size=${currentFile.size} status=duplicate`);
+            } else if (isFailed) {
+              const reason = data.candidates?.[0]?.errorMessage || 'Parsing failed';
+              failedFiles.push({ file: currentFile, reason });
+              console.warn(`[Batch Pool Upload] file=${currentFile.name} size=${currentFile.size} status=failed reason="${reason}"`);
+            } else {
+              successCount++;
+              console.log(`[Batch Pool Upload] file=${currentFile.name} size=${currentFile.size} status=success`);
+            }
+          } catch (fileErr: any) {
+            console.error(`[Batch Pool Upload] file=${currentFile.name} size=${currentFile.size} status=failed reason="${fileErr.message}"`);
+            failedFiles.push({ file: currentFile, reason: fileErr.message || 'Upload error' });
+          } finally {
+            completedCount++;
+            setUploadStatusMsg(`Processed ${completedCount} of ${totalFiles} CVs (${successCount} added, ${duplicateCount} duplicate, ${failedFiles.length} failed)`);
+          }
+        }
+      };
+
+      // Run workers concurrently
+      const workers = Array.from({ length: Math.min(CONCURRENCY, filesToProcess.length) }, () => worker());
+      await Promise.all(workers);
+
+      // Refresh candidate list so any successful candidates appear immediately
+      fetchCandidates();
+
+      if (failedFiles.length === 0) {
+        setUploadStatusMsg(`✓ All ${totalFiles} CVs processed successfully (${successCount} added${duplicateCount > 0 ? `, ${duplicateCount} already existed` : ''})!`);
+        setTimeout(() => {
+          setIsUploadModalOpen(false);
+          setUploadFiles([]);
+          setUploadStatusMsg('');
+        }, 1200);
+      } else {
+        setUploadError(`${failedFiles.length} of ${totalFiles} CV(s) failed: ${failedFiles.map(f => `"${f.file.name}" (${f.reason})`).join(', ')}. Successful candidates have been saved.`);
+        // Keep only failed files in selection so user can retry them with one click
+        setUploadFiles(failedFiles.map(f => f.file));
       }
-      formData.append('jobId', 'pool');
-
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-      const res = await fetch(`${backendUrl}/candidates/upload`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: formData,
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to parse and store CVs in the database.');
-      }
-
-      setUploadStatusMsg('✓ Successfully parsed and added to Candidate Pool!');
-      setTimeout(() => {
-        setIsUploadModalOpen(false);
-        setUploadFiles([]);
-        setUploadStatusMsg('');
-        fetchCandidates();
-      }, 1200);
     } catch (err: any) {
-      console.error('CV upload error:', err);
+      console.error('Batch CV upload error:', err);
       setUploadError(err.message || 'Error occurred while uploading CVs.');
     } finally {
       setIsUploading(false);

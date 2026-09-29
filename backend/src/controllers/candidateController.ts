@@ -958,6 +958,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         
         // 1. If uploading to Talent Pool and candidate already exists:
         if (isPoolUpload) {
+          console.log(`[Batch Upload] jobId=${jobId} file=${fileName} size=${fileSize} status=duplicate`);
           const dupCandidate: CandidateRecord = {
             ...existingProfile,
             jobId: 'pool',
@@ -992,6 +993,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         ));
 
         if (isAlreadyInJob) {
+          console.log(`[Batch Upload] jobId=${jobId} file=${fileName} size=${fileSize} status=duplicate`);
           const dupCandidate: CandidateRecord = {
             ...existingProfile,
             jobId,
@@ -1183,6 +1185,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
             }).catch(() => null);
           }
 
+          console.warn(`[Batch Upload] jobId=${jobId} file=${fileName} size=${fileSize} status=failed reason="${textQuality.reason || 'Insufficient readable text'}"`);
           existingCandidates.unshift(failRecord);
           processedCandidates.push(failRecord);
           continue;
@@ -1250,6 +1253,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
             await prisma.candidate.delete({ where: { id: dbCandidateId } }).catch(() => null);
           }
 
+          console.log(`[Batch Upload] jobId=${jobId} file=${fileName} size=${fileSize} status=duplicate`);
           const dupRecord: CandidateRecord = {
             ...dupInJob,
             jobId,
@@ -1321,6 +1325,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
                   uploadedAt: existingByEmailOrPhone.created_at.toISOString(),
                 };
 
+                console.log(`[Batch Upload] jobId=${jobId} file=${fileName} size=${fileSize} status=duplicate`);
                 processedCandidates.push(dupRecord);
 
                 if (files.length === 1) {
@@ -1705,6 +1710,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           console.warn('[Prisma DB Save Notice] Candidate metadata stored in memory cache:', dbSaveErr);
         }
 
+        console.log(`[Batch Upload] jobId=${jobId} file=${fileName} size=${fileSize} status=success`);
         existingCandidates.unshift(newRecord);
         processedCandidates.push(newRecord);
 
@@ -1717,7 +1723,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           }
         }
       } catch (err: any) {
-        console.error(`Error processing CV ${fileName}:`, err);
+        console.error(`[Batch Upload] jobId=${jobId} file=${fileName} size=${fileSize} status=failed reason="${err.message || 'Processing error'}"`);
         const errRecord: CandidateRecord = {
           id: dbCandidateId || candidateId,
           jobId,

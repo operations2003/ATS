@@ -45,9 +45,8 @@ interface JobDetails {
   requirements?: any[];
 }
 
-const MAX_BATCH_FILES = 15;
-const MAX_CUMULATIVE_SIZE_BYTES = 14 * 1024 * 1024; // 14 MB total limit
-const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB per CV
+const MAX_BATCH_FILES = 25;
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB per CV
 const MAX_CONCURRENT_UPLOADS = 3;
 const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.doc', '.txt'];
 const ALLOWED_MIME_TYPES = [
@@ -100,7 +99,7 @@ export default function BatchCVUploadPage() {
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' ? '/api' : 'http://localhost:5000/api');
 
   // ── Fetch Job Details ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -197,10 +196,10 @@ export default function BatchCVUploadPage() {
       }
     });
 
-    // 1. File Count Restriction: Limit total files selected to maximum 15 files
+    // 1. File Count Restriction: Limit total files selected to maximum allowed batch files
     if (filesArray.length > MAX_BATCH_FILES) {
       setValidationAlert({
-        message: 'Maximum 15 CVs can be uploaded at once. Please reduce your selection.',
+        message: `Maximum ${MAX_BATCH_FILES} CVs can be uploaded at once. Please reduce your selection.`,
         type: 'error',
       });
       return;
@@ -228,23 +227,10 @@ export default function BatchCVUploadPage() {
         return currentQueue;
       }
 
-      // Reject if adding unique incoming files exceeds maximum 15 files limit
+      // Reject if adding unique incoming files exceeds maximum allowed batch files limit
       if (currentQueue.length + uniqueIncomingFiles.length > MAX_BATCH_FILES) {
         setValidationAlert({
-          message: 'Maximum 15 CVs can be uploaded at once. Please reduce your selection.',
-          type: 'error',
-        });
-        return currentQueue;
-      }
-
-      // 2. Cumulative Size Limit: If total combined file size > 14 MB (14 * 1024 * 1024 bytes)
-      const currentQueueSize = currentQueue.reduce((acc, item) => acc + item.size, 0);
-      const incomingSize = uniqueIncomingFiles.reduce((acc, file) => acc + file.size, 0);
-      const totalCombinedSize = currentQueueSize + incomingSize;
-
-      if (totalCombinedSize > MAX_CUMULATIVE_SIZE_BYTES) {
-        setValidationAlert({
-          message: 'Total combined file size exceeds 14 MB limit. Please select smaller files.',
+          message: `Maximum ${MAX_BATCH_FILES} CVs can be uploaded at once. Please reduce your selection.`,
           type: 'error',
         });
         return currentQueue;
@@ -386,15 +372,18 @@ export default function BatchCVUploadPage() {
       const data = await res.json();
       const matchedCandidate = data.candidates?.find(
         (c: any) => c.fileName === item.name || c.parsingMetadata?.fileName === item.name
-      ) || data.candidates?.[0];
+      ) || data.candidates?.[0] || data.candidate;
 
       // Check if duplicate was detected on backend
       const isDuplicate = data.status === 'duplicate' ||
+                          data.isDuplicate ||
                           matchedCandidate?.isDuplicate ||
                           matchedCandidate?.status === 'duplicate' ||
-                          matchedCandidate?.status === 'DUPLICATE';
+                          matchedCandidate?.status === 'DUPLICATE' ||
+                          matchedCandidate?.parsingStatus === 'DUPLICATE';
 
       if (isDuplicate) {
+        console.log(`[Batch Upload] jobId=${jobId} file=${item.name} size=${item.size} status=duplicate`);
         setFileQueue(prev =>
           prev.map(it => {
             if (it.id !== item.id) return it;
@@ -423,19 +412,32 @@ export default function BatchCVUploadPage() {
         return;
       }
 
-      setFileQueue(prev =>
-        prev.map(it => {
-          if (it.id !== item.id) return it;
+      // Check if parsing or evaluation failed on server
+      const isFailed = (matchedCandidate && (matchedCandidate.parsingStatus === 'FAILED' || matchedCandidate.status === 'failed' || matchedCandidate.status === 'FAILED')) ||
+                       data.success === false ||
+                       data.status === 'failed';
 
-          if (matchedCandidate && matchedCandidate.parsingStatus === 'FAILED') {
+      if (isFailed) {
+        const errMsg = matchedCandidate?.errorMessage || matchedCandidate?.validationErrors?.[0] || data.error || 'CV parsing failed on server';
+        console.warn(`[Batch Upload] jobId=${jobId} file=${item.name} size=${item.size} status=failed reason="${errMsg}"`);
+        setFileQueue(prev =>
+          prev.map(it => {
+            if (it.id !== item.id) return it;
             return {
               ...it,
               status: 'Failed',
               progress: 100,
-              errorMessage: matchedCandidate.errorMessage || 'CV parsing failed on server',
+              errorMessage: errMsg,
             };
-          }
+          })
+        );
+        return;
+      }
 
+      console.log(`[Batch Upload] jobId=${jobId} file=${item.name} size=${item.size} status=success`);
+      setFileQueue(prev =>
+        prev.map(it => {
+          if (it.id !== item.id) return it;
           return {
             ...it,
             status: 'Success',
@@ -477,7 +479,7 @@ export default function BatchCVUploadPage() {
         } catch {}
       }
     } catch (err: any) {
-      console.error(`Upload failed for ${item.name}:`, err);
+      console.error(`[Batch Upload] jobId=${jobId} file=${item.name} size=${item.size} status=failed reason="${err.message}"`);
       setFileQueue(prev =>
         prev.map(it =>
           it.id === item.id
@@ -499,16 +501,7 @@ export default function BatchCVUploadPage() {
 
     if (fileQueue.length > MAX_BATCH_FILES) {
       setValidationAlert({
-        message: 'Maximum 15 CVs can be uploaded at once. Please reduce your selection.',
-        type: 'error',
-      });
-      return;
-    }
-
-    const totalBatchSize = fileQueue.reduce((acc, it) => acc + it.size, 0);
-    if (totalBatchSize > MAX_CUMULATIVE_SIZE_BYTES) {
-      setValidationAlert({
-        message: 'Total combined file size exceeds 14 MB limit. Please select smaller files.',
+        message: `Maximum ${MAX_BATCH_FILES} CVs can be uploaded at once. Please reduce your selection.`,
         type: 'error',
       });
       return;
@@ -557,11 +550,17 @@ export default function BatchCVUploadPage() {
   };
 
   // ── Retry a Single Failed File ──────────────────────────────────────────────
-  const handleRetrySingle = (item: BatchFileItem) => {
+  const handleRetrySingle = async (item: BatchFileItem) => {
     if (isProcessing) return;
     setFileQueue(prev =>
-      prev.map(it => (it.id === item.id ? { ...it, status: 'Pending', progress: 0, errorMessage: undefined } : it))
+      prev.map(it => (it.id === item.id ? { ...it, status: 'Uploading', progress: 35, errorMessage: undefined } : it))
     );
+    setIsProcessing(true);
+    try {
+      await uploadSingleCV(item);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // ── Summary Metrics ─────────────────────────────────────────────────────────
@@ -716,10 +715,10 @@ export default function BatchCVUploadPage() {
                 PDF, DOCX, DOC, TXT
               </span>
               <span className="px-3 py-1 rounded-lg bg-[#F1F5F9] border border-brand-border/60">
-                Max 15 files / batch
+                10–15+ files / batch
               </span>
               <span className="px-3 py-1 rounded-lg bg-[#F1F5F9] border border-brand-border/60">
-                Up to 5MB per CV
+                Up to 10MB per CV
               </span>
             </div>
           </div>

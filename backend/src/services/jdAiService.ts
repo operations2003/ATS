@@ -169,6 +169,9 @@ export const completeJdRequirementsControlled = async (jdText: string): Promise<
   return new Promise((resolve) => {
     try {
       const config = getPythonServiceConfig();
+      if (!config) {
+        return resolve([]);
+      }
       const httpModule = config.isHttps ? https : http;
       const payload = JSON.stringify({ jd_text: jdText });
       const reqPath = `${config.basePath}/parse-jd-ai`;
