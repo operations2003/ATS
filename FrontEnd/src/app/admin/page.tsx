@@ -1142,7 +1142,7 @@ export default function AdminPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">Assigned Pod</label>
+                    <label className="block font-bold text-slate-700 mb-1">Assigned Team</label>
                     <select
                       value={newMemberTeam}
                       onChange={e => setNewMemberTeam(e.target.value)}
