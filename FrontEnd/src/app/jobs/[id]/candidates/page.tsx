@@ -2398,7 +2398,7 @@ export default function JobCandidatesPage() {
                         <ScoreCard
                           score={selectedCandidate.matchBreakdown.keywords.score}
                           maxScore={100}
-                          label="Semantic Overlap"
+                          label="Mismatch areas"
                           percentage={selectedCandidate.matchBreakdown.keywords.score}
                           description={`${Math.round(selectedCandidate.matchBreakdown.keywords.cosineSimilarity * 100)}% Cosine Similarity`}
                         />
