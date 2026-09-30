@@ -16,8 +16,11 @@ dist/
 
 # Environment files
 .env
-.env*.local
+.env*
 **/.env
+**/.env*
+backend/data/
+**/data/candidates_pool.json
 
 # Scratch and temp
 scratch/

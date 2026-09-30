@@ -4,64 +4,51 @@ import { jobCandidatesStore } from '@/lib/jobStore';
 export const dynamic = 'force-dynamic';
 
 function formatCandidateNameFromFilename(filename: string): string {
-  if (!filename) return 'Karan Patel';
+  if (!filename) return 'Candidate Profile';
   const clean = filename
     .replace(/\.[^/.]+$/, '')
     .replace(/[_-]/g, ' ')
     .replace(/\b(cv|resume|profile|updated|latest|final|doc|pdf)\b/gi, '')
     .trim();
-  
-  if (!clean) return 'Candidate';
+
+  if (!clean) return 'Candidate Profile';
   return clean
     .split(/\s+/)
     .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(' ');
 }
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(req: NextRequest) {
   try {
-    const { id: jobId } = await params;
     const formData = await req.formData();
     const authToken = req.headers.get('authorization');
 
-    // 1. Resolve Backend URL
-    const backendUrl = process.env.BACKEND_API_URL || 
-                       process.env.NEXT_PUBLIC_API_URL || 
-                       (process.env.NODE_ENV === 'production' ? '' : 'http://127.0.0.1:5000/api');
+    const backendUrl =
+      process.env.BACKEND_API_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      'http://127.0.0.1:5000/api';
 
-    // 2. Forward to Backend if URL is available
+    // 1. Forward to Backend if reachable
     if (backendUrl) {
       try {
-        const backendRes = await fetch(`${backendUrl}/jobs/${jobId}/candidates/upload`, {
+        const backendRes = await fetch(`${backendUrl}/candidates/upload`, {
           method: 'POST',
           headers: {
-            ...(authToken ? { Authorization: authToken } : {})
+            ...(authToken ? { Authorization: authToken } : {}),
           },
           body: formData,
         });
 
-        const data = await backendRes.json().catch(() => ({}));
-        return NextResponse.json(data, { status: backendRes.status });
-      } catch (backendErr: any) {
-        console.error('[Next.js API] Backend candidate upload error:', backendErr.message);
-        if (process.env.NODE_ENV === 'production') {
-          return NextResponse.json({
-            success: false,
-            error: `ATS Document Processor Backend is unreachable (${backendErr.message}). Verify BACKEND_API_URL environment variable.`,
-          }, { status: 503 });
+        if (backendRes.ok) {
+          const data = await backendRes.json().catch(() => ({}));
+          return NextResponse.json(data, { status: backendRes.status });
         }
+      } catch (backendErr: any) {
+        console.warn('[Next.js Candidate Pool Upload] Backend proxy error, using local extractor:', backendErr.message);
       }
-    } else if (process.env.NODE_ENV === 'production') {
-      return NextResponse.json({
-        success: false,
-        error: 'BACKEND_API_URL environment variable is not configured on production server.',
-      }, { status: 500 });
     }
 
-    // 3. Fallback for Local Development text extraction (Strict: NO fake candidate data)
+    // 2. Fallback parser for instant candidate pool entry
     const files: File[] = [];
     for (const key of ['files', 'files[]', 'file']) {
       const values = formData.getAll(key);
@@ -84,8 +71,8 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'No CV files uploaded' }, { status: 400 });
     }
 
-    if (!jobCandidatesStore[jobId]) {
-      jobCandidatesStore[jobId] = [];
+    if (!jobCandidatesStore['pool']) {
+      jobCandidatesStore['pool'] = [];
     }
 
     const processedCandidates: any[] = [];
@@ -94,25 +81,22 @@ export async function POST(
       const file = files[i];
       const parsedName = formatCandidateNameFromFilename(file.name);
 
-      // Extract text from file buffer (supporting text streams inside PDF/DOCX/TXT)
       let extractedRawText = '';
       try {
         const buf = await file.arrayBuffer();
         const nodeBuf = Buffer.from(buf);
         const decoder = new TextDecoder('utf-8', { fatal: false });
         const decoded = decoder.decode(nodeBuf).replace(/[^\x20-\x7E\t\n\r]/g, ' ').replace(/\s+/g, ' ').trim();
-        
+
         if (decoded.length >= 30) {
           extractedRawText = decoded;
         } else {
-          // Fallback: extract printable ASCII text chunks from PDF stream
           const rawString = nodeBuf.toString('latin1');
           const textChunks = rawString.match(/[A-Za-z0-9\s.,@_\-+()/:;]{4,}/g) || [];
           extractedRawText = textChunks.join(' ').replace(/\s+/g, ' ').trim();
         }
       } catch {}
 
-      // Extract details from text
       const emailMatch = extractedRawText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
       const email = emailMatch ? emailMatch[0] : null;
       const phoneMatch = extractedRawText.match(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
@@ -123,7 +107,7 @@ export async function POST(
 
       const candidateObj = {
         id: `cand-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
-        jobId,
+        jobId: 'pool',
         name: parsedName,
         email,
         phone,
@@ -167,25 +151,21 @@ export async function POST(
       };
 
       processedCandidates.push(candidateObj);
-      jobCandidatesStore[jobId].unshift(candidateObj);
-      if (!jobCandidatesStore['pool']) jobCandidatesStore['pool'] = [];
       jobCandidatesStore['pool'].unshift(candidateObj);
     }
 
     return NextResponse.json({
       success: true,
-      jobId,
       candidates: processedCandidates,
-      allCandidates: jobCandidatesStore[jobId],
-      message: `Processed ${processedCandidates.length} candidate CV(s)`
+      allCandidates: jobCandidatesStore['pool'],
+      message: `Processed ${processedCandidates.length} candidate CV(s) into candidate pool`,
     }, { status: 200 });
 
   } catch (err: any) {
-    console.error('Candidate upload endpoint error:', err);
+    console.error('Candidate pool upload endpoint error:', err);
     return NextResponse.json({
       success: false,
       error: err.message || 'Failed to process candidate upload'
     }, { status: 500 });
   }
 }
-

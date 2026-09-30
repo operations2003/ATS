@@ -460,9 +460,23 @@ export default function BatchCVUploadPage() {
         })
       );
 
-      // Increment applicant count for this job in localStorage
+      // Save candidate to pool and job in localStorage
       if (typeof window !== 'undefined') {
         try {
+          if (matchedCandidate) {
+            const poolSaved = JSON.parse(localStorage.getItem('tasknera_candidates_pool') || '[]');
+            if (!poolSaved.some((c: any) => c.id === matchedCandidate.id || (c.fileName && c.fileName === matchedCandidate.fileName))) {
+              poolSaved.unshift(matchedCandidate);
+              localStorage.setItem('tasknera_candidates_pool', JSON.stringify(poolSaved));
+            }
+
+            const jobSaved = JSON.parse(localStorage.getItem(`tasknera_candidates_${jobId}`) || '[]');
+            if (!jobSaved.some((c: any) => c.id === matchedCandidate.id || (c.fileName && c.fileName === matchedCandidate.fileName))) {
+              jobSaved.unshift(matchedCandidate);
+              localStorage.setItem(`tasknera_candidates_${jobId}`, JSON.stringify(jobSaved));
+            }
+          }
+
           const currentCount = parseInt(localStorage.getItem(`tasknera_candidates_count_${jobId}`) || '0', 10);
           const newCount = currentCount + 1;
           localStorage.setItem(`tasknera_candidates_count_${jobId}`, String(newCount));

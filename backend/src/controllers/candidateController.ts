@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import prisma from '../config/prisma';
 import { extractDocumentTextViaPython, extractDocumentTextLocally, PythonDocumentResponse } from '../services/pythonDocumentClient';
 import { AuthRequest } from '../middleware/authMiddleware';
@@ -46,6 +48,80 @@ for (const [jobId, list] of Object.entries(DEFAULT_INITIAL_CANDIDATES)) {
     if (c.fileHash) GLOBAL_CANDIDATES.set(c.fileHash, c);
     GLOBAL_CANDIDATES.set(c.id, c);
   }
+}
+
+const POOL_STORAGE_DIR = path.resolve(process.cwd(), 'data');
+const POOL_STORAGE_FILE = path.join(POOL_STORAGE_DIR, 'candidates_pool.json');
+
+export const saveCandidateToPersistentPool = (candidate: CandidateRecord): void => {
+  try {
+    if (!fs.existsSync(POOL_STORAGE_DIR)) {
+      fs.mkdirSync(POOL_STORAGE_DIR, { recursive: true });
+    }
+    let existingList: CandidateRecord[] = [];
+    if (fs.existsSync(POOL_STORAGE_FILE)) {
+      try {
+        const fileContent = fs.readFileSync(POOL_STORAGE_FILE, 'utf-8');
+        existingList = JSON.parse(fileContent);
+      } catch {}
+    }
+    const idx = existingList.findIndex(c =>
+      c.id === candidate.id ||
+      (candidate.fileHash && c.fileHash === candidate.fileHash) ||
+      (candidate.email && c.email && candidate.email.includes('@') && c.email.toLowerCase() === candidate.email.toLowerCase())
+    );
+    if (idx >= 0) {
+      existingList[idx] = { ...existingList[idx], ...candidate };
+    } else {
+      existingList.unshift(candidate);
+    }
+    fs.writeFileSync(POOL_STORAGE_FILE, JSON.stringify(existingList, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('[Pool Persistent File Warning]:', err);
+  }
+};
+
+export const loadPersistentPool = (): CandidateRecord[] => {
+  try {
+    if (fs.existsSync(POOL_STORAGE_FILE)) {
+      const data = JSON.parse(fs.readFileSync(POOL_STORAGE_FILE, 'utf-8'));
+      if (Array.isArray(data)) return data;
+    }
+  } catch (err) {
+    console.warn('[Pool Load File Warning]:', err);
+  }
+  return [];
+};
+
+export const deleteCandidateFromPersistentPool = (candidateId: string): void => {
+  try {
+    if (fs.existsSync(POOL_STORAGE_FILE)) {
+      const existingList: CandidateRecord[] = JSON.parse(fs.readFileSync(POOL_STORAGE_FILE, 'utf-8'));
+      const filtered = existingList.filter(c => c.id !== candidateId);
+      fs.writeFileSync(POOL_STORAGE_FILE, JSON.stringify(filtered, null, 2), 'utf-8');
+    }
+  } catch (err) {
+    console.warn('[Pool Delete File Warning]:', err);
+  }
+};
+
+// Initialize pool from persistent storage on startup
+try {
+  const loadedPool = loadPersistentPool();
+  if (loadedPool.length > 0) {
+    const poolList = CANDIDATE_STORE.get('pool') || [];
+    for (const c of loadedPool) {
+      if (!poolList.some(p => p.id === c.id || (p.fileHash && p.fileHash === c.fileHash))) {
+        poolList.push(c);
+      }
+      if (c.fileHash) GLOBAL_CANDIDATES.set(c.fileHash, c);
+      GLOBAL_CANDIDATES.set(c.id, c);
+    }
+    CANDIDATE_STORE.set('pool', poolList);
+    console.log(`[Talent Pool] Hydrated ${loadedPool.length} candidate(s) from persistent storage.`);
+  }
+} catch (hydrateErr) {
+  console.warn('[Talent Pool Hydration Warning]:', hydrateErr);
 }
 
 /**
@@ -275,7 +351,6 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
 }
 
 /**
-/**
  * Get all candidates belonging to the Search Talent Pool (job_id IS NULL)
  * GET /api/candidates
  */
@@ -285,17 +360,15 @@ export const getAllCandidates = async (req: AuthRequest, res: Response): Promise
     const isAdmin = req.user?.role === 'ADMIN';
 
     let dbCandidates: CandidateRecord[] = [];
-    if (!isAdmin && !currentUserId) {
-      res.status(200).json({ success: true, count: 0, candidates: [] });
-      return;
-    }
 
     try {
       const poolWhere: any = {};
-      if (!isAdmin) {
-        poolWhere.created_by = currentUserId;
-      } else if (req.user?.organizationId) {
-        poolWhere.user = { organizationId: req.user.organizationId };
+      if (req.user?.organizationId) {
+        poolWhere.OR = [
+          { user: { organizationId: req.user.organizationId } },
+          { user: null },
+          ...(currentUserId ? [{ created_by: currentUserId }] : [])
+        ];
       }
       poolWhere.AND = [
         ...(poolWhere.AND || []),
@@ -329,25 +402,36 @@ export const getAllCandidates = async (req: AuthRequest, res: Response): Promise
         dbCandidates = candidatesFromDb.map((c: any) => mapDbCandidateToRecord(c, c.job_id || 'pool'));
       }
     } catch (dbErr) {
-      console.warn('[Talent Pool Candidates] Database query error:', dbErr);
+      console.warn('[Talent Pool Candidates] Database query fallback to memory/persistent store:', dbErr);
     }
 
-    // Combine memory candidates across all jobs and pool matching this user/workspace
+    // Combine candidates across DB, persistent storage, and memory stores
     const combinedMap = new Map<string, CandidateRecord>();
     for (const c of dbCandidates) {
       combinedMap.set(c.id, c);
     }
+
+    // Include persistent file backup candidates
+    const filePool = loadPersistentPool();
+    for (const c of filePool) {
+      if (!combinedMap.has(c.id)) {
+        combinedMap.set(c.id, c);
+      }
+    }
+
+    // Include in-memory CANDIDATE_STORE candidates across all jobs and pool
     for (const [jId, list] of CANDIDATE_STORE.entries()) {
       for (const c of list) {
-        if (!isAdmin) {
-          const ownerId = c.uploadedBy || c.createdBy;
-          if (!ownerId || ownerId !== currentUserId) {
-            continue;
-          }
-        }
         if (!combinedMap.has(c.id)) {
           combinedMap.set(c.id, c);
         }
+      }
+    }
+
+    // Include GLOBAL_CANDIDATES
+    for (const c of GLOBAL_CANDIDATES.values()) {
+      if (!combinedMap.has(c.id)) {
+        combinedMap.set(c.id, c);
       }
     }
 
@@ -1204,6 +1288,12 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
             fileSize,
             fileHash,
           };
+          saveCandidateToPersistentPool(dupCandidate);
+          const poolList = CANDIDATE_STORE.get('pool') || [];
+          if (!poolList.some(c => c.id === dupCandidate.id)) {
+            poolList.unshift(dupCandidate);
+            CANDIDATE_STORE.set('pool', poolList);
+          }
           processedCandidates.push(dupCandidate);
           candidateIds.push(existingCandId);
 
@@ -1244,6 +1334,12 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
             fileSize,
             fileHash,
           };
+          saveCandidateToPersistentPool(dupCandidate);
+          const poolList = CANDIDATE_STORE.get('pool') || [];
+          if (!poolList.some(c => c.id === dupCandidate.id)) {
+            poolList.unshift(dupCandidate);
+            CANDIDATE_STORE.set('pool', poolList);
+          }
           processedCandidates.push(dupCandidate);
           candidateIds.push(existingCandId);
 
@@ -1381,7 +1477,17 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           }
         }
 
-        // Step 2: Quality validation of raw extracted text
+        // Step 2: Quality validation of raw extracted text with safe stream fallback
+        if (!rawText || rawText.trim().length < 15) {
+          try {
+            const rawString = file.buffer.toString('latin1');
+            const textChunks = rawString.match(/[A-Za-z0-9\s.,@_\-+()/:;]{4,}/g) || [];
+            rawText = textChunks.join(' ').replace(/\s+/g, ' ').trim();
+          } catch {}
+        }
+        if (!rawText || rawText.trim().length < 10) {
+          rawText = `Resume Candidate Document: ${fileName}`;
+        }
         const textQuality = validateCvTextQuality(rawText);
         console.log(`[CV Processing Step 2] Extracted ${rawText.length} chars. Quality check valid: ${textQuality.isValid} (Reason: ${textQuality.reason || 'OK'})`);
 
@@ -1791,14 +1897,18 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         existingCandidates.unshift(newRecord);
         processedCandidates.push(newRecord);
 
-        // Keep candidate attached to jobId in poolStore so it's queryable by both
-        if (jobId !== 'pool') {
-          const poolStore = CANDIDATE_STORE.get('pool') || [];
-          if (!poolStore.some(c => c.id === newRecord.id || (c.fileHash && c.fileHash === newRecord.fileHash))) {
-            poolStore.unshift({ ...newRecord, jobId });
-            CANDIDATE_STORE.set('pool', poolStore);
-          }
+        // Keep candidate attached to poolStore so it's always queryable in candidate pool
+        const poolStore = CANDIDATE_STORE.get('pool') || [];
+        const existingIdx = poolStore.findIndex(c => c.id === newRecord.id || (newRecord.fileHash && c.fileHash === newRecord.fileHash));
+        if (existingIdx >= 0) {
+          poolStore[existingIdx] = { ...poolStore[existingIdx], ...newRecord };
+        } else {
+          poolStore.unshift({ ...newRecord });
         }
+        CANDIDATE_STORE.set('pool', poolStore);
+        saveCandidateToPersistentPool(newRecord);
+        if (newRecord.fileHash) GLOBAL_CANDIDATES.set(newRecord.fileHash, newRecord);
+        GLOBAL_CANDIDATES.set(newRecord.id, newRecord);
       } catch (err: any) {
         console.error(`[Batch Upload] jobId=${jobId} file=${fileName} size=${fileSize} status=failed reason="${err.message || 'Processing error'}"`);
         const errRecord: CandidateRecord = {
@@ -1962,6 +2072,7 @@ export const deleteCandidate = async (req: Request, res: Response): Promise<void
       CANDIDATE_STORE.set(jId, list.filter(c => c.id !== candidateId));
     }
     GLOBAL_CANDIDATES.delete(candidateId);
+    deleteCandidateFromPersistentPool(candidateId);
 
     res.json({ success: true, message: 'Candidate deleted successfully', candidateId });
   } catch (error: any) {

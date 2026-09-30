@@ -312,11 +312,23 @@ export default function CandidatesPage() {
             formData.append('files', currentFile);
             formData.append('jobId', 'pool');
 
-            const res = await fetch(`${backendUrl}/candidates/upload`, {
+            let res = await fetch(`${backendUrl}/candidates/upload`, {
               method: 'POST',
               headers: getHeaders(),
               body: formData,
-            });
+            }).catch(() => null);
+
+            if (!res || !res.ok) {
+              res = await fetch('/api/candidates/upload', {
+                method: 'POST',
+                headers: getHeaders(),
+                body: formData,
+              }).catch(() => null);
+            }
+
+            if (!res) {
+              throw new Error('Unable to contact candidate upload server.');
+            }
 
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
@@ -363,7 +375,6 @@ export default function CandidatesPage() {
         }, 1200);
       } else {
         setUploadError(`${failedFiles.length} of ${totalFiles} CV(s) failed: ${failedFiles.map(f => `"${f.file.name}" (${f.reason})`).join(', ')}. Successful candidates have been saved.`);
-        // Keep only failed files in selection so user can retry them with one click
         setUploadFiles(failedFiles.map(f => f.file));
       }
     } catch (err: any) {
@@ -374,7 +385,7 @@ export default function CandidatesPage() {
     }
   };
 
-  // Fetch all candidate records from database
+  // Fetch all candidate records from database and local caches
   const fetchCandidates = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -385,11 +396,48 @@ export default function CandidatesPage() {
       if (!res || !res.ok) {
         res = await fetch(`${backendUrl}/jobs/all/candidates`, { headers }).catch(() => null);
       }
+      if (!res || !res.ok) {
+        res = await fetch('/api/candidates', { headers }).catch(() => null);
+      }
 
+      let rawList: any[] = [];
       if (res && res.ok) {
-        const data = await res.json();
-        const rawList = data.candidates || data.data || [];
+        const data = await res.json().catch(() => ({}));
+        rawList = data.candidates || data.data || [];
+      }
 
+      // Merge candidates saved in browser localStorage across jobs and pool
+      if (typeof window !== 'undefined') {
+        try {
+          const localPool = JSON.parse(localStorage.getItem('tasknera_candidates_pool') || '[]');
+          if (Array.isArray(localPool)) {
+            for (const lc of localPool) {
+              if (!rawList.some((r: any) => r.id === lc.id || (r.fileName && r.fileName === lc.fileName))) {
+                rawList.unshift(lc);
+              }
+            }
+          }
+
+          // Check all job-specific candidate storage keys
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('tasknera_candidates_') && key !== 'tasknera_candidates_pool') {
+              try {
+                const jobCands = JSON.parse(localStorage.getItem(key) || '[]');
+                if (Array.isArray(jobCands)) {
+                  for (const jc of jobCands) {
+                    if (!rawList.some((r: any) => r.id === jc.id || (r.fileName && r.fileName === jc.fileName))) {
+                      rawList.push(jc);
+                    }
+                  }
+                }
+              } catch {}
+            }
+          }
+        } catch {}
+      }
+
+      if (rawList && rawList.length > 0) {
         const mapped: CandidateItem[] = rawList.map((c: any) => {
           const skillsList = Array.isArray(c.skills)
             ? c.skills.map((s: any) => (typeof s === 'string' ? s : s.skill_name || s.name || ''))
@@ -448,7 +496,18 @@ export default function CandidatesPage() {
           };
         });
 
-        setAllCandidates(mapped);
+        // Deduplicate mapped candidates by id or fileName
+        const seen = new Set<string>();
+        const uniqueMapped: CandidateItem[] = [];
+        for (const item of mapped) {
+          const key = (item.email && item.email !== 'N/A' ? item.email.toLowerCase() : '') || item.fileName || item.id;
+          if (!seen.has(key)) {
+            seen.add(key);
+            uniqueMapped.push(item);
+          }
+        }
+
+        setAllCandidates(uniqueMapped);
       } else {
         setAllCandidates([]);
       }

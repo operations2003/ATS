@@ -1466,6 +1466,15 @@ export default function JobCandidatesPage() {
           try {
             localStorage.setItem(`tasknera_candidates_${jobId}`, JSON.stringify(finalCandidatesList));
             localStorage.setItem(`tasknera_candidates_count_${jobId}`, String(finalCandidatesList.length));
+
+            const poolSaved = JSON.parse(localStorage.getItem('tasknera_candidates_pool') || '[]');
+            for (const fc of finalCandidatesList) {
+              if (!poolSaved.some((c: any) => c.id === fc.id || (c.fileName && c.fileName === fc.fileName))) {
+                poolSaved.unshift(fc);
+              }
+            }
+            localStorage.setItem('tasknera_candidates_pool', JSON.stringify(poolSaved));
+
             const created = JSON.parse(localStorage.getItem('tasknera_created_jobs') || '[]');
             const updatedCreated = created.map((cj: any) => {
               if (String(cj.id) === String(jobId)) {
