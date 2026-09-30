@@ -15,8 +15,8 @@ const generateToken = (userId: string, email: string, role: UserRole, organizati
 };
 
 
-const DESIGNATED_ADMIN_EMAIL = 'sheetalbedi@tasknera.com';
-const DESIGNATED_ADMIN_PASSWORD = 'Tasknera@9312506515';
+const DESIGNATED_ADMIN_EMAIL = 'admin@gmail.com';
+const DESIGNATED_ADMIN_PASSWORD = 'admin@123';
 
 /**
  * Ensure default admin account exists in PostgreSQL
@@ -31,7 +31,7 @@ export const ensureDefaultAdmin = async (): Promise<void> => {
     if (!existing) {
       await prisma.user.create({
         data: {
-          name: 'Sheetal Bedi',
+          name: 'Admin User',
           email: adminEmail,
           password: hashedPassword,
           role: 'ADMIN',
@@ -43,6 +43,7 @@ export const ensureDefaultAdmin = async (): Promise<void> => {
       await prisma.user.update({
         where: { email: adminEmail },
         data: {
+          name: 'Admin User',
           role: 'ADMIN',
           password: hashedPassword
         }
@@ -128,14 +129,14 @@ export const signin = async (req: Request, res: Response): Promise<void> => {
     if (cleanEmail === DESIGNATED_ADMIN_EMAIL && password === DESIGNATED_ADMIN_PASSWORD) {
       const orgId = 'org-tasknera';
       const userRole: UserRole = 'ADMIN';
-      const token = generateToken('admin-sheetal-bedi', DESIGNATED_ADMIN_EMAIL, userRole, orgId);
+      const token = generateToken('admin-user', DESIGNATED_ADMIN_EMAIL, userRole, orgId);
 
       res.status(200).json({
         message: 'Signed in successfully',
         token,
         user: {
-          id: 'admin-sheetal-bedi',
-          name: 'Sheetal Bedi',
+          id: 'admin-user',
+          name: 'Admin User',
           email: DESIGNATED_ADMIN_EMAIL,
           role: userRole,
           organizationId: orgId,
@@ -189,13 +190,13 @@ export const signin = async (req: Request, res: Response): Promise<void> => {
     if (req.body?.email?.toLowerCase().trim() === DESIGNATED_ADMIN_EMAIL && req.body?.password === DESIGNATED_ADMIN_PASSWORD) {
       const orgId = 'org-tasknera';
       const userRole: UserRole = 'ADMIN';
-      const token = generateToken('admin-sheetal-bedi', DESIGNATED_ADMIN_EMAIL, userRole, orgId);
+      const token = generateToken('admin-user', DESIGNATED_ADMIN_EMAIL, userRole, orgId);
       res.status(200).json({
         message: 'Signed in successfully',
         token,
         user: {
-          id: 'admin-sheetal-bedi',
-          name: 'Sheetal Bedi',
+          id: 'admin-user',
+          name: 'Admin User',
           email: DESIGNATED_ADMIN_EMAIL,
           role: userRole,
           organizationId: orgId,
@@ -254,8 +255,8 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
 
     if (!user && req.user.email?.toLowerCase().trim() === DESIGNATED_ADMIN_EMAIL) {
       user = {
-        id: req.user.userId || 'admin-sheetal-bedi',
-        name: 'Sheetal Bedi',
+        id: req.user.userId || 'admin-user',
+        name: 'Admin User',
         email: DESIGNATED_ADMIN_EMAIL,
         role: 'ADMIN',
         organizationId: 'org-tasknera',
@@ -274,8 +275,8 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
     if (req.user?.email?.toLowerCase().trim() === DESIGNATED_ADMIN_EMAIL) {
       res.status(200).json({
         user: {
-          id: req.user.userId || 'admin-sheetal-bedi',
-          name: 'Sheetal Bedi',
+          id: req.user.userId || 'admin-user',
+          name: 'Admin User',
           email: DESIGNATED_ADMIN_EMAIL,
           role: 'ADMIN',
           organizationId: 'org-tasknera',

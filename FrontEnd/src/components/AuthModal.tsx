@@ -103,7 +103,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </button>
               </div>
               <p className="text-amber-800 leading-relaxed text-[11.5px]">
-                Accounts are managed by your administrator. Contact <strong className="font-semibold">sheetalbedi@tasknera.com</strong> to reset your password.
+                Accounts are managed by your administrator. Contact <strong className="font-semibold">admin@gmail.com</strong> to reset your password.
               </p>
             </div>
           )}

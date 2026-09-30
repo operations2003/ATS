@@ -24,8 +24,8 @@ interface AuthProviderProps {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const DESIGNATED_ADMIN_EMAIL = 'sheetalbedi@tasknera.com';
-const DESIGNATED_ADMIN_PASSWORD = 'Tasknera@9312506515';
+const DESIGNATED_ADMIN_EMAIL = 'admin@gmail.com';
+const DESIGNATED_ADMIN_PASSWORD = 'admin@123';
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
@@ -83,7 +83,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
 
           const fullUser = { 
             ...data.user, 
-            name: isDesignatedAdmin ? 'Sheetal Bedi' : (data.user.name || data.user.email.split('@')[0]),
+            name: isDesignatedAdmin ? 'Admin User' : (data.user.name || data.user.email.split('@')[0]),
             role: userRole,
             password: resolvedPassword
           };
@@ -140,13 +140,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
         body: JSON.stringify({ email: cleanEmail, password }),
       });
     } catch (apiErr: any) {
-      if (cleanEmail === DESIGNATED_ADMIN_EMAIL && password === 'Tasknera@9312506515') {
+      if (cleanEmail === DESIGNATED_ADMIN_EMAIL && password === DESIGNATED_ADMIN_PASSWORD) {
         data = {
           message: 'Signed in successfully',
           token: 'tasknera-admin-session-token-' + Date.now(),
           user: {
-            id: 'admin-sheetal-bedi',
-            name: 'Sheetal Bedi',
+            id: 'd2a446f3-7d0f-4114-96fc-cc2ba0d0381c',
+            name: 'Admin User',
             email: DESIGNATED_ADMIN_EMAIL,
             role: 'ADMIN',
             organizationId: 'org-tasknera'
@@ -160,7 +160,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
     const isDesignatedAdmin = cleanEmail === DESIGNATED_ADMIN_EMAIL || data.user?.role === 'ADMIN';
     const userRole: UserRole = isDesignatedAdmin ? 'ADMIN' : (data.user?.role || 'MEMBER');
     const resolvedUserId = data.user?.id;
-    const resolvedName = isDesignatedAdmin ? 'Sheetal Bedi' : (data.user?.name || cleanEmail.split('@')[0]);
+    const resolvedName = isDesignatedAdmin ? 'Admin User' : (data.user?.name || cleanEmail.split('@')[0]);
 
     localStorage.setItem('tasknera_token', data.token);
     localStorage.setItem('tasknera_role', userRole);

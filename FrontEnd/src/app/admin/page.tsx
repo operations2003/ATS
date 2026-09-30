@@ -17,8 +17,8 @@ export default function AdminPage() {
   const [searchRecruiter, setSearchRecruiter] = useState('');
 
   // Designated Admin Login State
-  const [adminLoginEmail, setAdminLoginEmail] = useState('sheetalbedi@tasknera.com');
-  const [adminLoginPassword, setAdminLoginPassword] = useState('Tasknera@9312506515');
+  const [adminLoginEmail, setAdminLoginEmail] = useState('admin@gmail.com');
+  const [adminLoginPassword, setAdminLoginPassword] = useState('admin@123');
   const [adminLoginLoading, setAdminLoginLoading] = useState(false);
   const [adminLoginError, setAdminLoginError] = useState('');
 
@@ -71,7 +71,7 @@ export default function AdminPage() {
   const isPurgedMember = (email?: string, name?: string): boolean => {
     const e = String(email || '').toLowerCase().trim();
     const n = String(name || '').toLowerCase().trim();
-    if (e === 'sheetalbedi@tasknera.com') return true;
+    if (e === 'admin@gmail.com') return true;
     if (e.includes('harsh') || n.includes('harsh')) return true;
     if (e.includes('aditya') || n.includes('aditya')) return true;
     return false;
@@ -99,7 +99,7 @@ export default function AdminPage() {
         if (Array.isArray(data.members)) {
           // Cascade delete purged members from backend database if found
           data.members.forEach(async (m: any) => {
-            if (isPurgedMember(m.email, m.name) && m.email?.toLowerCase().trim() !== 'sheetalbedi@tasknera.com') {
+            if (isPurgedMember(m.email, m.name) && m.email?.toLowerCase().trim() !== 'admin@gmail.com') {
               try {
                 await fetch(`${backendUrl}/users/${encodeURIComponent(m.id)}?email=${encodeURIComponent(m.email)}`, {
                   method: 'DELETE',
@@ -472,7 +472,7 @@ export default function AdminPage() {
     }
   };
 
-  const isAuthorizedAdmin = user?.email?.toLowerCase().trim() === 'sheetalbedi@tasknera.com' && user?.role === 'ADMIN';
+  const isAuthorizedAdmin = user?.email?.toLowerCase().trim() === 'admin@gmail.com' && user?.role === 'ADMIN';
 
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -480,8 +480,8 @@ export default function AdminPage() {
     setAdminLoginLoading(true);
     try {
       const cleanInputEmail = adminLoginEmail.trim().toLowerCase();
-      if (cleanInputEmail !== 'sheetalbedi@tasknera.com') {
-        throw new Error('Access denied. Only sheetalbedi@tasknera.com is authorized as Administrator.');
+      if (cleanInputEmail !== 'admin@gmail.com') {
+        throw new Error('Access denied. Only admin@gmail.com is authorized as Administrator.');
       }
       const role = await signin(cleanInputEmail, adminLoginPassword);
       if (role !== 'ADMIN') {
@@ -494,7 +494,7 @@ export default function AdminPage() {
     }
   };
 
-  // Strict Role Guard: Only sheetalbedi@tasknera.com with role ADMIN can enter
+  // Strict Role Guard: Only admin@gmail.com with role ADMIN can enter
   if (mounted && !isAuthorizedAdmin) {
     return (
       <div className="min-h-screen bg-[#EEF2F6] flex flex-col selection:bg-brand-orange-pale selection:text-brand-orange">
@@ -514,7 +514,7 @@ export default function AdminPage() {
             </h1>
 
             <p className="text-xs text-slate-500 mb-6 leading-relaxed">
-              Strict Security Policy: Only the designated Administrator account (<strong className="text-slate-800">sheetalbedi@tasknera.com</strong>) is authorized to access executive administration and member insights.
+              Strict Security Policy: Only the designated Administrator account (<strong className="text-slate-800">admin@gmail.com</strong>) is authorized to access executive administration and member insights.
             </p>
 
             {user && (
@@ -541,7 +541,7 @@ export default function AdminPage() {
                   required
                   value={adminLoginEmail}
                   onChange={e => setAdminLoginEmail(e.target.value)}
-                  placeholder="sheetalbedi@tasknera.com"
+                  placeholder="admin@gmail.com"
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                 />
               </div>
@@ -553,7 +553,7 @@ export default function AdminPage() {
                   required
                   value={adminLoginPassword}
                   onChange={e => setAdminLoginPassword(e.target.value)}
-                  placeholder="Tasknera@9312506515"
+                  placeholder="admin@123"
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                 />
               </div>

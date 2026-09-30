@@ -34,7 +34,7 @@
   - Detailed scorecard view showing paragraph citations from the candidate's CV as proof for each requirement.
   - Instant recruiter decision controls: **Shortlist**, **Reject**, or **Hold**.
 - **Executive Administration (`/admin`)**:
-  - Restricted to designated Administrator (`sheetalbedi@tasknera.com`).
+  - Restricted to designated Administrator (`admin@gmail.com`).
   - Recruiter team provisioning, pod assignment, and role management.
 - **Talent Analytics (`/analytics`)**:
   - Recruitment funnel metrics: *Applied → Parsed → Evaluated → Shortlisted → Offered*.

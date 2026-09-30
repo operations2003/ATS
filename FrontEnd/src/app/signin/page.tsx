@@ -103,7 +103,7 @@ export default function SignInPage() {
                   </button>
                 </div>
                 <p className="text-amber-800 leading-relaxed text-[11.5px]">
-                  For enterprise security governance, password resets are processed by your designated organization administrator. Please reach out to <strong className="font-semibold">sheetalbedi@tasknera.com</strong> or your internal system administrator.
+                  For enterprise security governance, password resets are processed by your designated organization administrator. Please reach out to <strong className="font-semibold">admin@gmail.com</strong> or your internal system administrator.
                 </p>
               </div>
             )}

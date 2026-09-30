@@ -141,7 +141,7 @@ export const getTAMembers = async (req: AuthRequest, res: Response): Promise<voi
     const users = await prisma.user.findMany({
       where: {
         AND: [
-          { email: { not: 'sheetalbedi@tasknera.com' } },
+          { email: { not: 'admin@gmail.com' } },
           { role: { not: 'ADMIN' } },
           { email: { not: { contains: 'harsh' } } },
           { name: { not: { contains: 'harsh' } } },
@@ -186,7 +186,7 @@ export const getTAMembers = async (req: AuthRequest, res: Response): Promise<voi
     });
 
     const taMembers = users
-      .filter(u => u.email?.toLowerCase().trim() !== 'sheetalbedi@tasknera.com' && u.role !== 'ADMIN')
+      .filter(u => u.email?.toLowerCase().trim() !== 'admin@gmail.com' && u.role !== 'ADMIN')
       .map(user => {
         const cleanRole = user.role === 'TEAM_LEADER' ? 'TEAM_LEAD' : 'RECRUITER_MEMBER';
         const cleanName = user.name || user.email.split('@')[0].replace('.', ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -412,7 +412,7 @@ export const updateMember = async (req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
-    if (targetUser.email?.toLowerCase().trim() === 'sheetalbedi@tasknera.com') {
+    if (targetUser.email?.toLowerCase().trim() === 'admin@gmail.com') {
       if (role && role !== 'ADMIN') {
         res.status(403).json({ error: 'Cannot demote or alter primary administrator role' });
         return;
@@ -523,7 +523,7 @@ export const deleteUser = async (req: AuthRequest, res: Response): Promise<void>
       return;
     }
 
-    if (targetUser.email?.toLowerCase().trim() === 'sheetalbedi@tasknera.com' || targetUser.role === 'ADMIN') {
+    if (targetUser.email?.toLowerCase().trim() === 'admin@gmail.com' || targetUser.role === 'ADMIN') {
       res.status(403).json({ error: 'Super Administrator accounts cannot be deleted' });
       return;
     }
