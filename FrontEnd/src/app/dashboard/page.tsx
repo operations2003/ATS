@@ -101,9 +101,13 @@ export default function DashboardPage() {
             const raw = JSON.parse(localStorage.getItem('tasknera_created_jobs') || '[]');
             const currentUserId = user?.id;
             const currentUserEmail = user?.email?.toLowerCase();
-            const isAdmin = user?.role === 'ADMIN';
+            const isAdmin = user?.role === 'ADMIN' || user?.role === 'CLIENT_ADMIN' || user?.role === 'SUPER_ADMIN';
+            const currentOrgId = user?.organizationId || 'org-tasknera';
+            const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
             localCreated = (Array.isArray(raw) ? raw : []).filter((j: any) => {
+              const jOrgId = j.organizationId || 'org-tasknera';
+              if (!isSuperAdmin && jOrgId !== currentOrgId) return false;
               if (isAdmin) return true;
               if (!currentUserId && !currentUserEmail) return false;
               const jUserId = j.created_by || j.createdBy;
@@ -153,7 +157,8 @@ export default function DashboardPage() {
 
         // 3a. First check direct /evaluations API
         try {
-          const evalUrl = user?.role === 'ADMIN' ? `${backendUrl}/evaluations?view=all` : `${backendUrl}/evaluations`;
+          const isCompanyAdmin = user?.role === 'ADMIN' || user?.role === 'CLIENT_ADMIN' || user?.role === 'SUPER_ADMIN';
+          const evalUrl = isCompanyAdmin ? `${backendUrl}/evaluations?view=all` : `${backendUrl}/evaluations`;
           const resEval = await fetch(evalUrl, { headers });
           if (resEval.ok) {
             const evalData = await resEval.json();

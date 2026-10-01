@@ -118,29 +118,31 @@ export interface CandidateEvaluationPayload {
 const getPythonServiceUrls = (): string[] => {
   const configured = (process.env.DOCUMENT_PROCESSOR_URL || '').trim().replace(/\/+$/, '');
   const remote = (process.env.REMOTE_DOCUMENT_PROCESSOR_URL || '').trim().replace(/\/+$/, '');
+  const isProd = process.env.NODE_ENV === 'production';
   const local = 'http://127.0.0.1:8000';
   const urls: string[] = [];
   if (configured) urls.push(configured);
-  if (!urls.includes(local)) urls.push(local);
   if (remote && !urls.includes(remote)) urls.push(remote);
+  if (!isProd && !urls.includes(local)) urls.push(local);
   return urls;
 };
 
-const EVAL_TIMEOUT_MS = parseInt(process.env.PYTHON_TIMEOUT_MS || '4000', 10);
+const EVAL_TIMEOUT_MS = parseInt(process.env.PYTHON_EVAL_TIMEOUT_MS || process.env.PYTHON_TIMEOUT_MS || '15000', 10);
 
 let lastEvaluationHealthCheck = 0;
 let evaluationServiceHealthyUrl: string | null = null;
 
 async function getHealthyEvaluationServiceUrl(): Promise<string | null> {
   const now = Date.now();
-  if (now - lastEvaluationHealthCheck < 25000) {
+  const cacheDuration = evaluationServiceHealthyUrl ? 30000 : 5000;
+  if (now - lastEvaluationHealthCheck < cacheDuration) {
     return evaluationServiceHealthyUrl;
   }
   const urls = getPythonServiceUrls();
   for (const url of urls) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1200);
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       const res = await fetch(`${url}/health`, { signal: controller.signal }).catch(() => null);
       clearTimeout(timeoutId);
       if (res && res.ok) {

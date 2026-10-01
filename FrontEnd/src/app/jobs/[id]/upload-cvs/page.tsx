@@ -45,7 +45,7 @@ interface JobDetails {
   requirements?: any[];
 }
 
-const MAX_BATCH_FILES = 25;
+const MAX_BATCH_FILES = 50;
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB per CV
 const MAX_CONCURRENT_UPLOADS = 4;
 const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.doc', '.txt'];
@@ -250,7 +250,7 @@ export default function BatchCVUploadPage() {
         }
 
         if (file.size > MAX_FILE_SIZE_BYTES) {
-          invalidMessages.push(`"${file.name}": Exceeds 5MB size limit (${formatBytes(file.size)}).`);
+          invalidMessages.push(`"${file.name}": Exceeds 10MB size limit (${formatBytes(file.size)}).`);
           return;
         }
 

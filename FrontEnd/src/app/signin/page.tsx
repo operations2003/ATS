@@ -24,7 +24,9 @@ export default function SignInPage() {
     setIsLoading(true);
     try {
       const roleResult = await signin(email, password);
-      if (roleResult === 'ADMIN') {
+      if (roleResult === 'SUPER_ADMIN') {
+        router.push('/super-admin');
+      } else if (roleResult === 'CLIENT_ADMIN' || roleResult === 'ADMIN') {
         router.push('/admin');
       } else {
         router.push('/dashboard');

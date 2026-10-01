@@ -60,19 +60,25 @@ def perform_pdf_ocr(pdf_bytes: bytes) -> str:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         ocr_texts = []
 
-        for page_index in range(len(doc)):
-            page = doc[page_index]
-            # Render page at 200 DPI for high-accuracy OCR
-            pix = page.get_pixmap(dpi=200)
-            img_data = pix.tobytes("png")
-            img = Image.open(io.BytesIO(img_data))
-            text = pytesseract.image_to_string(img, config='--oem 3 --psm 1')
-            if not text or len(text.strip()) < 20:
-                # Fallback to standard PSM mode
-                text = pytesseract.image_to_string(img)
+        try:
+            for page_index in range(len(doc)):
+                page = doc[page_index]
+                # Render page at 200 DPI for high-accuracy OCR
+                pix = page.get_pixmap(dpi=200)
+                img_data = pix.tobytes("png")
+                img = Image.open(io.BytesIO(img_data))
+                text = pytesseract.image_to_string(img, config='--oem 3 --psm 1')
+                if not text or len(text.strip()) < 20:
+                    # Fallback to standard PSM mode
+                    text = pytesseract.image_to_string(img)
 
-            if text and text.strip():
-                ocr_texts.append(text.strip())
+                if text and text.strip():
+                    ocr_texts.append(text.strip())
+        finally:
+            try:
+                doc.close()
+            except Exception:
+                pass
         
         return "\n\n".join(ocr_texts)
     except Exception as e:

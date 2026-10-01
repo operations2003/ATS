@@ -216,7 +216,7 @@ export default function JobsPage() {
           const raw = JSON.parse(localStorage.getItem('tasknera_created_jobs') || '[]');
           const currentUserId = user?.id;
           const currentUserEmail = user?.email?.toLowerCase();
-          const isAdmin = user?.role === 'ADMIN';
+          const isAdmin = user?.role === 'ADMIN' || user?.role === 'CLIENT_ADMIN' || user?.role === 'SUPER_ADMIN';
 
           // Clean legacy bad jobs out of localStorage permanently
           if (Array.isArray(raw)) {
@@ -234,8 +234,13 @@ export default function JobsPage() {
             }
           }
 
+          const currentOrgId = user?.organizationId || 'org-tasknera';
+          const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+
           localCreatedJobs = (Array.isArray(raw) ? raw : []).filter((j: any) => {
             if (isBadJob(j)) return false;
+            const jOrgId = j.organizationId || 'org-tasknera';
+            if (!isSuperAdmin && jOrgId !== currentOrgId) return false;
             if (isAdmin) return true;
             if (!currentUserId && !currentUserEmail) return false;
             const jUserId = j.created_by || j.createdBy;

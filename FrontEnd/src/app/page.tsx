@@ -6,17 +6,23 @@ import { useAuth } from '../context/AuthContext';
 
 export default function RootPage() {
   const router = useRouter();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   
   useEffect(() => {
     if (!isLoading) {
       if (isAuthenticated) {
-        router.push('/dashboard');
+        if (user?.role === 'SUPER_ADMIN') {
+          router.push('/super-admin');
+        } else if (user?.role === 'CLIENT_ADMIN' || user?.role === 'ADMIN') {
+          router.push('/admin');
+        } else {
+          router.push('/dashboard');
+        }
       } else {
         router.push('/home');
       }
     }
-  }, [router, isAuthenticated, isLoading]);
+  }, [router, isAuthenticated, isLoading, user]);
 
   return (
     <div className="min-h-screen bg-brand-bg flex items-center justify-center">

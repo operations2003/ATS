@@ -88,6 +88,7 @@ def parse_pdf_bytes(pdf_bytes: bytes, filename: str = "") -> Dict[str, Any]:
     extraction_method = "pymupdf-layout"
     ocr_used = False
 
+    doc = None
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         page_count = max(1, len(doc))
@@ -113,6 +114,12 @@ def parse_pdf_bytes(pdf_bytes: bytes, filename: str = "") -> Dict[str, Any]:
         extraction_method = "pdf-stream-fallback"
         extracted_raw = ""
         extracted_layout = ""
+    finally:
+        if doc is not None:
+            try:
+                doc.close()
+            except Exception:
+                pass
 
     cleaned_raw = clean_extracted_text(extracted_raw)
     cleaned_layout = clean_extracted_text(extracted_layout)

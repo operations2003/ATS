@@ -295,6 +295,30 @@ export const createJob = async (req: AuthRequest, res: Response): Promise<void> 
       created_at: new Date()
     }));
 
+    // Check active jobs quota if not Super Admin
+    const callerRole = req.user?.role || 'MEMBER';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const targetOrgId = req.user?.organizationId || 'org-tasknera';
+
+    if (!isSuperAdmin) {
+      try {
+        const org = await prisma.organization.findUnique({ where: { id: targetOrgId } });
+        if (org && org.maxActiveJobs) {
+          const currentActive = await prisma.job.count({
+            where: { organizationId: targetOrgId, status: { in: ['active', 'published'] } }
+          });
+          if (currentActive >= org.maxActiveJobs) {
+            res.status(400).json({
+              error: `Active job requisition limit reached. Your organization is allowed ${org.maxActiveJobs} active jobs. Please archive old jobs or contact your platform administrator.`
+            });
+            return;
+          }
+        }
+      } catch (quotaErr) {
+        // Continue if checking fails non-fatally
+      }
+    }
+
     try {
       // Build Prisma data payload dynamically to handle any pending DB column migrations
       const jobData: any = {
@@ -307,6 +331,7 @@ export const createJob = async (req: AuthRequest, res: Response): Promise<void> 
         jd_file_url: jd_file_url ? String(jd_file_url).trim() : null,
         status: jobStatus,
         created_by: req.user.userId,
+        organizationId: targetOrgId,
         requirements: {
           create: requirementsData.map(r => ({
             requirement: r.requirement,
@@ -392,6 +417,15 @@ export const normalizeJobWithAiController = async (req: AuthRequest, res: Respon
     const job = await getJobFromStoreOrDb(jobId);
     if (!job) {
       res.status(404).json({ error: `Job with ID "${jobId}" not found.` });
+      return;
+    }
+
+    const callerRole = req.user?.role || 'MEMBER';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const userOrgId = req.user?.organizationId || 'org-tasknera';
+
+    if (!isSuperAdmin && (job.organizationId || 'org-tasknera') !== userOrgId) {
+      res.status(403).json({ error: 'Forbidden: Access denied to other organization job requisition.' });
       return;
     }
 
@@ -510,25 +544,35 @@ export const getAllJobs = async (req: AuthRequest, res: Response): Promise<void>
       ];
     }
 
-    // Role-Based Access Control:
+    // Role-Based Access Control & Multi-Tenancy:
     // If not authenticated, return empty set
     if (!req.user || !req.user.userId) {
       res.status(200).json({ success: true, count: 0, jobs: [] });
       return;
     }
 
-    // If authenticated user is NOT an ADMIN, only return JDs created by this user.
-    // Administrators (ADMIN) can view all JDs across the organization.
-    if (req.user.role !== 'ADMIN') {
+    const callerRole = req.user.role || 'MEMBER';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
+
+    // Strictly scope by tenant organization
+    if (!isSuperAdmin) {
+      whereClause.organizationId = req.user.organizationId || 'org-tasknera';
+    } else if (req.query.organizationId) {
+      whereClause.organizationId = String(req.query.organizationId);
+    }
+
+    // Recruiters only see jobs they created; Client Admins see all jobs in their organization
+    if (!isSuperAdmin && !isClientAdmin) {
       whereClause.created_by = req.user.userId;
     }
 
-    whereClause.AND = [
-      ...(whereClause.AND || []),
-      { user: { email: { not: { contains: 'harsh', mode: 'insensitive' } } } },
-      { user: { name: { not: { contains: 'harsh', mode: 'insensitive' } } } },
-      { user: { email: { not: { contains: 'aditya', mode: 'insensitive' } } } },
-      { user: { name: { not: { contains: 'aditya', mode: 'insensitive' } } } },
+    whereClause.NOT = [
+      ...(whereClause.NOT || []),
+      { user: { email: { contains: 'harsh', mode: 'insensitive' } } },
+      { user: { name: { contains: 'harsh', mode: 'insensitive' } } },
+      { user: { email: { contains: 'aditya', mode: 'insensitive' } } },
+      { user: { name: { contains: 'aditya', mode: 'insensitive' } } },
     ];
 
     let jobs: any[] = [];
@@ -669,11 +713,17 @@ export const getAllJobs = async (req: AuthRequest, res: Response): Promise<void>
          (fj.position || fj.title || '').trim().toLowerCase() === (gJob.position || gJob.title || '').trim().toLowerCase())
       );
       if (!alreadyExists) {
-        // Enforce user isolation: non-admin users only see jobs they created
-        if (req.user && req.user.role !== 'ADMIN') {
-          const jobOwner = gJob.created_by || gJob.createdBy;
-          if (!jobOwner || (jobOwner !== req.user.userId && jobOwner !== req.user.id)) {
+        // Enforce user and tenant isolation:
+        if (!isSuperAdmin) {
+          const jobOrg = gJob.organizationId || 'org-tasknera';
+          if (jobOrg !== (req.user.organizationId || 'org-tasknera')) {
             continue;
+          }
+          if (!isClientAdmin) {
+            const jobOwner = gJob.created_by || gJob.createdBy;
+            if (!jobOwner || (jobOwner !== req.user.userId && jobOwner !== req.user.id)) {
+              continue;
+            }
           }
         }
 
@@ -718,11 +768,19 @@ export const getAvailableJobsForEvaluation = async (req: AuthRequest, res: Respo
       return;
     }
 
+    const callerRole = req.user.role || 'MEMBER';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
+
     const whereClause: any = {
       status: { not: 'archived' }
     };
-    // Non-admin members only see their own created jobs for matching
-    if (req.user.role !== 'ADMIN') {
+
+    if (!isSuperAdmin) {
+      whereClause.organizationId = req.user.organizationId || 'org-tasknera';
+    }
+    // Recruiters only see their own created jobs for matching
+    if (!isSuperAdmin && !isClientAdmin) {
       whereClause.created_by = req.user.userId;
     }
 
@@ -793,14 +851,26 @@ export const getJobById = async (req: AuthRequest, res: Response): Promise<void>
       return;
     }
 
+    const callerRole = req.user?.role || 'MEMBER';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
+    const userOrgId = req.user?.organizationId || 'org-tasknera';
+
     // 1. Check in-memory store first
     if (GLOBAL_JOB_STORE.has(jobId)) {
       const gJob = GLOBAL_JOB_STORE.get(jobId);
-      if (req.user && req.user.role !== 'ADMIN') {
-        const jobOwner = gJob.created_by || gJob.createdBy;
-        if (jobOwner && jobOwner !== req.user.userId && jobOwner !== req.user.id) {
-          res.status(403).json({ error: 'Access denied: Requisition belongs to another recruiter.' });
+      if (!isSuperAdmin) {
+        const jobOrg = gJob.organizationId || 'org-tasknera';
+        if (jobOrg !== userOrgId) {
+          res.status(403).json({ error: 'Forbidden: Access denied to other organization job requisition.' });
           return;
+        }
+        if (!isClientAdmin) {
+          const jobOwner = gJob.created_by || gJob.createdBy;
+          if (jobOwner && jobOwner !== req.user?.userId && jobOwner !== req.user?.id) {
+            res.status(403).json({ error: 'Access denied: Requisition belongs to another recruiter.' });
+            return;
+          }
         }
       }
       res.status(200).json({ job: gJob });
@@ -845,12 +915,20 @@ export const getJobById = async (req: AuthRequest, res: Response): Promise<void>
       });
 
       if (job) {
-        GLOBAL_JOB_STORE.set(job.id, job);
-        // Enforce RBAC: Non-admin recruiters can only access their own jobs
-        if (req.user && req.user.role !== 'ADMIN' && job.created_by !== req.user.userId) {
-          res.status(403).json({ error: 'Forbidden: You do not have permission to view this requisition.' });
-          return;
+        // Enforce Multi-Tenancy & RBAC
+        const jobOrg = job.organizationId || 'org-tasknera';
+        if (!isSuperAdmin) {
+          if (jobOrg !== userOrgId) {
+            res.status(403).json({ error: 'Forbidden: Access denied to other organization job requisition.' });
+            return;
+          }
+          if (!isClientAdmin && job.created_by !== req.user?.userId) {
+            res.status(403).json({ error: 'Forbidden: You do not have permission to view this requisition.' });
+            return;
+          }
         }
+
+        GLOBAL_JOB_STORE.set(job.id, job);
 
         const isExcludedWorker = (name?: string | null, email?: string | null) => {
           const n = (name || '').toLowerCase().trim();
@@ -904,7 +982,7 @@ export const getJobById = async (req: AuthRequest, res: Response): Promise<void>
       }
     }
 
-    // 3. Check sample jobs if not found in database
+    // 3. Check sample jobs if not found in database (isolated to default tenant)
     const sampleJobs: Record<string, any> = {
       'job-sample-1': {
         id: 'job-sample-1',
@@ -956,36 +1034,14 @@ export const getJobById = async (req: AuthRequest, res: Response): Promise<void>
       s => s.id === jobId || s.position.toLowerCase().includes(jobId.toLowerCase())
     );
 
-    if (matchedSample) {
-      GLOBAL_JOB_STORE.set(jobId, matchedSample);
-      res.status(200).json({ job: matchedSample });
+    if (matchedSample && (isSuperAdmin || userOrgId === 'org-tasknera')) {
+      const sampleWithOrg = { ...matchedSample, organizationId: 'org-tasknera' };
+      GLOBAL_JOB_STORE.set(jobId, sampleWithOrg);
+      res.status(200).json({ job: sampleWithOrg });
       return;
     }
 
-    // 4. Candidate store hint: check if candidates under this job have currentCompany or role hint
-    const memCandidates = CANDIDATE_STORE.get(jobId) || [];
-    const candidateCompanyHint = memCandidates.find(c => c.currentCompany)?.currentCompany || null;
-
-    // 5. Dynamic formatting fallback from ID
-    const formattedTitle = jobId
-      .replace(/^job-sample-\d+/i, 'Software Professional')
-      .replace(/[_-]/g, ' ')
-      .replace(/\b\w/g, l => l.toUpperCase());
-
-    const fallbackJob = {
-      id: jobId,
-      position: formattedTitle || 'Job Position',
-      title: formattedTitle || 'Job Position',
-      client: candidateCompanyHint || 'Company Requisition',
-      location: 'Remote / Hybrid',
-      work_mode: 'Hybrid',
-      salary: 'Competitive',
-      status: 'Active',
-      requirements: []
-    };
-    GLOBAL_JOB_STORE.set(jobId, fallbackJob);
-
-    res.status(200).json({ job: fallbackJob });
+    res.status(404).json({ error: `Job with ID "${jobId}" not found.` });
   } catch (error: any) {
     console.error('Get Job By ID Error:', error);
     res.status(500).json({ error: 'Server error while fetching job' });
@@ -1004,6 +1060,11 @@ export const updateJob = async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
 
+    const callerRole = req.user?.role || 'MEMBER';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
+    const userOrgId = req.user?.organizationId || 'org-tasknera';
+
     const { client, position, location, work_mode, salary, jd_text, jd_file_url, status } = req.body;
 
     // Optional Status Validation if provided
@@ -1017,16 +1078,26 @@ export const updateJob = async (req: AuthRequest, res: Response): Promise<void> 
 
     // If not a UUID or if not in database, update memory store directly
     if (!UUID_REGEX.test(jobId)) {
-      const current = GLOBAL_JOB_STORE.get(jobId) || {
-        id: jobId,
-        position: position || 'Job Position',
-        title: position || 'Job Position',
-        client: client || 'Company Requisition',
-        location: location || 'Remote / Hybrid',
-        work_mode: work_mode || 'Hybrid',
-        status: status || 'Active',
-        requirements: []
-      };
+      const current = GLOBAL_JOB_STORE.get(jobId);
+      if (!current) {
+        res.status(404).json({ error: `Job with ID "${jobId}" not found.` });
+        return;
+      }
+
+      if (!isSuperAdmin) {
+        const jobOrg = current.organizationId || 'org-tasknera';
+        if (jobOrg !== userOrgId) {
+          res.status(403).json({ error: 'Forbidden: You cannot modify job requisitions belonging to another organization.' });
+          return;
+        }
+        if (!isClientAdmin) {
+          const jobOwner = current.created_by || current.createdBy;
+          if (jobOwner && jobOwner !== req.user?.userId && jobOwner !== req.user?.id) {
+            res.status(403).json({ error: 'Forbidden: You can only edit requisitions created by you.' });
+            return;
+          }
+        }
+      }
 
       const updated = {
         ...current,
@@ -1054,21 +1125,21 @@ export const updateJob = async (req: AuthRequest, res: Response): Promise<void> 
     });
 
     if (!existingJob) {
-      const current = GLOBAL_JOB_STORE.get(jobId) || { id: jobId };
-      const updated = {
-        ...current,
-        ...(client !== undefined ? { client: String(client).trim() } : {}),
-        ...(position !== undefined ? { position: String(position).trim(), title: String(position).trim() } : {}),
-      };
-      GLOBAL_JOB_STORE.set(jobId, updated);
-      res.status(200).json({ message: 'Job updated successfully', job: updated });
+      res.status(404).json({ error: `Job with ID "${jobId}" not found.` });
       return;
     }
 
-    // Enforce RBAC: Non-admin members can only update their own created JDs
-    if (req.user && req.user.role !== 'ADMIN' && existingJob.created_by !== req.user.userId) {
-      res.status(403).json({ error: 'Forbidden: You can only edit requisitions created by you.' });
-      return;
+    // Enforce Tenant Isolation & RBAC
+    if (!isSuperAdmin) {
+      const jobOrg = existingJob.organizationId || 'org-tasknera';
+      if (jobOrg !== userOrgId) {
+        res.status(403).json({ error: 'Forbidden: You cannot modify job requisitions belonging to another organization.' });
+        return;
+      }
+      if (!isClientAdmin && existingJob.created_by !== req.user?.userId) {
+        res.status(403).json({ error: 'Forbidden: You can only edit requisitions created by you.' });
+        return;
+      }
     }
 
     const updateData: any = {};
@@ -1113,6 +1184,11 @@ export const deleteJob = async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
 
+    const callerRole = req.user?.role || 'MEMBER';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
+    const userOrgId = req.user?.organizationId || 'org-tasknera';
+
     const existingJob = await prisma.job.findUnique({
       where: { id: jobId }
     });
@@ -1122,10 +1198,17 @@ export const deleteJob = async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
 
-    // Enforce RBAC: Non-admin members can only delete their own created JDs
-    if (req.user && req.user.role !== 'ADMIN' && existingJob.created_by !== req.user.userId) {
-      res.status(403).json({ error: 'Forbidden: You can only delete requisitions created by you.' });
-      return;
+    // Enforce Tenant Isolation & RBAC
+    if (!isSuperAdmin) {
+      const jobOrg = existingJob.organizationId || 'org-tasknera';
+      if (jobOrg !== userOrgId) {
+        res.status(403).json({ error: 'Forbidden: You cannot delete job requisitions belonging to another organization.' });
+        return;
+      }
+      if (!isClientAdmin && existingJob.created_by !== req.user?.userId) {
+        res.status(403).json({ error: 'Forbidden: You can only delete requisitions created by you.' });
+        return;
+      }
     }
 
     // Cascade delete related records

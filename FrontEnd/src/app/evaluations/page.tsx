@@ -72,7 +72,8 @@ export default function EvaluationsPage() {
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       };
 
-      const url = scope === 'all' && user?.role === 'ADMIN'
+      const isCompanyAdmin = user?.role === 'ADMIN' || user?.role === 'CLIENT_ADMIN' || user?.role === 'SUPER_ADMIN';
+      const url = scope === 'all' && isCompanyAdmin
         ? `${backendUrl}/evaluations?view=all`
         : `${backendUrl}/evaluations?scope=mine`;
 
@@ -134,7 +135,7 @@ export default function EvaluationsPage() {
             <p className="text-sm text-slate-500 mt-1">Deterministic matching breakdown, candidate-to-JD evidence verification, and submission decisions</p>
           </div>
           <div className="flex items-center gap-3">
-            {user?.role === 'ADMIN' && (
+            {(user?.role === 'ADMIN' || user?.role === 'CLIENT_ADMIN' || user?.role === 'SUPER_ADMIN') && (
               <div className="flex items-center p-1 bg-slate-200/80 rounded-xl border border-slate-300">
                 <button
                   onClick={() => setScope('mine')}

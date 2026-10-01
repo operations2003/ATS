@@ -19,7 +19,7 @@ const parseParam = (param: string | string[] | undefined): string => {
 /**
  * Helper to check if job exists and validate access for authenticated recruiters/members
  */
-async function findUserJob(jobIdParam: string | string[] | undefined, userId: string, userRole?: string) {
+async function findUserJob(jobIdParam: string | string[] | undefined, userId: string, userRole?: string, userOrgId?: string) {
   const jobId = parseParam(jobIdParam);
   if (!jobId || !UUID_REGEX.test(jobId)) {
     return { error: 'Invalid Job ID format. Must be a valid UUID.', status: 400, jobId: '' };
@@ -33,8 +33,16 @@ async function findUserJob(jobIdParam: string | string[] | undefined, userId: st
     return { error: `Job with ID "${jobId}" not found.`, status: 404, jobId };
   }
 
+  const isSuperAdmin = userRole === 'SUPER_ADMIN';
+  const isClientAdmin = userRole === 'CLIENT_ADMIN' || userRole === 'ADMIN';
+
+  // Multi-tenant check: Non-super-admin users can never access jobs of another organization
+  if (!isSuperAdmin && job.organizationId && userOrgId && job.organizationId !== userOrgId) {
+    return { error: 'Forbidden: You do not have access to requisitions of another organization.', status: 403, jobId };
+  }
+
   // Enforce RBAC: Non-admin recruiters only have access to requirements of JDs they created
-  if (userRole && userRole !== 'ADMIN' && job.created_by !== userId) {
+  if (!isSuperAdmin && !isClientAdmin && job.created_by !== userId) {
     return { error: 'Forbidden: You only have access to requirements for your own job requisitions.', status: 403, jobId };
   }
 
@@ -64,6 +72,15 @@ const DUMMY_FALLBACK_REQS: Record<string, any[]> = {
 export const getRequirements = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const rawJobId = parseParam(req.params.jobId);
+
+    // Validate access to job if UUID
+    if (rawJobId && UUID_REGEX.test(rawJobId) && req.user) {
+      const check = await findUserJob(rawJobId, req.user.userId, req.user.role, req.user.organizationId);
+      if (check.error) {
+        res.status(check.status || 400).json({ error: check.error });
+        return;
+      }
+    }
 
     // If matching fallback dummy ID
     if (DUMMY_FALLBACK_REQS[rawJobId]) {
@@ -116,7 +133,7 @@ export const createRequirement = async (req: AuthRequest, res: Response): Promis
       return;
     }
 
-    const check = await findUserJob(req.params.jobId, req.user.userId);
+    const check = await findUserJob(req.params.jobId, req.user.userId, req.user.role, req.user.organizationId);
     if (check.error) {
       res.status(check.status || 400).json({ error: check.error });
       return;
@@ -181,7 +198,7 @@ export const updateRequirement = async (req: AuthRequest, res: Response): Promis
       return;
     }
 
-    const check = await findUserJob(req.params.jobId, req.user.userId);
+    const check = await findUserJob(req.params.jobId, req.user.userId, req.user.role, req.user.organizationId);
     if (check.error) {
       res.status(check.status || 400).json({ error: check.error });
       return;
@@ -266,7 +283,7 @@ export const deleteRequirement = async (req: AuthRequest, res: Response): Promis
       return;
     }
 
-    const check = await findUserJob(req.params.jobId, req.user.userId);
+    const check = await findUserJob(req.params.jobId, req.user.userId, req.user.role, req.user.organizationId);
     if (check.error) {
       res.status(check.status || 400).json({ error: check.error });
       return;
@@ -312,7 +329,7 @@ export const confirmRequirements = async (req: AuthRequest, res: Response): Prom
       return;
     }
 
-    const check = await findUserJob(req.params.jobId, req.user.userId, req.user.role);
+    const check = await findUserJob(req.params.jobId, req.user.userId, req.user.role, req.user.organizationId);
     if (check.error) {
       res.status(check.status || 400).json({ error: check.error });
       return;

@@ -25,10 +25,10 @@ const upload = multer({
 const router = Router();
 
 // Retrieve all candidates in central candidate pool (scoped to organization)
-router.get('/', optionalProtect, getAllCandidates);
+router.get('/', protect, getAllCandidates);
 
 // Bulk upload CVs directly to candidate pool
-router.post('/upload', optionalProtect, upload.any(), uploadCandidateCVs);
+router.post('/upload', protect, upload.any(), uploadCandidateCVs);
 
 // Available jobs in organization for matching against a candidate (filtered by permissions)
 router.get('/:candidateId/available-jobs', protect, getAvailableJobsForCandidateController);
@@ -46,8 +46,8 @@ router.post('/:candidateId/match-with-job', protect, matchCandidateWithJobContro
 router.get('/:candidateId/evaluations', protect, getCandidateEvaluationHistoryController);
 
 // Single candidate lookup, decision update & delete
-router.get('/:candidateId', getCandidateById);
-router.patch('/:candidateId/decision', optionalProtect, updateCandidateDecision);
-router.delete('/:candidateId', deleteCandidate);
+router.get('/:candidateId', protect, getCandidateById);
+router.patch('/:candidateId/decision', protect, updateCandidateDecision);
+router.delete('/:candidateId', protect, deleteCandidate);
 
 export default router;

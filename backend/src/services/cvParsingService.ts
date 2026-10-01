@@ -113,12 +113,23 @@ export interface CandidateParsedProfile {
  */
 export function validateCvTextQuality(rawText: string): { isValid: boolean; reason?: string } {
   if (!rawText || typeof rawText !== 'string') {
-    return { isValid: false, reason: 'Extracted text is empty.' };
+    return { isValid: false, reason: 'Extracted text is empty or document is unreadable.' };
   }
 
   const text = rawText.trim();
-  if (text.length < 20) {
-    return { isValid: false, reason: 'Extracted text length is too short (< 20 characters).' };
+  if (text.length < 40) {
+    return { isValid: false, reason: 'Extracted text length is too short (< 40 characters) to be a valid CV.' };
+  }
+
+  // Reject raw PDF binary headers or postscript dumps
+  if (text.startsWith('%PDF-') || /^[%\x00-\x1f]/.test(text)) {
+    return { isValid: false, reason: 'Extracted text contains unparsed raw PDF binary header data.' };
+  }
+
+  // A valid CV needs at least some word content (e.g. at least 5 recognizable words)
+  const words = text.split(/\s+/).filter(w => /^[a-zA-Z]{2,}/.test(w));
+  if (words.length < 5) {
+    return { isValid: false, reason: 'Extracted text contains insufficient recognizable words to constitute a valid CV.' };
   }
 
   const htmlPatterns = [
@@ -151,7 +162,7 @@ export function validateCvTextQuality(rawText: string): { isValid: boolean; reas
   }
 
   const unprintableCount = (text.match(/[\x00-\x08\x0E-\x1F\x7F-\x9F]/g) || []).length;
-  if (unprintableCount > text.length * 0.25) {
+  if (unprintableCount > text.length * 0.15) {
     return { isValid: false, reason: 'Extracted text contains excessive unprintable binary characters.' };
   }
 

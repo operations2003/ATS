@@ -23,6 +23,7 @@ export interface PythonDocumentResponse {
   skills?: string[];
   yearsOfExperience?: string;
   education?: Array<{ degree: string; institution?: string; year?: string }>;
+  pastCompanies?: string[];
   currentTitle?: string;
   currentCompany?: string;
   summary?: string;
@@ -38,7 +39,10 @@ export interface PythonBatchResponse {
   results: PythonDocumentResponse[];
 }
 
-const REQUEST_TIMEOUT_MS = parseInt(process.env.PYTHON_TIMEOUT_MS || '4000', 10);
+const REQUEST_TIMEOUT_MS = parseInt(process.env.PYTHON_TIMEOUT_MS || '25000', 10);
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 1500;
+const BATCH_CONCURRENCY = parseInt(process.env.BATCH_CONCURRENCY || '3', 10);
 
 let lastPythonHealthCheck = 0;
 let pythonServiceAvailable = false;
@@ -47,7 +51,9 @@ export const isPythonDocumentProcessorAvailable = async (): Promise<boolean> => 
   const config = getPythonServiceConfig();
   if (!config) return false;
   const now = Date.now();
-  if (now - lastPythonHealthCheck < 25000) {
+  // If previously healthy, cache for 30s. If unhealthy, check again after 5s to allow fast recovery on cold start.
+  const cacheDuration = pythonServiceAvailable ? 30000 : 5000;
+  if (now - lastPythonHealthCheck < cacheDuration) {
     return pythonServiceAvailable;
   }
   return new Promise((resolve) => {
@@ -58,7 +64,7 @@ export const isPythonDocumentProcessorAvailable = async (): Promise<boolean> => 
         port: config.port,
         path: `${config.basePath}/health`,
         method: 'GET',
-        timeout: 1200,
+        timeout: 6000,
       },
       (res) => {
         pythonServiceAvailable = Boolean(res.statusCode && res.statusCode >= 200 && res.statusCode < 300);
@@ -163,39 +169,18 @@ export const extractDocumentTextLocally = async (
 };
 
 /**
- * Communicates with the Python FastAPI Document Processing Service (single file extraction)
- * Automatically and instantly falls back to Node.js local parser on timeout/failure.
+ * Helper to perform single HTTP request to Python /parse-document endpoint
  */
-export const extractDocumentTextViaPython = async (
+const sendPythonParseRequest = (
+  config: { isHttps: boolean; hostname: string; port: number; basePath: string },
   buffer: Buffer,
   filename: string,
   mimeType: string
-): Promise<PythonDocumentResponse> => {
-  const isHealthy = await isPythonDocumentProcessorAvailable();
-  if (!isHealthy) {
-    return extractDocumentTextLocally(buffer, filename, mimeType);
-  }
-
-  return new Promise((resolve) => {
-    let resolved = false;
-    const safeResolve = (res: PythonDocumentResponse) => {
-      if (!resolved) {
-        resolved = true;
-        resolve(res);
-      }
-    };
-
-    const config = getPythonServiceConfig();
-    if (!config) {
-      // In production without DOCUMENT_PROCESSOR_URL, extract immediately with built-in Node extractor
-      return extractDocumentTextLocally(buffer, filename, mimeType).then(safeResolve);
-    }
-
+): Promise<{ statusCode: number; responseData: string }> => {
+  return new Promise((resolve, reject) => {
     const httpModule = config.isHttps ? https : http;
-
     const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2);
 
-    // Build multipart payload
     const header = Buffer.from(
       `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mimeType}\r\n\r\n`
     );
@@ -221,68 +206,19 @@ export const extractDocumentTextViaPython = async (
         res.on('data', (chunk) => {
           responseData += chunk;
         });
-
-        res.on('end', async () => {
-          try {
-            if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-              const rawJson: any = JSON.parse(responseData);
-              const data = rawJson.data || {};
-              const cand = data.candidate || {};
-              
-              const structuredSkills = data.skill_names || (Array.isArray(data.skills) ? data.skills.map((s: any) => typeof s === 'string' ? s : s.skill).filter(Boolean) : []);
-              const rawExtractedText = rawJson.text || rawJson.normalizedText || rawJson.layout_text || (data.raw_sections ? data.raw_sections.map((s: any) => s.content).join('\n\n') : '');
-
-              const json: PythonDocumentResponse = {
-                success: Boolean(rawJson.success ?? true),
-                fileName: filename,
-                fileType: mimeType,
-                pageCount: rawJson.pageCount || data.page_count || 1,
-                extractionMethod: rawJson.extractionMethod || rawJson.parser || 'pymupdf-fastapi',
-                ocrUsed: Boolean(rawJson.ocrUsed || rawJson.ocr_used),
-                textQuality: rawExtractedText.length > 20 ? 'HIGH' : 'LOW',
-                characterCount: rawExtractedText.length,
-                wordCount: rawExtractedText.split(/\s+/).filter(Boolean).length,
-                text: rawExtractedText,
-                layoutText: rawJson.layoutText || rawJson.layout_text || rawExtractedText,
-                normalizedText: rawJson.normalizedText || rawExtractedText,
-                candidateName: cand.name || rawJson.candidateName,
-                email: cand.email || rawJson.email,
-                phone: cand.phone || rawJson.phone,
-                skills: structuredSkills.length > 0 ? structuredSkills : rawJson.skills,
-                yearsOfExperience: data.total_experience_years ? `${data.total_experience_years} years` : (data.total_experience_label || rawJson.yearsOfExperience),
-                currentTitle: data.current_title || rawJson.currentTitle,
-                currentCompany: data.current_company || rawJson.currentCompany,
-                summary: data.summary || rawJson.summary,
-              };
-
-              if (json.success && json.text && json.text.trim().length > 20) {
-                console.log(`[Python Document Client] Successfully parsed ${filename} (length: ${json.text.length} chars, method: ${json.extractionMethod})`);
-                return safeResolve(json);
-              }
-            }
-            console.warn(`[Document Processor] Python returned status ${res.statusCode} or empty text for ${filename}. Falling back gracefully to local Node extractor.`);
-            const localFallback = await extractDocumentTextLocally(buffer, filename, mimeType);
-            safeResolve(localFallback);
-          } catch (jsonErr: any) {
-            console.warn(`[Document Processor] Python JSON parse failed for ${filename}, falling back to local extractor:`, jsonErr.message);
-            const localFallback = await extractDocumentTextLocally(buffer, filename, mimeType);
-            safeResolve(localFallback);
-          }
+        res.on('end', () => {
+          resolve({ statusCode: res.statusCode || 500, responseData });
         });
       }
     );
 
-    req.on('timeout', async () => {
+    req.on('timeout', () => {
       req.destroy();
-      console.warn(`[Document Processor] Python service timed out (${REQUEST_TIMEOUT_MS}ms) for ${filename}. Falling back gracefully to local Node extractor.`);
-      const localFallback = await extractDocumentTextLocally(buffer, filename, mimeType);
-      safeResolve(localFallback);
+      reject(new Error(`Python service timed out after ${REQUEST_TIMEOUT_MS}ms`));
     });
 
-    req.on('error', async (err) => {
-      console.warn(`[Document Processor] Python service unavailable (${err.message}) for ${filename}. Falling back gracefully to local Node extractor.`);
-      const localFallback = await extractDocumentTextLocally(buffer, filename, mimeType);
-      safeResolve(localFallback);
+    req.on('error', (err) => {
+      reject(err);
     });
 
     req.write(payload);
@@ -291,7 +227,148 @@ export const extractDocumentTextViaPython = async (
 };
 
 /**
+ * Communicates with the Python FastAPI Document Processing Service (single file extraction)
+ * Features bounded retries for transient Render errors (502, 503, 504, cold start).
+ * Falls back to Node.js local extractor only if Python service is genuinely unavailable.
+ */
+export const extractDocumentTextViaPython = async (
+  buffer: Buffer,
+  filename: string,
+  mimeType: string
+): Promise<PythonDocumentResponse> => {
+  const config = getPythonServiceConfig();
+  if (!config) {
+    return extractDocumentTextLocally(buffer, filename, mimeType);
+  }
+
+  // Check health (with fast recovery on cold start)
+  const isHealthy = await isPythonDocumentProcessorAvailable();
+  if (!isHealthy) {
+    console.warn(`[Python Document Client] Python service is currently unreachable. Using local extractor for ${filename}.`);
+    return extractDocumentTextLocally(buffer, filename, mimeType);
+  }
+
+  let attempt = 0;
+  while (attempt <= MAX_RETRIES) {
+    attempt++;
+    try {
+      const { statusCode, responseData } = await sendPythonParseRequest(config, buffer, filename, mimeType);
+
+      if (statusCode >= 200 && statusCode < 300) {
+        let rawJson: any;
+        try {
+          rawJson = JSON.parse(responseData);
+        } catch (jsonErr: any) {
+          console.warn(`[Document Processor] Python JSON parse failed for ${filename}:`, jsonErr.message);
+          return extractDocumentTextLocally(buffer, filename, mimeType);
+        }
+
+        const data = rawJson.data || {};
+        const cand = data.candidate || {};
+
+        const structuredSkills = rawJson.skills && rawJson.skills.length > 0
+          ? rawJson.skills
+          : (data.skill_names || (Array.isArray(data.skills) ? data.skills.map((s: any) => typeof s === 'string' ? s : s.skill).filter(Boolean) : []));
+
+        const rawExtractedText = rawJson.text || rawJson.normalizedText || rawJson.layoutText || rawJson.layout_text || (data.raw_sections ? data.raw_sections.map((s: any) => s.content).join('\n\n') : '');
+
+        // If Python explicitly returned failure (e.g. corrupt or empty file), preserve its error!
+        if (rawJson.success === false) {
+          return {
+            success: false,
+            fileName: filename,
+            fileType: mimeType,
+            pageCount: rawJson.pageCount || 0,
+            extractionMethod: rawJson.extractionMethod || 'python-fastapi',
+            ocrUsed: Boolean(rawJson.ocrUsed),
+            textQuality: 'FAILED',
+            characterCount: rawExtractedText.length,
+            wordCount: rawExtractedText.split(/\s+/).filter(Boolean).length,
+            text: rawExtractedText,
+            candidateName: rawJson.candidateName || cand.name || undefined,
+            email: rawJson.email || cand.email || undefined,
+            phone: rawJson.phone || cand.phone || undefined,
+            skills: structuredSkills,
+            yearsOfExperience: rawJson.yearsOfExperience || data.total_experience_label,
+            education: rawJson.education || [],
+            pastCompanies: rawJson.pastCompanies || [],
+            summary: rawJson.summary || data.summary,
+            error: rawJson.error || 'Document text extraction was insufficient.',
+          };
+        }
+
+        const isGoodText = rawExtractedText.trim().length > 20;
+        const result: PythonDocumentResponse = {
+          success: Boolean(rawJson.success ?? isGoodText),
+          fileName: filename,
+          fileType: mimeType,
+          pageCount: rawJson.pageCount || data.page_count || 1,
+          extractionMethod: rawJson.extractionMethod || rawJson.parser || 'pymupdf-fastapi',
+          ocrUsed: Boolean(rawJson.ocrUsed || rawJson.ocr_used),
+          textQuality: isGoodText ? (rawJson.textQuality || 'HIGH') : 'LOW',
+          characterCount: rawExtractedText.length,
+          wordCount: rawExtractedText.split(/\s+/).filter(Boolean).length,
+          text: rawExtractedText,
+          layoutText: rawJson.layoutText || rawJson.layout_text || rawExtractedText,
+          normalizedText: rawJson.normalizedText || rawExtractedText,
+          candidateName: rawJson.candidateName || cand.name || undefined,
+          email: rawJson.email || cand.email || undefined,
+          phone: rawJson.phone || cand.phone || undefined,
+          skills: structuredSkills,
+          yearsOfExperience: rawJson.yearsOfExperience || (data.total_experience_years ? `${data.total_experience_years} years` : data.total_experience_label),
+          education: rawJson.education || [],
+          pastCompanies: rawJson.pastCompanies || [],
+          currentTitle: rawJson.currentTitle || data.current_title,
+          currentCompany: rawJson.currentCompany || data.current_company,
+          summary: rawJson.summary || data.summary,
+          rawTextSummary: rawJson.rawTextSummary,
+          error: isGoodText ? undefined : (rawJson.error || 'Document text extraction yielded insufficient characters.'),
+        };
+
+        if (result.success && isGoodText) {
+          console.log(`[Python Document Client] Successfully parsed ${filename} (${result.characterCount} chars, method: ${result.extractionMethod})`);
+          return result;
+        }
+
+        // If Python returned 200 but text was < 20 chars, try local extractor
+        console.warn(`[Document Processor] Python returned sparse text for ${filename}. Trying local extractor.`);
+        const local = await extractDocumentTextLocally(buffer, filename, mimeType);
+        if (local.success && local.text.length > rawExtractedText.length) {
+          return local;
+        }
+        return result;
+      }
+
+      // Check for transient server errors (502, 503, 504 - e.g. Render waking up)
+      if (statusCode === 502 || statusCode === 503 || statusCode === 504) {
+        if (attempt <= MAX_RETRIES) {
+          console.warn(`[Python Document Client] Transient HTTP ${statusCode} for ${filename}. Retrying (attempt ${attempt}/${MAX_RETRIES}) in ${RETRY_DELAY_MS}ms...`);
+          await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * attempt));
+          continue;
+        }
+      }
+
+      // Permanent 4xx error or exhausting retries
+      console.warn(`[Document Processor] Python returned non-2xx status ${statusCode} for ${filename}. Falling back to local extractor.`);
+      return extractDocumentTextLocally(buffer, filename, mimeType);
+
+    } catch (reqErr: any) {
+      if (attempt <= MAX_RETRIES && reqErr.message?.includes('timed out')) {
+        console.warn(`[Python Document Client] Timeout on ${filename}. Retrying (attempt ${attempt}/${MAX_RETRIES})...`);
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * attempt));
+        continue;
+      }
+      console.warn(`[Document Processor] Python request failed for ${filename} (${reqErr.message}). Falling back to local extractor.`);
+      return extractDocumentTextLocally(buffer, filename, mimeType);
+    }
+  }
+
+  return extractDocumentTextLocally(buffer, filename, mimeType);
+};
+
+/**
  * Communicates with the Python FastAPI Document Processing Service for batch files
+ * Uses controlled concurrency (3 parallel workers) to prevent socket/memory exhaustion.
  */
 export const extractBatchDocumentsViaPython = async (
   files: Array<{ buffer: Buffer; filename: string; mimeType: string }>
@@ -306,12 +383,44 @@ export const extractBatchDocumentsViaPython = async (
     };
   }
 
-  // Process files concurrently with individual safety
-  const results = await Promise.all(
-    files.map(f => extractDocumentTextViaPython(f.buffer, f.filename, f.mimeType))
-  );
+  console.log(`[Batch Extraction] Processing ${files.length} file(s) with controlled concurrency of ${BATCH_CONCURRENCY}...`);
 
-  const successfulCount = results.filter(r => r.success).length;
+  const results: PythonDocumentResponse[] = new Array(files.length);
+  let cursor = 0;
+
+  const worker = async () => {
+    while (cursor < files.length) {
+      const index = cursor++;
+      const file = files[index];
+      if (!file) break;
+
+      try {
+        const res = await extractDocumentTextViaPython(file.buffer, file.filename, file.mimeType);
+        results[index] = res;
+      } catch (err: any) {
+        console.error(`[Batch Extraction Error] Failed processing ${file.filename}:`, err);
+        results[index] = {
+          success: false,
+          fileName: file.filename,
+          fileType: file.mimeType,
+          pageCount: 0,
+          extractionMethod: 'error',
+          ocrUsed: false,
+          textQuality: 'FAILED',
+          characterCount: 0,
+          wordCount: 0,
+          text: '',
+          error: err.message || 'Processing error',
+        };
+      }
+    }
+  };
+
+  const workerCount = Math.min(BATCH_CONCURRENCY, files.length);
+  const workers = Array.from({ length: workerCount }, () => worker());
+  await Promise.all(workers);
+
+  const successfulCount = results.filter(r => r && r.success).length;
 
   return {
     success: true,

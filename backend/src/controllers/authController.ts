@@ -26,33 +26,61 @@ export const ensureDefaultAdmin = async (): Promise<void> => {
     const adminEmail = DESIGNATED_ADMIN_EMAIL.toLowerCase().trim();
     const hashedPassword = await bcrypt.hash(DESIGNATED_ADMIN_PASSWORD, 10);
 
-    // 1. Ensure designated admin exists with ADMIN role
+    // 1. Ensure designated admin exists with SUPER_ADMIN role
     const existing = await prisma.user.findUnique({ where: { email: adminEmail } });
     if (!existing) {
       await prisma.user.create({
         data: {
-          name: 'Admin User',
+          name: 'Super Admin',
           email: adminEmail,
           password: hashedPassword,
-          role: 'ADMIN',
+          role: 'SUPER_ADMIN',
           organizationId: 'org-tasknera'
         }
       });
-      console.log(`[Auth] Designated Administrator account (${adminEmail}) initialized in database.`);
+      console.log(`[Auth] Designated Administrator account (${adminEmail}) initialized as SUPER_ADMIN in database.`);
     } else {
       await prisma.user.update({
         where: { email: adminEmail },
         data: {
-          name: 'Admin User',
-          role: 'ADMIN',
+          name: 'Super Admin',
+          role: 'SUPER_ADMIN',
           password: hashedPassword
         }
       });
-      console.log(`[Auth] Designated Administrator account (${adminEmail}) verified as ADMIN in database.`);
+      console.log(`[Auth] Designated Administrator account (${adminEmail}) verified as SUPER_ADMIN in database.`);
     }
 
-    // 2. Demote any other accounts that were previous admins
-    const designatedAdmins = [adminEmail, 'shubham@tasknera.com'];
+    // 2. Ensure Tasknera Global Client Admin exists
+    const taskneraOrgAdminEmail = 'admin@tasknera.com';
+    const existingOrgAdmin = await prisma.user.findUnique({ where: { email: taskneraOrgAdminEmail } });
+    if (!existingOrgAdmin) {
+      await prisma.user.create({
+        data: {
+          name: 'Tasknera Admin',
+          email: taskneraOrgAdminEmail,
+          password: hashedPassword,
+          role: 'CLIENT_ADMIN',
+          organizationId: 'org-tasknera',
+          isActive: true
+        }
+      });
+      console.log(`[Auth] Tasknera Global Client Admin (${taskneraOrgAdminEmail}) initialized.`);
+    } else {
+      await prisma.user.update({
+        where: { email: taskneraOrgAdminEmail },
+        data: {
+          name: 'Tasknera Admin',
+          role: 'CLIENT_ADMIN',
+          organizationId: 'org-tasknera',
+          password: hashedPassword,
+          isActive: true
+        }
+      });
+    }
+
+    // 3. Demote any other accounts that were previous admins
+    const designatedAdmins = [adminEmail, taskneraOrgAdminEmail, 'shubham@tasknera.com'];
     await prisma.user.updateMany({
       where: {
         email: { notIn: designatedAdmins },
@@ -127,16 +155,26 @@ export const signin = async (req: Request, res: Response): Promise<void> => {
 
     // 1. Direct validation for designated admin (ensures login works even if DB is initializing or offline)
     if (cleanEmail === DESIGNATED_ADMIN_EMAIL && password === DESIGNATED_ADMIN_PASSWORD) {
+      let adminId = 'admin-user';
+      try {
+        const dbAdmin = await prisma.user.findUnique({ where: { email: cleanEmail } });
+        if (dbAdmin) {
+          adminId = dbAdmin.id;
+        }
+      } catch (e) {
+        console.warn('[Auth] Designated admin DB lookup failed, falling back:', e);
+      }
+
       const orgId = 'org-tasknera';
-      const userRole: UserRole = 'ADMIN';
-      const token = generateToken('admin-user', DESIGNATED_ADMIN_EMAIL, userRole, orgId);
+      const userRole: UserRole = 'SUPER_ADMIN';
+      const token = generateToken(adminId, DESIGNATED_ADMIN_EMAIL, userRole, orgId);
 
       res.status(200).json({
         message: 'Signed in successfully',
         token,
         user: {
-          id: 'admin-user',
-          name: 'Admin User',
+          id: adminId,
+          name: 'Super Admin',
           email: DESIGNATED_ADMIN_EMAIL,
           role: userRole,
           organizationId: orgId,
@@ -169,7 +207,10 @@ export const signin = async (req: Request, res: Response): Promise<void> => {
     }
 
     const orgId = user.organizationId || 'org-tasknera';
-    const userRole = user.role as UserRole;
+    let userRole = user.role as UserRole;
+    if (user.email.toLowerCase().trim() === DESIGNATED_ADMIN_EMAIL) {
+      userRole = 'SUPER_ADMIN';
+    }
     const token = generateToken(user.id, user.email, userRole, orgId);
 
     res.status(200).json({
@@ -188,15 +229,25 @@ export const signin = async (req: Request, res: Response): Promise<void> => {
   } catch (error) {
     console.error('Signin Error:', error);
     if (req.body?.email?.toLowerCase().trim() === DESIGNATED_ADMIN_EMAIL && req.body?.password === DESIGNATED_ADMIN_PASSWORD) {
+      let adminId = 'admin-user';
+      try {
+        const dbAdmin = await prisma.user.findUnique({ where: { email: DESIGNATED_ADMIN_EMAIL } });
+        if (dbAdmin) {
+          adminId = dbAdmin.id;
+        }
+      } catch (e) {
+        console.warn('[Auth] Designated admin DB lookup failed on error fallback:', e);
+      }
+
       const orgId = 'org-tasknera';
-      const userRole: UserRole = 'ADMIN';
-      const token = generateToken('admin-user', DESIGNATED_ADMIN_EMAIL, userRole, orgId);
+      const userRole: UserRole = 'SUPER_ADMIN';
+      const token = generateToken(adminId, DESIGNATED_ADMIN_EMAIL, userRole, orgId);
       res.status(200).json({
         message: 'Signed in successfully',
         token,
         user: {
-          id: 'admin-user',
-          name: 'Admin User',
+          id: adminId,
+          name: 'Super Admin',
           email: DESIGNATED_ADMIN_EMAIL,
           role: userRole,
           organizationId: orgId,
@@ -256,9 +307,9 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
     if (!user && req.user.email?.toLowerCase().trim() === DESIGNATED_ADMIN_EMAIL) {
       user = {
         id: req.user.userId || 'admin-user',
-        name: 'Admin User',
+        name: 'Super Admin',
         email: DESIGNATED_ADMIN_EMAIL,
-        role: 'ADMIN',
+        role: 'SUPER_ADMIN',
         organizationId: 'org-tasknera',
         createdAt: new Date().toISOString()
       };
@@ -269,6 +320,10 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
       return;
     }
 
+    if (user.email?.toLowerCase().trim() === DESIGNATED_ADMIN_EMAIL) {
+      user.role = 'SUPER_ADMIN';
+    }
+
     res.status(200).json({ user });
   } catch (error) {
     console.error('GetMe Error:', error);
@@ -276,9 +331,9 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
       res.status(200).json({
         user: {
           id: req.user.userId || 'admin-user',
-          name: 'Admin User',
+          name: 'Super Admin',
           email: DESIGNATED_ADMIN_EMAIL,
-          role: 'ADMIN',
+          role: 'SUPER_ADMIN',
           organizationId: 'org-tasknera',
           createdAt: new Date().toISOString()
         }

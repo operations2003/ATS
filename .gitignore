@@ -26,4 +26,9 @@ backend/data/
 scratch/
 **/scratch/
 local_pgdata/
-**/local_pgdata/
+**/local_pgdata/
+
+# Archives
+*.zip
+**/*.zip
+

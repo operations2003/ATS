@@ -25,7 +25,7 @@ def process_single_file_bytes(file_bytes: bytes, filename: str, content_type: st
             text="",
             layoutText="",
             normalizedText="",
-            candidateName="Candidate",
+            candidateName=None,
             email=None,
             phone=None,
             skills=[],
@@ -50,6 +50,9 @@ def process_single_file_bytes(file_bytes: bytes, filename: str, content_type: st
 
         success = parsed.get("textQuality") != "FAILED" and len(norm_txt.strip()) > 0
         error_msg = None if success else "Unable to extract readable text from document. Text extraction was insufficient."
+        extracted_name = parsed.get("candidateName")
+        if extracted_name and extracted_name.strip().lower() in ["candidate", "unknown", "profile", "applicant"]:
+            extracted_name = None
 
         return DocumentParseResponse(
             success=success,
@@ -65,7 +68,7 @@ def process_single_file_bytes(file_bytes: bytes, filename: str, content_type: st
             layoutText=layout_txt,
             normalizedText=norm_txt,
             # Structured JSON entities
-            candidateName=parsed.get("candidateName") or "Candidate",
+            candidateName=extracted_name,
             email=parsed.get("email"),
             phone=parsed.get("phone"),
             skills=parsed.get("skills", []),
@@ -90,7 +93,7 @@ def process_single_file_bytes(file_bytes: bytes, filename: str, content_type: st
             text="",
             layoutText="",
             normalizedText="",
-            candidateName="Candidate",
+            candidateName=None,
             email=None,
             phone=None,
             skills=[],
@@ -145,7 +148,7 @@ async def parse_documents(files: List[UploadFile] = File(...)):
                     text="",
                     layoutText="",
                     normalizedText="",
-                    candidateName="Candidate",
+                    candidateName=None,
                     email=None,
                     phone=None,
                     skills=[],

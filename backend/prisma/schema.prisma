@@ -9,17 +9,21 @@ datasource db {
 }
 
 enum UserRole {
+  SUPER_ADMIN
+  CLIENT_ADMIN
+  RECRUITER
   ADMIN
   MEMBER
   TEAM_LEADER
 }
 
 model User {
-  id         String      @id @default(uuid()) @db.Uuid
-  email      String      @unique
-  password   String
-  name       String?
+  id                  String       @id @default(uuid()) @db.Uuid
+  email               String       @unique
+  password            String
+  name                String?
   role                UserRole     @default(MEMBER)
+  isActive            Boolean      @default(true) @map("is_active")
   teamId              String?      @map("team_id") @db.Uuid
   organizationId      String?      @default("org-tasknera") @map("organization_id")
   createdAt           DateTime     @default(now()) @map("created_at")
@@ -29,6 +33,7 @@ model User {
   createdEvaluations  Evaluation[] @relation("CreatedEvaluations")
   assignedEvaluations Evaluation[] @relation("AssignedEvaluations")
   evaluatedEvaluations Evaluation[] @relation("EvaluatedEvaluations")
+  auditLogs           AuditLog[]
 
   @@index([role], map: "idx_users_role")
   @@index([organizationId], map: "idx_users_organization_id")
@@ -52,6 +57,7 @@ model Job {
   status                String      @default("draft")
   evaluation_profile_id String?     @map("evaluation_profile_id") @db.Uuid
   created_by            String      @map("created_by") @db.Uuid
+  organizationId        String?     @default("org-tasknera") @map("organization_id")
   created_at            DateTime    @default(now()) @map("created_at")
   updated_at            DateTime    @updatedAt @map("updated_at")
 
@@ -63,6 +69,7 @@ model Job {
 
   @@index([created_by], map: "idx_jobs_created_by")
   @@index([status], map: "idx_jobs_status")
+  @@index([organizationId], map: "idx_jobs_organization_id")
   @@map("jobs")
 }
 
@@ -99,6 +106,7 @@ enum ParsingStatus {
 model Candidate {
   id               String                 @id @default(uuid()) @db.Uuid
   job_id           String?                @map("job_id") @db.Uuid
+  organizationId   String?                @default("org-tasknera") @map("organization_id")
   name             String?
   email            String?
   phone            String?
@@ -130,6 +138,7 @@ model Candidate {
   @@index([job_id], map: "idx_candidates_job_id")
   @@index([created_by], map: "idx_candidates_created_by")
   @@index([file_hash], map: "idx_candidates_file_hash")
+  @@index([organizationId], map: "idx_candidates_organization_id")
   @@map("candidates")
 }
 
@@ -270,4 +279,55 @@ model Evaluation {
   @@index([candidateId], map: "idx_evaluations_candidate_id")
   @@index([candidateId, jobId], map: "idx_evaluations_cand_job")
   @@map("evaluations")
+}
+
+enum OrgStatus {
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+}
+
+model Organization {
+  id                  String      @id @default(uuid())
+  name                String
+  companyEmail        String?     @map("company_email")
+  contactPhone        String?     @map("contact_phone")
+  address             String?
+  status              OrgStatus   @default(ACTIVE)
+  subscriptionPlan    String      @default("STARTER") @map("subscription_plan")
+  billingCycle        String      @default("monthly") @map("billing_cycle")
+  subscriptionStart   DateTime    @default(now()) @map("subscription_start")
+  subscriptionExpiry  DateTime?   @map("subscription_expiry")
+
+  maxUsers            Int         @default(5) @map("max_users")
+  maxRecruiters       Int         @default(5) @map("max_recruiters")
+  maxActiveJobs       Int         @default(20) @map("max_active_jobs")
+  maxResumesPerMonth  Int         @default(500) @map("max_resumes_per_month")
+
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+
+  auditLogs           AuditLog[]
+
+  @@map("organizations")
+}
+
+model AuditLog {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String?       @map("organization_id")
+  userId         String?       @map("user_id") @db.Uuid
+  action         String
+  targetType     String?       @map("target_type")
+  targetId       String?       @map("target_id")
+  details        Json?
+  ipAddress      String?       @map("ip_address")
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId], map: "idx_audit_logs_org_id")
+  @@index([userId], map: "idx_audit_logs_user_id")
+  @@index([action], map: "idx_audit_logs_action")
+  @@map("audit_logs")
 }

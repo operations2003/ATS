@@ -20,6 +20,7 @@ import { computeComprehensiveMatchScore, getEffectiveSkills } from '../utils/req
 export interface CandidateRecord extends CandidateParsedProfile {
   id: string;
   jobId: string;
+  organizationId?: string;
   fileName: string;
   fileSize: number;
   fileHash?: string;
@@ -68,7 +69,7 @@ export const saveCandidateToPersistentPool = (candidate: CandidateRecord): void 
     const idx = existingList.findIndex(c =>
       c.id === candidate.id ||
       (candidate.fileHash && c.fileHash === candidate.fileHash) ||
-      (candidate.email && c.email && candidate.email.includes('@') && c.email.toLowerCase() === candidate.email.toLowerCase())
+      (candidate.email && c.email && candidate.email.includes('@') && c.email.toLowerCase() === candidate.email.toLowerCase() && (c.organizationId || 'org-tasknera') === (candidate.organizationId || 'org-tasknera'))
     );
     if (idx >= 0) {
       existingList[idx] = { ...existingList[idx], ...candidate };
@@ -81,11 +82,16 @@ export const saveCandidateToPersistentPool = (candidate: CandidateRecord): void 
   }
 };
 
-export const loadPersistentPool = (): CandidateRecord[] => {
+export const loadPersistentPool = (targetOrgId?: string): CandidateRecord[] => {
   try {
     if (fs.existsSync(POOL_STORAGE_FILE)) {
       const data = JSON.parse(fs.readFileSync(POOL_STORAGE_FILE, 'utf-8'));
-      if (Array.isArray(data)) return data;
+      if (Array.isArray(data)) {
+        if (targetOrgId) {
+          return data.filter(c => (c.organizationId || 'org-tasknera') === targetOrgId);
+        }
+        return data;
+      }
     }
   } catch (err) {
     console.warn('[Pool Load File Warning]:', err);
@@ -333,6 +339,7 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
     uploadedAt: c.created_at ? c.created_at.toISOString() : new Date().toISOString(),
     uploadedBy: c.created_by,
     createdBy: c.created_by,
+    organizationId: c.organizationId || c.user?.organizationId || 'org-tasknera',
     ...(() => {
       const latestEval = Array.isArray(c.evaluations) && c.evaluations.length > 0 ? c.evaluations[0] : null;
       const latestApp = Array.isArray(c.applications) && c.applications.length > 0 ? c.applications[0] : null;
@@ -356,26 +363,30 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
  */
 export const getAllCandidates = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const callerRole = req.user?.role || 'MEMBER';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
+    const userOrgId = req.user?.organizationId || 'org-tasknera';
     const currentUserId = req.user?.userId || req.user?.id;
-    const isAdmin = req.user?.role === 'ADMIN';
 
     let dbCandidates: CandidateRecord[] = [];
 
     try {
       const poolWhere: any = {};
-      if (req.user?.organizationId) {
-        poolWhere.OR = [
-          { user: { organizationId: req.user.organizationId } },
-          { user: null },
-          ...(currentUserId ? [{ created_by: currentUserId }] : [])
-        ];
+      if (!isSuperAdmin) {
+        poolWhere.organizationId = userOrgId;
+        if (!isClientAdmin && currentUserId) {
+          poolWhere.created_by = currentUserId;
+        }
+      } else if (req.query.organizationId) {
+        poolWhere.organizationId = String(req.query.organizationId);
       }
-      poolWhere.AND = [
-        ...(poolWhere.AND || []),
-        { email: { not: { contains: 'harsh', mode: 'insensitive' } } },
-        { name: { not: { contains: 'harsh', mode: 'insensitive' } } },
-        { email: { not: { contains: 'aditya', mode: 'insensitive' } } },
-        { name: { not: { contains: 'aditya', mode: 'insensitive' } } }
+      poolWhere.NOT = [
+        ...(poolWhere.NOT || []),
+        { email: { contains: 'harsh', mode: 'insensitive' } },
+        { name: { contains: 'harsh', mode: 'insensitive' } },
+        { email: { contains: 'aditya', mode: 'insensitive' } },
+        { name: { contains: 'aditya', mode: 'insensitive' } }
       ];
       const candidatesFromDb = await prisma.candidate.findMany({
         where: poolWhere,
@@ -412,8 +423,10 @@ export const getAllCandidates = async (req: AuthRequest, res: Response): Promise
     }
 
     // Include persistent file backup candidates
-    const filePool = loadPersistentPool();
+    const filePool = loadPersistentPool(isSuperAdmin ? undefined : userOrgId);
     for (const c of filePool) {
+      if (!isSuperAdmin && (c.organizationId || 'org-tasknera') !== userOrgId) continue;
+      if (!isSuperAdmin && !isClientAdmin && currentUserId && (c.uploadedBy || c.createdBy) !== currentUserId) continue;
       if (!combinedMap.has(c.id)) {
         combinedMap.set(c.id, c);
       }
@@ -422,6 +435,8 @@ export const getAllCandidates = async (req: AuthRequest, res: Response): Promise
     // Include in-memory CANDIDATE_STORE candidates across all jobs and pool
     for (const [jId, list] of CANDIDATE_STORE.entries()) {
       for (const c of list) {
+        if (!isSuperAdmin && (c.organizationId || 'org-tasknera') !== userOrgId) continue;
+        if (!isSuperAdmin && !isClientAdmin && currentUserId && (c.uploadedBy || c.createdBy) !== currentUserId) continue;
         if (!combinedMap.has(c.id)) {
           combinedMap.set(c.id, c);
         }
@@ -430,6 +445,8 @@ export const getAllCandidates = async (req: AuthRequest, res: Response): Promise
 
     // Include GLOBAL_CANDIDATES
     for (const c of GLOBAL_CANDIDATES.values()) {
+      if (!isSuperAdmin && (c.organizationId || 'org-tasknera') !== userOrgId) continue;
+      if (!isSuperAdmin && !isClientAdmin && currentUserId && (c.uploadedBy || c.createdBy) !== currentUserId) continue;
       if (!combinedMap.has(c.id)) {
         combinedMap.set(c.id, c);
       }
@@ -481,25 +498,35 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
 
     const isJobUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId);
     const currentUserId = req.user?.userId || req.user?.id;
-    const isAdmin = req.user?.role === 'ADMIN';
+    const callerRole = req.user?.role || 'MEMBER';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
+    const userOrgId = req.user?.organizationId || 'org-tasknera';
 
-    if (req.user && !isAdmin) {
-      if (isJobUuid) {
-        const checkJob = await prisma.job.findUnique({ where: { id: jobId }, select: { created_by: true } });
-        if (checkJob && checkJob.created_by && checkJob.created_by !== currentUserId) {
+    // Verify job belongs to user's organization
+    let checkJob: any = null;
+    if (isJobUuid) {
+      checkJob = await prisma.job.findUnique({ where: { id: jobId }, select: { created_by: true, organizationId: true } });
+    } else {
+      checkJob = GLOBAL_JOB_STORE.get(jobId);
+    }
+
+    if (checkJob) {
+      const jobOrg = checkJob.organizationId || 'org-tasknera';
+      if (!isSuperAdmin && jobOrg !== userOrgId) {
+        res.status(403).json({ error: 'Forbidden: Access denied to other organization job candidates.' });
+        return;
+      }
+      if (!isSuperAdmin && !isClientAdmin) {
+        const jobOwner = checkJob.created_by || checkJob.createdBy;
+        if (jobOwner && jobOwner !== currentUserId) {
           res.status(403).json({ error: 'Forbidden: Access restricted to the requisition owner.' });
           return;
         }
-      } else {
-        const gJob = GLOBAL_JOB_STORE.get(jobId);
-        if (gJob) {
-          const jobOwner = gJob.created_by || gJob.createdBy;
-          if (jobOwner && jobOwner !== currentUserId) {
-            res.status(403).json({ error: 'Forbidden: Access restricted to the requisition owner.' });
-            return;
-          }
-        }
       }
+    } else if (isJobUuid) {
+      res.status(404).json({ error: `Job with ID "${jobId}" not found.` });
+      return;
     }
 
     let dbCandidates: CandidateRecord[] = [];
@@ -507,6 +534,10 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
       try {
         const appWhere: any = { job_id: jobId };
         const directWhere: any = { job_id: jobId };
+        if (!isSuperAdmin) {
+          directWhere.organizationId = userOrgId;
+          appWhere.candidate = { organizationId: userOrgId };
+        }
 
         const apps = await (prisma as any).candidateApplication?.findMany({
           where: appWhere,
@@ -581,18 +612,20 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
       }
     }
 
-    // 2. Check memory store (scoped to current user if not ADMIN)
+    // 2. Check memory store (scoped to tenant and current user)
     let memCandidates = CANDIDATE_STORE.get(jobId);
     if (!memCandidates) {
       memCandidates = [];
       CANDIDATE_STORE.set(jobId, memCandidates);
     }
-    if (!isAdmin && currentUserId) {
-      memCandidates = memCandidates.filter(c => {
+    memCandidates = memCandidates.filter(c => {
+      if (!isSuperAdmin && (c.organizationId || 'org-tasknera') !== userOrgId) return false;
+      if (!isSuperAdmin && !isClientAdmin && currentUserId) {
         const owner = c.uploadedBy || c.createdBy;
         return !owner || owner === currentUserId;
-      });
-    }
+      }
+      return true;
+    });
 
     // Combine unique candidates (DB + Memory)
     const combinedMap = new Map<string, CandidateRecord>();
@@ -822,16 +855,24 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
  * Get single candidate details
  * GET /api/jobs/:jobId/candidates/:candidateId
  */
-export const getCandidateById = async (req: Request, res: Response): Promise<void> => {
+export const getCandidateById = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const jobId = String(req.params.jobId || '');
     const candidateId = String(req.params.candidateId || '');
+
+    const callerRole = req.user?.role || 'MEMBER';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const userOrgId = req.user?.organizationId || 'org-tasknera';
 
     // Check memory store
     const candidates = CANDIDATE_STORE.get(jobId);
     const candidate = candidates?.find(c => c.id === candidateId) || GLOBAL_CANDIDATES.get(candidateId);
 
     if (candidate) {
+      if (!isSuperAdmin && (candidate.organizationId || 'org-tasknera') !== userOrgId) {
+        res.status(403).json({ error: 'Forbidden: Candidate profile belongs to another organization.' });
+        return;
+      }
       res.json({
         success: true,
         jobId,
@@ -846,20 +887,26 @@ export const getCandidateById = async (req: Request, res: Response): Promise<voi
       try {
         const c = await prisma.candidate.findUnique({
           where: { id: candidateId },
-        include: {
-          experiences: true,
-          education: true,
-          skills: true,
-          certifications: true,
-          languages: true,
-          projects: true,
+          include: {
+            experiences: true,
+            education: true,
+            skills: true,
+            certifications: true,
+            languages: true,
+            projects: true,
+            user: true,
+          }
+        });
+        if (c) {
+          const candOrg = c.organizationId || (c as any).user?.organizationId || 'org-tasknera';
+          if (!isSuperAdmin && candOrg !== userOrgId) {
+            res.status(403).json({ error: 'Forbidden: Candidate profile belongs to another organization.' });
+            return;
+          }
+          const record = mapDbCandidateToRecord(c, jobId);
+          res.json({ success: true, jobId, candidate: record });
+          return;
         }
-      });
-      if (c) {
-        const record = mapDbCandidateToRecord(c, jobId);
-        res.json({ success: true, jobId, candidate: record });
-        return;
-      }
       } catch (e) {
         console.warn('[Candidate Detail] DB lookup error:', e);
       }
@@ -1055,12 +1102,35 @@ export async function evaluateAndEnrichCandidateRecord(
  * POST /api/jobs/:jobId/candidates/upload
  * Supports multi-part form data array of file inputs ('files' or 'files[]')
  */
-export const uploadCandidateCVs = async (req: Request, res: Response): Promise<void> => {
+export const uploadCandidateCVs = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const callerRole = req.user?.role || 'MEMBER';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
+    const userOrgId = req.user?.organizationId || 'org-tasknera';
+    const currentUserId = req.user?.userId || req.user?.id || null;
+    const defaultUserId = currentUserId;
+
     const paramJobId = String(req.params.jobId || req.body?.jobId || '').trim();
     const isPoolUpload = !paramJobId || paramJobId.toLowerCase() === 'pool' || paramJobId === 'all';
     const jobId = isPoolUpload ? 'pool' : paramJobId;
     const dbJobId = (!isPoolUpload && jobId && jobId !== 'pool' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) ? jobId : null;
+
+    // Verify job belongs to user's organization
+    if (dbJobId) {
+      const jobRecord = await prisma.job.findUnique({ where: { id: dbJobId }, select: { created_by: true, organizationId: true } });
+      if (!jobRecord) {
+        res.status(404).json({ error: 'Job requisition not found' });
+        return;
+      }
+      if (!isSuperAdmin) {
+        const jobOrg = jobRecord.organizationId || 'org-tasknera';
+        if (jobOrg !== userOrgId) {
+          res.status(403).json({ error: 'Forbidden: Cannot upload candidates to another company job requisition.' });
+          return;
+        }
+      }
+    }
     
     // Support files from multer array, any fields, or single file fallback
     let files: Express.Multer.File[] = [];
@@ -1087,60 +1157,20 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
     console.log(`[Batch CV Upload] Received ${files.length} file(s) for Job ID: ${jobId}`);
     console.log(`=============================================================`);
 
-    let existingCandidates = CANDIDATE_STORE.get(jobId);
-    if (!existingCandidates) {
-      existingCandidates = DEFAULT_INITIAL_CANDIDATES[jobId] ? [...DEFAULT_INITIAL_CANDIDATES[jobId]] : [];
+    let existingCandidates: CandidateRecord[] = CANDIDATE_STORE.get(jobId) || [];
+    if (!existingCandidates.length && DEFAULT_INITIAL_CANDIDATES[jobId]) {
+      existingCandidates = [...DEFAULT_INITIAL_CANDIDATES[jobId]];
       CANDIDATE_STORE.set(jobId, existingCandidates);
     }
+    // Filter existingCandidates by tenant organization
+    existingCandidates = existingCandidates.filter(c => isSuperAdmin || (c.organizationId || 'org-tasknera') === userOrgId);
 
-    const processedCandidates: CandidateRecord[] = [];
-    const candidateIds: string[] = [];
-
-    // Find default user or authenticated user for database attribution
-    // Order of priority: 1. Authenticated user from JWT (verified in DB) -> 2. Job Creator from DB -> 3. Fallback user
-    let defaultUserId: string | null = null;
-    try {
-      const authUser = (req as any).user;
-      const potentialUserId = authUser?.userId || authUser?.id || null;
-      if (potentialUserId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(potentialUserId)) {
-        const existingUser = await prisma.user.findUnique({ where: { id: potentialUserId } });
-        if (existingUser) {
-          defaultUserId = existingUser.id;
-        }
-      }
-
-      if (!defaultUserId && dbJobId) {
-        const jobRecord = await prisma.job.findUnique({ where: { id: dbJobId }, select: { created_by: true } });
-        if (jobRecord?.created_by) {
-          const jobUser = await prisma.user.findUnique({ where: { id: jobRecord.created_by } });
-          if (jobUser) {
-            defaultUserId = jobUser.id;
-          }
-        }
-      }
-
-      if (!defaultUserId) {
-        let fallbackUser = await prisma.user.findFirst();
-        if (!fallbackUser) {
-          fallbackUser = await prisma.user.create({
-            data: {
-              email: 'recruiter@tasknera.com',
-              name: 'Tasknera Recruiter',
-              password: '$2a$10$wT55K2eF59PGBgPvdA.m6.4sO0iJt.4Ew1Y1iO4cZg3GzE7l0zF3C',
-              role: 'ADMIN',
-            }
-          }).catch(() => null);
-        }
-        if (fallbackUser) {
-          defaultUserId = fallbackUser.id;
-        }
-      }
-    } catch (userLookupErr) {
-      console.warn('[Prisma User Attribution Warning]:', userLookupErr);
-    }
-
-    // Process each uploaded CV file
-    for (const file of files) {
+    // Helper to process a single CV file with incremental persistence and evaluation
+    const processSingleCvFile = async (file: Express.Multer.File): Promise<{
+      candidate: CandidateRecord;
+      candidateId: string;
+      singleFileResponse?: { status: number; body: any };
+    }> => {
       const fileName = file.originalname || 'uploaded_cv.pdf';
       const fileSize = file.size;
       const fileMime = file.mimetype || 'application/pdf';
@@ -1158,7 +1188,8 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         const status = p.parsingStatus || p.status || p.parsing_status;
         if (status === 'FAILED' || status === 'failed' || status === 'PROCESSING' || status === 'processing' || status === 'UPLOADED') return false;
         const txt = p.rawText || p.raw_text || '';
-        if (txt.trim().length < 30 && (!p.skills || p.skills.length === 0)) return false;
+        const quality = validateCvTextQuality(txt);
+        if (!quality.isValid) return false;
         return true;
       };
 
@@ -1187,7 +1218,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         try {
           existingDbCandidate = await prisma.candidate.findFirst({
             where: {
-              ...(defaultUserId ? { created_by: defaultUserId } : {}),
+              ...(isSuperAdmin ? {} : { organizationId: userOrgId }),
               OR: [
                 { file_hash: fileHash },
                 { file_hash: fileMd5 },
@@ -1212,13 +1243,11 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         existingDbCandidate = null;
       }
 
-      const existingMemProfile = GLOBAL_CANDIDATES.get(fileHash) || GLOBAL_CANDIDATES.get(fileMd5);
-      const isMemOwner = !existingMemProfile || !defaultUserId || existingMemProfile.uploadedBy === defaultUserId || existingMemProfile.createdBy === defaultUserId;
-      const validMemProfile = (isMemOwner && isValidProfile(existingMemProfile)) ? existingMemProfile : null;
-
-      const existingProfile = existingInJob || validMemProfile || (existingDbCandidate ? {
+      // Authoritative source of truth: PostgreSQL database
+      const existingProfile = (existingDbCandidate && isValidProfile(existingDbCandidate)) ? {
         id: existingDbCandidate.id,
         jobId,
+        organizationId: userOrgId,
         name: existingDbCandidate.name,
         email: existingDbCandidate.email,
         phone: existingDbCandidate.phone,
@@ -1259,7 +1288,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           fileName,
           fileType: fileMime,
           pageCount: 1,
-          extractionMethod: 'cached-duplicate',
+          extractionMethod: 'database-duplicate',
           ocrUsed: false,
           characterCount: (existingDbCandidate.raw_text || '').length,
           wordCount: 0,
@@ -1269,7 +1298,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         fileHash,
         uploadedAt: existingDbCandidate.created_at.toISOString(),
         isDuplicate: true,
-      } : null);
+      } : (existingInJob && isValidProfile(existingInJob) && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(existingInJob.id) ? existingInJob : null);
 
       if (existingProfile) {
         console.log(`[CV Processing] Existing CV detected for: ${fileName}.`);
@@ -1294,21 +1323,25 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
             poolList.unshift(dupCandidate);
             CANDIDATE_STORE.set('pool', poolList);
           }
-          processedCandidates.push(dupCandidate);
-          candidateIds.push(existingCandId);
 
           if (files.length === 1) {
-            res.status(200).json({
-              status: 'duplicate',
-              message: 'Candidate CV already exists in the Talent Pool',
-              isDuplicate: true,
+            return {
               candidate: dupCandidate,
-              candidates: [dupCandidate],
-              allCandidates: existingCandidates
-            });
-            return;
+              candidateId: existingCandId,
+              singleFileResponse: {
+                status: 200,
+                body: {
+                  status: 'duplicate',
+                  message: 'Candidate CV already exists in the Talent Pool',
+                  isDuplicate: true,
+                  candidate: dupCandidate,
+                  candidates: [dupCandidate],
+                  allCandidates: existingCandidates
+                }
+              }
+            };
           }
-          continue;
+          return { candidate: dupCandidate, candidateId: existingCandId };
         }
 
         // 2. If uploading to a specific Job:
@@ -1318,7 +1351,6 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         ));
 
         if (isAlreadyInJob) {
-          // If already in this job but lacks evaluation score, evaluate now!
           if (existingProfile && !(existingProfile as any).matchScore && jobId !== 'pool') {
             await evaluateAndEnrichCandidateRecord(existingProfile, jobId, req, defaultUserId);
           }
@@ -1340,21 +1372,25 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
             poolList.unshift(dupCandidate);
             CANDIDATE_STORE.set('pool', poolList);
           }
-          processedCandidates.push(dupCandidate);
-          candidateIds.push(existingCandId);
 
           if (files.length === 1) {
-            res.status(200).json({
-              status: 'duplicate',
-              message: 'This CV is already uploaded to this JD.',
-              isDuplicate: true,
+            return {
               candidate: dupCandidate,
-              candidates: [dupCandidate],
-              allCandidates: existingCandidates
-            });
-            return;
+              candidateId: existingCandId,
+              singleFileResponse: {
+                status: 200,
+                body: {
+                  status: 'duplicate',
+                  message: 'This CV is already uploaded to this JD.',
+                  isDuplicate: true,
+                  candidate: dupCandidate,
+                  candidates: [dupCandidate],
+                  allCandidates: existingCandidates
+                }
+              }
+            };
           }
-          continue;
+          return { candidate: dupCandidate, candidateId: existingCandId };
         }
 
         // Candidate exists in database / pool but NOT in this job yet -> Link to this job via Application without duplicating candidate row
@@ -1391,6 +1427,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         const linkedRecord: CandidateRecord = {
           ...existingProfile,
           jobId,
+          organizationId: userOrgId,
           isDuplicate: false,
           parsingStatus: 'PARSED',
           fileName,
@@ -1402,25 +1439,28 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         // Automatically evaluate linked candidate against this job requisition!
         await evaluateAndEnrichCandidateRecord(linkedRecord, jobId, req, defaultUserId);
 
-        existingCandidates.push(linkedRecord);
-        processedCandidates.push(linkedRecord);
-        candidateIds.push(existingCandId);
+        existingCandidates.unshift(linkedRecord);
 
         if (files.length === 1) {
-          res.status(200).json({
-            status: 'success',
-            message: 'Candidate added to this position successfully (reused existing verified profile)',
+          return {
             candidate: linkedRecord,
-            candidates: [linkedRecord],
-            allCandidates: existingCandidates
-          });
-          return;
+            candidateId: existingCandId,
+            singleFileResponse: {
+              status: 200,
+              body: {
+                status: 'success',
+                message: 'Candidate added to this position successfully (reused existing verified profile)',
+                candidate: linkedRecord,
+                candidates: [linkedRecord],
+                allCandidates: existingCandidates
+              }
+            }
+          };
         }
-        continue;
+        return { candidate: linkedRecord, candidateId: existingCandId };
       }
 
       const candidateId = `cand-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-      candidateIds.push(candidateId);
 
       // Step 0: Record initial candidate in Prisma database with status PROCESSING if not updating existing row
       const dbJobId = (!isPoolUpload && jobId && jobId !== 'pool' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) ? jobId : null;
@@ -1434,6 +1474,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
               file_hash: fileHash,
               parsing_status: 'PROCESSING',
               created_by: defaultUserId,
+              organizationId: userOrgId,
             }
           });
           dbCandidateId = initialDbCand.id;
@@ -1445,7 +1486,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
 
       try {
         // Step 1: Extract text via Python FastAPI Document processor
-        console.log(`[CV Processing Step 1] Passing file buffer directly to Python document processor on port 8000 for ${fileName}...`);
+        console.log(`[CV Processing Step 1] Extracting document text for ${fileName}...`);
         const pythonResult: PythonDocumentResponse = await extractDocumentTextViaPython(
           file.buffer,
           fileName,
@@ -1477,25 +1518,16 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           }
         }
 
-        // Step 2: Quality validation of raw extracted text with safe stream fallback
-        if (!rawText || rawText.trim().length < 15) {
-          try {
-            const rawString = file.buffer.toString('latin1');
-            const textChunks = rawString.match(/[A-Za-z0-9\s.,@_\-+()/:;]{4,}/g) || [];
-            rawText = textChunks.join(' ').replace(/\s+/g, ' ').trim();
-          } catch {}
-        }
-        if (!rawText || rawText.trim().length < 10) {
-          rawText = `Resume Candidate Document: ${fileName}`;
-        }
-        const textQuality = validateCvTextQuality(rawText);
-        console.log(`[CV Processing Step 2] Extracted ${rawText.length} chars. Quality check valid: ${textQuality.isValid} (Reason: ${textQuality.reason || 'OK'})`);
+        // Step 2: Quality validation of raw extracted text
+        const textQuality = validateCvTextQuality(rawText || '');
+        console.log(`[CV Processing Step 2] Extracted ${(rawText || '').length} chars. Quality check valid: ${textQuality.isValid} (Reason: ${textQuality.reason || 'OK'})`);
 
         if (!rawText || !textQuality.isValid) {
           console.warn(`[CV Processing FAILED] Rejected document ${fileName}: ${textQuality.reason || 'Insufficient text'}`);
           const failRecord: CandidateRecord = {
             id: dbCandidateId || candidateId,
             jobId,
+            organizationId: userOrgId,
             name: cleanFileNameForDisplay(fileName),
             email: null,
             phone: null,
@@ -1549,8 +1581,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
 
           console.warn(`[Batch Upload] jobId=${jobId} file=${fileName} size=${fileSize} status=failed reason="${textQuality.reason || 'Insufficient readable text'}"`);
           existingCandidates.unshift(failRecord);
-          processedCandidates.push(failRecord);
-          continue;
+          return { candidate: failRecord, candidateId: dbCandidateId || candidateId };
         }
 
         // Step 3: Extract structured fields from validated text
@@ -1593,15 +1624,6 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           structuredProfile.professionalSummary = pythonResult.summary;
         }
 
-        console.log(`[CV Processing Step 4] Structured Extraction for ${fileName}:`, {
-          name: structuredProfile.name,
-          email: structuredProfile.email,
-          currentTitle: structuredProfile.currentTitle,
-          currentCompany: structuredProfile.currentCompany,
-          skillsCount: structuredProfile.skills.length,
-          expCount: structuredProfile.experience.length,
-        });
-
         // Step 3b: Check if candidate already exists in current job by extracted details
         const dupInJob = existingCandidates.find(ec =>
           (structuredProfile.email && ec.email && ec.email.toLowerCase() === structuredProfile.email.toLowerCase()) ||
@@ -1610,7 +1632,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         );
 
         if (dupInJob) {
-          console.log(`[CV Processing] Duplicate candidate profile detected in job for: ${structuredProfile.name}. Skipping insertion.`);
+          console.log(`[CV Processing] Duplicate candidate profile detected in job for: ${structuredProfile.name}.`);
           if (dbCandidateId) {
             await prisma.candidate.delete({ where: { id: dbCandidateId } }).catch(() => null);
           }
@@ -1627,29 +1649,33 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
             fileHash,
           };
 
-          processedCandidates.push(dupRecord);
-
           if (files.length === 1) {
-            res.status(200).json({
-              status: 'duplicate',
-              message: 'This CV is already uploaded to this JD.',
-              isDuplicate: true,
+            return {
               candidate: dupRecord,
-              candidates: [dupRecord],
-              allCandidates: existingCandidates,
-            });
-            return;
+              candidateId: dupInJob.id,
+              singleFileResponse: {
+                status: 200,
+                body: {
+                  status: 'duplicate',
+                  message: 'This CV is already uploaded to this JD.',
+                  isDuplicate: true,
+                  candidate: dupRecord,
+                  candidates: [dupRecord],
+                  allCandidates: existingCandidates,
+                }
+              }
+            };
           }
-          continue;
+          return { candidate: dupRecord, candidateId: dupInJob.id };
         }
 
-        // Check if candidate exists in Prisma DB for this user/client
+        // Check if candidate exists in Prisma DB for this user/client organization
         if (structuredProfile.email || structuredProfile.phone) {
           try {
             const existingByEmailOrPhone = await prisma.candidate.findFirst({
               where: {
                 AND: [
-                  ...(defaultUserId ? [{ created_by: defaultUserId }] : []),
+                  ...(isSuperAdmin ? [] : [{ organizationId: userOrgId }]),
                   {
                     OR: [
                       ...(structuredProfile.email ? [{ email: { equals: structuredProfile.email, mode: 'insensitive' as const } }] : []),
@@ -1677,6 +1703,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
                 const dupRecord: CandidateRecord = {
                   id: existingByEmailOrPhone.id,
                   jobId,
+                  organizationId: userOrgId,
                   ...structuredProfile,
                   isDuplicate: true,
                   parsingStatus: 'DUPLICATE' as any,
@@ -1688,20 +1715,25 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
                 };
 
                 console.log(`[Batch Upload] jobId=${jobId} file=${fileName} size=${fileSize} status=duplicate`);
-                processedCandidates.push(dupRecord);
 
                 if (files.length === 1) {
-                  res.status(200).json({
-                    status: 'duplicate',
-                    message: 'This CV is already uploaded to this JD.',
-                    isDuplicate: true,
+                  return {
                     candidate: dupRecord,
-                    candidates: [dupRecord],
-                    allCandidates: existingCandidates,
-                  });
-                  return;
+                    candidateId: existingByEmailOrPhone.id,
+                    singleFileResponse: {
+                      status: 200,
+                      body: {
+                        status: 'duplicate',
+                        message: 'This CV is already uploaded to this JD.',
+                        isDuplicate: true,
+                        candidate: dupRecord,
+                        candidates: [dupRecord],
+                        allCandidates: existingCandidates,
+                      }
+                    }
+                  };
                 }
-                continue;
+                return { candidate: dupRecord, candidateId: existingByEmailOrPhone.id };
               } else {
                 // Allowed for this new JD! Link to this position without duplication
                 console.log(`[CV Processing] Candidate exists from another JD (ID: ${existingByEmailOrPhone.id}). Linking to new JD: ${jobId}`);
@@ -1724,6 +1756,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
                 const linkedRecord: CandidateRecord = {
                   id: existingByEmailOrPhone.id,
                   jobId,
+                  organizationId: userOrgId,
                   ...structuredProfile,
                   isDuplicate: false,
                   parsingStatus: 'PARSED',
@@ -1736,21 +1769,25 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
                 await evaluateAndEnrichCandidateRecord(linkedRecord, jobId, req, defaultUserId);
 
                 existingCandidates.unshift(linkedRecord);
-                processedCandidates.push(linkedRecord);
-                candidateIds.push(existingByEmailOrPhone.id);
 
                 if (files.length === 1) {
-                  res.status(200).json({
-                    status: 'success',
-                    message: 'Candidate added to this position successfully',
-                    isDuplicate: false,
+                  return {
                     candidate: linkedRecord,
-                    candidates: [linkedRecord],
-                    allCandidates: existingCandidates,
-                  });
-                  return;
+                    candidateId: existingByEmailOrPhone.id,
+                    singleFileResponse: {
+                      status: 200,
+                      body: {
+                        status: 'success',
+                        message: 'Candidate added to this position successfully',
+                        isDuplicate: false,
+                        candidate: linkedRecord,
+                        candidates: [linkedRecord],
+                        allCandidates: existingCandidates,
+                      }
+                    }
+                  };
                 }
-                continue;
+                return { candidate: linkedRecord, candidateId: existingByEmailOrPhone.id };
               }
             }
           } catch (dupLookupErr) {
@@ -1758,12 +1795,12 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           }
         }
 
-
         const actualUser = (req as any).user?.userId || (req as any).user?.id;
         const uploaderId = actualUser || defaultUserId || undefined;
         const newRecord: CandidateRecord = {
           id: dbCandidateId || candidateId,
           jobId,
+          organizationId: userOrgId,
           ...structuredProfile,
           fileName,
           fileSize,
@@ -1793,6 +1830,9 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
                 summary: newRecord.summary,
                 raw_text: rawText,
                 parsing_status: 'PARSED',
+                organizationId: userOrgId,
+                job_id: dbJobId,
+                resume_file_url: fileName,
               }
             });
 
@@ -1835,6 +1875,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
                 file_hash: fileHash,
                 parsing_status: 'PARSED',
                 created_by: defaultUserId,
+                organizationId: userOrgId,
               }
             });
             newRecord.id = createdDbCand.id;
@@ -1895,7 +1936,6 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
 
         console.log(`[Batch Upload] jobId=${jobId} file=${fileName} size=${fileSize} status=success`);
         existingCandidates.unshift(newRecord);
-        processedCandidates.push(newRecord);
 
         // Keep candidate attached to poolStore so it's always queryable in candidate pool
         const poolStore = CANDIDATE_STORE.get('pool') || [];
@@ -1909,11 +1949,14 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         saveCandidateToPersistentPool(newRecord);
         if (newRecord.fileHash) GLOBAL_CANDIDATES.set(newRecord.fileHash, newRecord);
         GLOBAL_CANDIDATES.set(newRecord.id, newRecord);
+
+        return { candidate: newRecord, candidateId: newRecord.id };
       } catch (err: any) {
         console.error(`[Batch Upload] jobId=${jobId} file=${fileName} size=${fileSize} status=failed reason="${err.message || 'Processing error'}"`);
         const errRecord: CandidateRecord = {
           id: dbCandidateId || candidateId,
           jobId,
+          organizationId: userOrgId,
           name: cleanFileNameForDisplay(fileName),
           email: null,
           phone: null,
@@ -1965,9 +2008,102 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         }
 
         existingCandidates.unshift(errRecord);
-        processedCandidates.push(errRecord);
+        return { candidate: errRecord, candidateId: dbCandidateId || candidateId };
       }
+    };
+
+    // Single-file upload fast-path
+    if (files.length === 1) {
+      const singleResult = await processSingleCvFile(files[0]);
+      if (singleResult.singleFileResponse) {
+        res.status(singleResult.singleFileResponse.status).json(singleResult.singleFileResponse.body);
+        return;
+      }
+      CANDIDATE_STORE.set(jobId, existingCandidates);
+      res.status(201).json({
+        success: true,
+        jobId,
+        uploadedCount: 1,
+        successfulCount: singleResult.candidate.parsingStatus === 'PARSED' ? 1 : 0,
+        failedCount: singleResult.candidate.parsingStatus === 'FAILED' ? 1 : 0,
+        candidateIds: [singleResult.candidateId],
+        processingStatus: 'COMPLETED',
+        candidate: singleResult.candidate,
+        candidates: [singleResult.candidate],
+        allCandidates: existingCandidates
+      });
+      return;
     }
+
+    // Multi-file bulk upload with bounded concurrency (3 parallel workers)
+    const BATCH_CONCURRENCY = Math.min(3, files.length);
+    const processedCandidates: CandidateRecord[] = [];
+    const candidateIds: string[] = [];
+    let cursor = 0;
+
+    console.log(`[Batch Processing] Launching ${BATCH_CONCURRENCY} concurrent workers for ${files.length} CV files...`);
+
+    const worker = async () => {
+      while (cursor < files.length) {
+        const fileIdx = cursor++;
+        const file = files[fileIdx];
+        if (!file) break;
+
+        try {
+          const result = await processSingleCvFile(file);
+          processedCandidates.push(result.candidate);
+          candidateIds.push(result.candidateId);
+        } catch (fileErr: any) {
+          console.error(`[Batch Worker Error] Failed processing ${file.originalname}:`, fileErr);
+          const errRec: CandidateRecord = {
+            id: `cand-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            jobId,
+            organizationId: userOrgId,
+            name: cleanFileNameForDisplay(file.originalname),
+            email: null,
+            phone: null,
+            location: null,
+            currentTitle: null,
+            currentCompany: null,
+            totalExperience: null,
+            relevantExperience: null,
+            summary: null,
+            fileName: file.originalname,
+            fileSize: file.size,
+            uploadedAt: new Date().toISOString(),
+            parsingStatus: 'FAILED',
+            errorMessage: fileErr.message || 'Processing error',
+            validationErrors: [fileErr.message || 'Processing error'],
+            skills: [],
+            technologies: [],
+            tools: [],
+            industries: [],
+            education: [],
+            certifications: [],
+            languages: [],
+            experience: [],
+            responsibilities: [],
+            achievements: [],
+            projects: [],
+            sourceEvidence: {},
+            rawText: '',
+            parsingMetadata: {
+              fileName: file.originalname,
+              fileType: file.mimetype || 'application/pdf',
+              pageCount: 0,
+              extractionMethod: 'error',
+              ocrUsed: false,
+              characterCount: 0,
+              wordCount: 0
+            }
+          };
+          processedCandidates.push(errRec);
+        }
+      }
+    };
+
+    const workers = Array.from({ length: BATCH_CONCURRENCY }, () => worker());
+    await Promise.all(workers);
 
     CANDIDATE_STORE.set(jobId, existingCandidates);
 
@@ -1993,10 +2129,21 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
  * Retry parsing a failed candidate
  * POST /api/jobs/:jobId/candidates/:candidateId/retry
  */
-export const retryCandidateParsing = async (req: Request, res: Response): Promise<void> => {
+export const retryCandidateParsing = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const jobId = String(req.params.jobId || '');
     const candidateId = String(req.params.candidateId || '');
+    const isSuperAdmin = req.user?.role === 'SUPER_ADMIN';
+    const userOrgId = req.user?.organizationId || 'org-tasknera';
+
+    // Verify job belongs to organization if jobId provided
+    if (jobId && !isSuperAdmin) {
+      const job = await getJobFromStoreOrDb(jobId);
+      if (job && (job.organizationId || 'org-tasknera') !== userOrgId) {
+        res.status(403).json({ error: 'Unauthorized: Cannot access job from another organization' });
+        return;
+      }
+    }
 
     const candidates = CANDIDATE_STORE.get(jobId);
     if (!candidates) {
@@ -2007,6 +2154,13 @@ export const retryCandidateParsing = async (req: Request, res: Response): Promis
     const candidate = candidates.find(c => c.id === candidateId);
     if (!candidate) {
       res.status(404).json({ error: 'Candidate profile not found' });
+      return;
+    }
+
+    // Verify candidate belongs to organization
+    const candOrgId = candidate.organizationId || 'org-tasknera';
+    if (!isSuperAdmin && candOrgId !== userOrgId) {
+      res.status(403).json({ error: 'Unauthorized: Cannot access candidate from another organization' });
       return;
     }
 
@@ -2044,23 +2198,66 @@ export const retryCandidateParsing = async (req: Request, res: Response): Promis
  * Delete a candidate profile from database & memory store
  * DELETE /api/candidates/:candidateId or DELETE /api/jobs/:jobId/candidates/:candidateId
  */
-export const deleteCandidate = async (req: Request, res: Response): Promise<void> => {
+export const deleteCandidate = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const candidateId = String(req.params.candidateId || '');
     const jobId = String(req.params.jobId || '');
+    const isSuperAdmin = req.user?.role === 'SUPER_ADMIN';
+    const userOrgId = req.user?.organizationId || 'org-tasknera';
 
     if (!candidateId) {
       res.status(400).json({ error: 'Candidate ID is required' });
       return;
     }
 
+    // Check candidate ownership in DB or memory
+    let existingCandidate: any = null;
+    const isCandUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidateId);
+    if (isCandUuid) {
+      try {
+        existingCandidate = await prisma.candidate.findUnique({
+          where: { id: candidateId },
+          include: { user: true }
+        });
+      } catch (err) {
+        console.warn('[Delete Candidate] Prisma find error:', err);
+      }
+    }
+
+    if (!existingCandidate) {
+      existingCandidate = GLOBAL_CANDIDATES.get(candidateId);
+    }
+    if (!existingCandidate && jobId && CANDIDATE_STORE.has(jobId)) {
+      existingCandidate = CANDIDATE_STORE.get(jobId)?.find(c => c.id === candidateId);
+    }
+    if (!existingCandidate) {
+      for (const list of CANDIDATE_STORE.values()) {
+        const found = list.find(c => c.id === candidateId);
+        if (found) {
+          existingCandidate = found;
+          break;
+        }
+      }
+    }
+
+    // If candidate exists, verify ownership
+    if (existingCandidate && !isSuperAdmin) {
+      const candOrgId = existingCandidate.organizationId || existingCandidate.user?.organizationId || 'org-tasknera';
+      if (candOrgId !== userOrgId) {
+        res.status(403).json({ error: 'Unauthorized: Cannot delete candidate from another organization' });
+        return;
+      }
+    }
+
     // 1. Delete from Prisma database
-    try {
-      await prisma.candidate.delete({
-        where: { id: candidateId }
-      }).catch(() => null);
-    } catch (dbErr) {
-      console.warn('[Delete Candidate] Prisma delete error:', dbErr);
+    if (isCandUuid) {
+      try {
+        await prisma.candidate.delete({
+          where: { id: candidateId }
+        }).catch(() => null);
+      } catch (dbErr) {
+        console.warn('[Delete Candidate] Prisma delete error:', dbErr);
+      }
     }
 
     // 2. Delete from memory store
@@ -2091,6 +2288,8 @@ export const updateCandidateDecision = async (req: AuthRequest, res: Response): 
     const candidateId = String(req.params.candidateId || '');
     const jobId = String(req.params.jobId || '');
     const rawDecision = String(req.body.decision || '').trim().toUpperCase();
+    const isSuperAdmin = req.user?.role === 'SUPER_ADMIN';
+    const userOrgId = req.user?.organizationId || 'org-tasknera';
 
     if (!candidateId) {
       res.status(400).json({ error: 'Candidate ID is required' });
@@ -2100,6 +2299,38 @@ export const updateCandidateDecision = async (req: AuthRequest, res: Response): 
     if (!['REVIEW', 'SUBMIT', 'REJECT', 'DO NOT SUBMIT', 'ACCEPT'].includes(rawDecision)) {
       res.status(400).json({ error: 'Invalid decision. Must be REVIEW, SUBMIT, or REJECT.' });
       return;
+    }
+
+    // Check candidate ownership
+    const isCandUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidateId);
+    let existingCandidate: any = null;
+    if (isCandUuid) {
+      try {
+        existingCandidate = await prisma.candidate.findUnique({
+          where: { id: candidateId },
+          include: { user: true }
+        });
+      } catch (err) {}
+    }
+    if (!existingCandidate) {
+      existingCandidate = await findCandidateRecord(candidateId, jobId);
+    }
+
+    if (existingCandidate && !isSuperAdmin) {
+      const candOrgId = existingCandidate.organizationId || existingCandidate.user?.organizationId || 'org-tasknera';
+      if (candOrgId !== userOrgId) {
+        res.status(403).json({ error: 'Unauthorized: Cannot update candidate from another organization' });
+        return;
+      }
+    }
+
+    // Verify jobId if provided
+    if (jobId && !isSuperAdmin) {
+      const job = await getJobFromStoreOrDb(jobId);
+      if (job && (job.organizationId || 'org-tasknera') !== userOrgId) {
+        res.status(403).json({ error: 'Unauthorized: Cannot link decision to job from another organization' });
+        return;
+      }
     }
 
     const standardDecision: 'REVIEW' | 'SUBMIT' | 'REJECT' =
@@ -2133,7 +2364,6 @@ export const updateCandidateDecision = async (req: AuthRequest, res: Response): 
     }
 
     // 2. Persist to Prisma database if UUID
-    const isCandUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidateId);
     if (isCandUuid) {
       try {
         const dbDecision = standardDecision === 'REJECT' ? 'DO NOT SUBMIT' : standardDecision;
@@ -2169,25 +2399,28 @@ export const updateCandidateDecision = async (req: AuthRequest, res: Response): 
 /**
  * Find candidate record from memory store or DB
  */
-export async function findCandidateRecord(candidateId: string, jobId?: string): Promise<CandidateRecord | null> {
+export async function findCandidateRecord(candidateId: string, jobId?: string, targetOrgId?: string): Promise<CandidateRecord | null> {
   if (!candidateId) return null;
 
   // 1. Check memory store by jobId if given
   if (jobId && CANDIDATE_STORE.has(jobId)) {
     const memList = CANDIDATE_STORE.get(jobId);
-    const found = memList?.find(c => c.id === candidateId);
+    const found = memList?.find(c => c.id === candidateId && (!targetOrgId || (c.organizationId || 'org-tasknera') === targetOrgId));
     if (found) return found;
   }
 
   // 2. Check all job lists in CANDIDATE_STORE
   for (const list of CANDIDATE_STORE.values()) {
-    const found = list.find(c => c.id === candidateId);
+    const found = list.find(c => c.id === candidateId && (!targetOrgId || (c.organizationId || 'org-tasknera') === targetOrgId));
     if (found) return found;
   }
 
   // 3. Check GLOBAL_CANDIDATES
   if (GLOBAL_CANDIDATES.has(candidateId)) {
-    return GLOBAL_CANDIDATES.get(candidateId)!;
+    const found = GLOBAL_CANDIDATES.get(candidateId)!;
+    if (!targetOrgId || (found.organizationId || 'org-tasknera') === targetOrgId) {
+      return found;
+    }
   }
 
   // 4. Check Prisma DB if candidateId is a valid UUID
@@ -2203,9 +2436,14 @@ export async function findCandidateRecord(candidateId: string, jobId?: string): 
           certifications: true,
           languages: true,
           projects: true,
+          user: true,
         }
       });
       if (dbCandidate) {
+        const candOrgId = dbCandidate.organizationId || (dbCandidate as any).user?.organizationId || 'org-tasknera';
+        if (targetOrgId && candOrgId !== targetOrgId) {
+          return null;
+        }
         return mapDbCandidateToRecord(dbCandidate, jobId);
       }
     } catch (err) {
@@ -2218,15 +2456,18 @@ export async function findCandidateRecord(candidateId: string, jobId?: string): 
 
 /**
  * Retrieves all candidates from both DB and memory store with their associated jobId
- * Filtered by user if specified
+ * Filtered by user or organization if specified
  */
-export async function getAllCandidateRecords(userId?: string): Promise<Array<{ candidate: CandidateRecord; jobId: string }>> {
+export async function getAllCandidateRecords(userId?: string, organizationId?: string): Promise<Array<{ candidate: CandidateRecord; jobId: string }>> {
   const result: Array<{ candidate: CandidateRecord; jobId: string }> = [];
   const seenIds = new Set<string>();
 
   // 1. Fetch DB candidates
   try {
     const whereClause: any = {};
+    if (organizationId) {
+      whereClause.organizationId = organizationId;
+    }
     if (userId) {
       whereClause.created_by = userId;
     }
@@ -2256,6 +2497,9 @@ export async function getAllCandidateRecords(userId?: string): Promise<Array<{ c
   for (const [jId, list] of CANDIDATE_STORE.entries()) {
     for (const c of list) {
       if (!seenIds.has(c.id)) {
+        if (organizationId && (c.organizationId || 'org-tasknera') !== organizationId) {
+          continue;
+        }
         if (!userId || c.uploadedBy === userId || c.createdBy === userId) {
           seenIds.add(c.id);
           result.push({ candidate: c, jobId: jId || c.jobId || 'pool' });

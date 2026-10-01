@@ -879,6 +879,19 @@ class ATSStore {
     this.saveToStorage();
   }
 
+  public clearAll() {
+    this.jobs = [];
+    this.candidates = [];
+    this.auditEvents = [];
+    this.recruiters = [];
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('tasknera_ats_jobs');
+      localStorage.removeItem('tasknera_ats_candidates');
+      localStorage.removeItem('tasknera_ats_audits');
+      localStorage.removeItem('tasknera_ats_recruiters');
+    }
+  }
+
   private logAudit(event: Omit<AuditEvent, 'id' | 'time' | 'timestamp'>) {
     const newAudit: AuditEvent = {
       ...event,

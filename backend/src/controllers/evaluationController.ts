@@ -137,6 +137,7 @@ async function getJobAndRequirements(jobId: string, fallbackPosition?: string, f
       company: storeJob.client || storeJob.company || fallbackClient,
       jd_text: storeJob.jd_text || undefined,
       created_by: storeJob.created_by,
+      organizationId: storeJob.organizationId,
     };
     if (storeJob.requirements && storeJob.requirements.length > 0) {
       requirements = storeJob.requirements;
@@ -162,6 +163,7 @@ async function getJobAndRequirements(jobId: string, fallbackPosition?: string, f
             company: dbJob.client,
             jd_text: dbJob.jd_text || undefined,
             created_by: dbJob.created_by,
+            organizationId: dbJob.organizationId,
           };
           if (dbJob.requirements && dbJob.requirements.length > 0) {
             requirements = dbJob.requirements;
@@ -257,12 +259,15 @@ export const getCandidateEvaluation = async (req: AuthRequest, res: Response): P
       console.log(`[Evaluation Access] userId=${user.userId} organizationId=${orgId} role=${user.role || 'MEMBER'} evalId=${evalRecord.id} evalOwner=${evalRecord.createdByUserId}`);
 
       // Security Check 1: Cross-Organization Isolation
-      if (evalRecord.organizationId && evalRecord.organizationId !== orgId && user.role !== 'ADMIN') {
+      const isSuperAdmin = user.role === 'SUPER_ADMIN';
+      const recordOrgId = evalRecord.organizationId || evalRecord.job?.organizationId || evalRecord.candidate?.organizationId || 'org-tasknera';
+      if (!isSuperAdmin && recordOrgId !== orgId) {
         res.status(403).json({ error: 'Forbidden: Access restricted to organization members.' });
         return;
       }
 
-      // Security Check 2: Ownership verification (evaluator, creator, assignee, job creator, or candidate creator)
+      // Security Check 2: Ownership verification for regular recruiters (ADMIN / CLIENT_ADMIN can see all org evaluations)
+      const isCompanyAdmin = user.role === 'ADMIN' || user.role === 'CLIENT_ADMIN';
       const isOwner =
         evalRecord.evaluatedBy === user.userId ||
         evalRecord.createdByUserId === user.userId ||
@@ -270,7 +275,7 @@ export const getCandidateEvaluation = async (req: AuthRequest, res: Response): P
         evalRecord.job?.created_by === user.userId ||
         evalRecord.candidate?.created_by === user.userId;
 
-      if (user.role !== 'ADMIN' && !isOwner) {
+      if (!isSuperAdmin && !isCompanyAdmin && !isOwner) {
         res.status(403).json({ error: 'Forbidden: Access restricted to evaluation owner.' });
         return;
       }
@@ -390,9 +395,17 @@ export const getCandidateEvaluation = async (req: AuthRequest, res: Response): P
     }
 
     // 2. Fallback: Candidate + Job validation for on-the-fly evaluation within authorized scope
-    const candidateData = await findCandidateRecord(idParam, jobIdParam || undefined);
+    const isSuperAdminFallback = user.role === 'SUPER_ADMIN';
+    const isCompanyAdminFallback = user.role === 'ADMIN' || user.role === 'CLIENT_ADMIN';
+
+    const candidateData = await findCandidateRecord(idParam, jobIdParam || undefined, isSuperAdminFallback ? undefined : orgId);
     if (!candidateData) {
       res.status(404).json({ error: `Candidate with ID "${idParam}" not found.` });
+      return;
+    }
+
+    if (!isSuperAdminFallback && (candidateData.organizationId || 'org-tasknera') !== orgId) {
+      res.status(403).json({ error: 'Forbidden: Access restricted to organization members.' });
       return;
     }
 
@@ -408,8 +421,13 @@ export const getCandidateEvaluation = async (req: AuthRequest, res: Response): P
       candidateData.currentCompany || undefined
     );
 
-    // If job belongs to someone else in non-admin mode
-    if (user.role !== 'ADMIN' && jobData.created_by && jobData.created_by !== user.userId) {
+    if (!isSuperAdminFallback && (jobData.organizationId || 'org-tasknera') !== orgId) {
+      res.status(403).json({ error: 'Forbidden: Access restricted to organization members.' });
+      return;
+    }
+
+    // If job belongs to someone else in recruiter mode
+    if (!isSuperAdminFallback && !isCompanyAdminFallback && jobData.created_by && jobData.created_by !== user.userId) {
       res.status(403).json({ error: 'Forbidden: Access restricted to job owner.' });
       return;
     }
@@ -460,9 +478,17 @@ export const evaluateCandidateController = async (req: AuthRequest, res: Respons
       return;
     }
 
-    const candidateData = await findCandidateRecord(candidateId, jobId);
+    const isSuperAdmin = user.role === 'SUPER_ADMIN';
+    const orgId = user.organizationId || 'org-tasknera';
+
+    const candidateData = await findCandidateRecord(candidateId, jobId, isSuperAdmin ? undefined : orgId);
     if (!candidateData) {
       res.status(404).json({ error: `Candidate with ID "${candidateId}" not found.` });
+      return;
+    }
+
+    if (!isSuperAdmin && (candidateData.organizationId || 'org-tasknera') !== orgId) {
+      res.status(403).json({ error: 'Unauthorized: Cannot evaluate candidate from another organization' });
       return;
     }
 
@@ -472,6 +498,11 @@ export const evaluateCandidateController = async (req: AuthRequest, res: Respons
       candidateData.currentTitle || undefined,
       candidateData.currentCompany || undefined
     );
+
+    if (!isSuperAdmin && (jobData.organizationId || 'org-tasknera') !== orgId) {
+      res.status(403).json({ error: 'Unauthorized: Cannot evaluate against job from another organization' });
+      return;
+    }
 
     // Run deterministic / AI semantic evaluation
     const evaluation = await evaluateCandidateAgainstRequirements(candidateData, jobData, requirements);
@@ -496,6 +527,7 @@ export const evaluateCandidateController = async (req: AuthRequest, res: Respons
           raw_text: candidateData.rawText || '',
           parsing_status: 'PARSED',
           created_by: user.userId,
+          organizationId: orgId,
         }
       }).catch(() => null);
       if (createdDbCand) dbCandidateId = createdDbCand.id;
@@ -511,6 +543,7 @@ export const evaluateCandidateController = async (req: AuthRequest, res: Respons
     if (!dbJobId) {
       let matchingJob = await prisma.job.findFirst({
         where: {
+          organizationId: orgId,
           created_by: user.userId,
           position: jobData.position
         }
@@ -521,6 +554,7 @@ export const evaluateCandidateController = async (req: AuthRequest, res: Respons
             client: jobData.client || 'Client Organization',
             position: jobData.position || 'Position',
             created_by: user.userId,
+            organizationId: orgId,
             status: 'active'
           }
         }).catch(() => null);
@@ -645,30 +679,54 @@ export const getAllEvaluations = async (req: AuthRequest, res: Response): Promis
     }
 
     const orgId = user.organizationId || 'org-tasknera';
+    const callerRole = user.role || 'MEMBER';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN';
+    const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
 
     // Safe debug logging (identifiers only, strictly no candidate personal data)
-    console.log(`[Evaluation Access] userId=${user.userId} organizationId=${orgId} role=${user.role || 'MEMBER'}`);
+    console.log(`[Evaluation Access] userId=${user.userId} organizationId=${orgId} role=${callerRole}`);
 
-    // STRICT PRIVACY RULE: Personal Evaluation History
-    // The only records returned to a logged-in user are evaluations performed by that user.
-    // User A evaluates CVs -> User A sees them.
-    // User B logs in -> User B does NOT see them.
-    // Even if User B created the JD, belongs to the same team, is admin/recruiter,
-    // or the candidate belongs to the same client.
     const scope = (req.query.scope as string) || (req.query.view === 'all' ? 'all' : 'mine');
-    const isAdmin = user.role === 'ADMIN';
 
-    const whereClause: any = {
-      organizationId: orgId,
-    };
+    const whereClause: any = {};
+    const andConditions: any[] = [];
 
-    if (!isAdmin || scope !== 'all') {
-      whereClause.OR = [
-        { evaluatedBy: user.userId },
-        { createdByUserId: user.userId },
-        { candidate: { created_by: user.userId } },
-        { job: { created_by: user.userId } },
-      ];
+    if (!isSuperAdmin) {
+      if (orgId === 'org-tasknera') {
+        andConditions.push({
+          OR: [
+            { organizationId: orgId },
+            { organizationId: null },
+            { job: { organizationId: orgId } },
+            { candidate: { organizationId: orgId } }
+          ]
+        });
+      } else {
+        andConditions.push({
+          OR: [
+            { organizationId: orgId },
+            { job: { organizationId: orgId } },
+            { candidate: { organizationId: orgId } }
+          ]
+        });
+      }
+    } else if (req.query.organizationId) {
+      andConditions.push({ organizationId: String(req.query.organizationId) });
+    }
+
+    if ((!isClientAdmin && !isSuperAdmin) || scope !== 'all') {
+      andConditions.push({
+        OR: [
+          { evaluatedBy: user.userId },
+          { createdByUserId: user.userId },
+          { candidate: { created_by: user.userId } },
+          { job: { created_by: user.userId } },
+        ]
+      });
+    }
+
+    if (andConditions.length > 0) {
+      whereClause.AND = andConditions;
     }
 
     const dbEvaluations = await prisma.evaluation.findMany({
@@ -803,11 +861,29 @@ export const matchCandidateWithJobController = async (req: AuthRequest, res: Res
     }
 
     // 1. Validate Candidate Presence & Parsing Readiness
-    const candidateData = await findCandidateRecord(candidateId, jobId);
+    const user = req.user;
+    if (!user || !user.userId) {
+      res.status(401).json({ error: 'Authentication required to evaluate candidate.' });
+      return;
+    }
+
+    const createdByUserId = user.userId;
+    const organizationId = user.organizationId || 'org-tasknera';
+    const isSuperAdmin = user.role === 'SUPER_ADMIN';
+
+    const candidateData = await findCandidateRecord(candidateId, jobId, isSuperAdmin ? undefined : organizationId);
     if (!candidateData) {
       res.status(404).json({
         status: 'NOT_FOUND',
         message: `Candidate with ID "${candidateId}" not found in database or candidate pool.`
+      });
+      return;
+    }
+
+    if (!isSuperAdmin && (candidateData.organizationId || 'org-tasknera') !== organizationId) {
+      res.status(403).json({
+        status: 'ERROR',
+        message: 'Unauthorized: Cannot match candidate from another organization.'
       });
       return;
     }
@@ -842,11 +918,27 @@ export const matchCandidateWithJobController = async (req: AuthRequest, res: Res
       return;
     }
 
+    if (dbJob && !isSuperAdmin && (dbJob.organizationId || 'org-tasknera') !== organizationId) {
+      res.status(403).json({
+        status: 'ERROR',
+        message: 'Unauthorized: Cannot match with job from another organization.'
+      });
+      return;
+    }
+
     const { jobData, requirements } = await getJobAndRequirements(
       jobId,
       candidateData.currentTitle || undefined,
       candidateData.currentCompany || undefined
     );
+
+    if (jobData && !isSuperAdmin && (jobData.organizationId || 'org-tasknera') !== organizationId) {
+      res.status(403).json({
+        status: 'ERROR',
+        message: 'Unauthorized: Cannot match with job from another organization.'
+      });
+      return;
+    }
 
     const hasRequirements = requirements && requirements.length > 0;
     const isConfirmed = hasRequirements && (
@@ -864,19 +956,11 @@ export const matchCandidateWithJobController = async (req: AuthRequest, res: Res
     }
 
     // 3. Check if Candidate has already been evaluated for this Job by THIS user
-    const user = req.user;
-    if (!user || !user.userId) {
-      res.status(401).json({ error: 'Authentication required to evaluate candidate.' });
-      return;
-    }
-
-    const createdByUserId = user.userId;
-    const organizationId = user.organizationId || 'org-tasknera';
-
     const existingEvalRecord = await prisma.evaluation.findFirst({
       where: {
         candidateId,
         jobId,
+        ...(!isSuperAdmin ? { organizationId } : {}),
         OR: [
           { evaluatedBy: createdByUserId },
           { createdByUserId }
@@ -1011,9 +1095,18 @@ export const getCandidateEvaluationHistoryController = async (req: AuthRequest, 
       return;
     }
 
-    const candidate = await findCandidateRecord(candidateId);
+    const userOrgId = req.user?.organizationId || 'org-tasknera';
+    const isSuperAdmin = req.user?.role === 'SUPER_ADMIN';
+    const isClientAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'CLIENT_ADMIN';
+
+    const candidate = await findCandidateRecord(candidateId, undefined, isSuperAdmin ? undefined : userOrgId);
     if (!candidate) {
       res.status(404).json({ error: `Candidate with ID "${candidateId}" not found.` });
+      return;
+    }
+
+    if (!isSuperAdmin && (candidate.organizationId || 'org-tasknera') !== userOrgId) {
+      res.status(403).json({ error: 'Unauthorized: Cannot view evaluation history of candidate from another organization.' });
       return;
     }
 
@@ -1021,9 +1114,24 @@ export const getCandidateEvaluationHistoryController = async (req: AuthRequest, 
     let applications: any[] = [];
     if (isCandUuid) {
       const appWhere: any = { candidate_id: candidateId };
-      if (req.user && req.user.role !== 'ADMIN') {
-        appWhere.job = { created_by: req.user.userId };
+      const jobWhere: any = {};
+      if (!isSuperAdmin) {
+        if (userOrgId === 'org-tasknera') {
+          jobWhere.OR = [
+            { organizationId: userOrgId },
+            { organizationId: null }
+          ];
+        } else {
+          jobWhere.organizationId = userOrgId;
+        }
       }
+      if (!isClientAdmin && !isSuperAdmin) {
+        jobWhere.created_by = req.user?.userId;
+      }
+      if (Object.keys(jobWhere).length > 0) {
+        appWhere.job = jobWhere;
+      }
+
       applications = await prisma.candidateApplication.findMany({
         where: appWhere,
         include: {
@@ -1128,6 +1236,10 @@ export const getCandidateEvaluationHistoryController = async (req: AuthRequest, 
       if (key.startsWith(`${candidateId}___`)) {
         const jId = key.split('___')[1];
         if (!seenJobIds.has(jId)) {
+          if (!isSuperAdmin) {
+            const j = await getJobFromStoreOrDb(jId);
+            if (j && (j.organizationId || 'org-tasknera') !== userOrgId) continue;
+          }
           seenJobIds.add(jId);
           const evalScore = evalData.overallScore ?? evalData.overallMatch ?? 0;
           historyItems.push({
@@ -1174,17 +1286,36 @@ export const getAvailableJobsForCandidateController = async (req: AuthRequest, r
       return;
     }
 
-    const candidate = await findCandidateRecord(candidateId);
+    const userOrgId = req.user?.organizationId || 'org-tasknera';
+    const isSuperAdmin = req.user?.role === 'SUPER_ADMIN';
+    const isClientAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'CLIENT_ADMIN';
+
+    const candidate = await findCandidateRecord(candidateId, undefined, isSuperAdmin ? undefined : userOrgId);
     if (!candidate) {
       res.status(404).json({ error: `Candidate with ID "${candidateId}" not found.` });
+      return;
+    }
+
+    if (!isSuperAdmin && (candidate.organizationId || 'org-tasknera') !== userOrgId) {
+      res.status(403).json({ error: 'Unauthorized: Cannot view available jobs for candidate from another organization.' });
       return;
     }
 
     const isCandUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidateId);
 
     const jobWhere: any = { status: { not: 'archived' } };
-    if (req.user && req.user.role !== 'ADMIN') {
-      jobWhere.created_by = req.user.userId;
+    if (!isSuperAdmin) {
+      if (userOrgId === 'org-tasknera') {
+        jobWhere.OR = [
+          { organizationId: userOrgId },
+          { organizationId: null }
+        ];
+      } else {
+        jobWhere.organizationId = userOrgId;
+      }
+    }
+    if (!isClientAdmin && !isSuperAdmin) {
+      jobWhere.created_by = req.user?.userId;
     }
 
     // Fetch active jobs (filtered by creator for members, all for admin)
@@ -1282,7 +1413,11 @@ export const updateEvaluationDecisionController = async (req: AuthRequest, res: 
     }
 
     const orgId = user.organizationId || 'org-tasknera';
-    if (evaluation.organizationId && evaluation.organizationId !== orgId) {
+    const isSuperAdmin = user.role === 'SUPER_ADMIN';
+    const isCompanyAdmin = user.role === 'ADMIN' || user.role === 'CLIENT_ADMIN';
+    const evalOrgId = evaluation.organizationId || evaluation.job?.organizationId || evaluation.candidate?.organizationId || 'org-tasknera';
+
+    if (!isSuperAdmin && evalOrgId !== orgId) {
       res.status(403).json({ error: 'Forbidden: Access restricted to organization members.' });
       return;
     }
@@ -1294,7 +1429,7 @@ export const updateEvaluationDecisionController = async (req: AuthRequest, res: 
       evaluation.job?.created_by === user.userId ||
       evaluation.candidate?.created_by === user.userId;
 
-    if (user.role !== 'ADMIN' && !isOwner) {
+    if (!isSuperAdmin && !isCompanyAdmin && !isOwner) {
       res.status(403).json({ error: 'Forbidden: Only evaluation owner or admin can update decision.' });
       return;
     }
@@ -1343,7 +1478,11 @@ export const deleteEvaluationController = async (req: AuthRequest, res: Response
     }
 
     const orgId = user.organizationId || 'org-tasknera';
-    if (evaluation.organizationId && evaluation.organizationId !== orgId) {
+    const isSuperAdmin = user.role === 'SUPER_ADMIN';
+    const isCompanyAdmin = user.role === 'ADMIN' || user.role === 'CLIENT_ADMIN';
+    const evalOrgId = evaluation.organizationId || evaluation.job?.organizationId || evaluation.candidate?.organizationId || 'org-tasknera';
+
+    if (!isSuperAdmin && evalOrgId !== orgId) {
       res.status(403).json({ error: 'Forbidden: Access restricted to organization members.' });
       return;
     }
@@ -1355,7 +1494,7 @@ export const deleteEvaluationController = async (req: AuthRequest, res: Response
       evaluation.job?.created_by === user.userId ||
       evaluation.candidate?.created_by === user.userId;
 
-    if (user.role !== 'ADMIN' && !isOwner) {
+    if (!isSuperAdmin && !isCompanyAdmin && !isOwner) {
       res.status(403).json({ error: 'Forbidden: Only evaluation owner or admin can delete evaluation.' });
       return;
     }
@@ -1388,9 +1527,28 @@ export const attachCandidateToJobController = async (req: AuthRequest, res: Resp
       return;
     }
 
-    const candidate = await findCandidateRecord(candidateId);
+    const userOrgId = req.user?.organizationId || 'org-tasknera';
+    const isSuperAdmin = req.user?.role === 'SUPER_ADMIN';
+
+    const candidate = await findCandidateRecord(candidateId, undefined, isSuperAdmin ? undefined : userOrgId);
     if (!candidate) {
       res.status(404).json({ error: `Candidate with ID "${candidateId}" not found.` });
+      return;
+    }
+
+    if (!isSuperAdmin && (candidate.organizationId || 'org-tasknera') !== userOrgId) {
+      res.status(403).json({ error: 'Unauthorized: Cannot attach candidate from another organization.' });
+      return;
+    }
+
+    const job = await getJobFromStoreOrDb(jobId);
+    if (!job) {
+      res.status(404).json({ error: 'Job not found.' });
+      return;
+    }
+
+    if (!isSuperAdmin && (job.organizationId || 'org-tasknera') !== userOrgId) {
+      res.status(403).json({ error: 'Unauthorized: Cannot attach candidate to job from another organization.' });
       return;
     }
 

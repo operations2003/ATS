@@ -5,13 +5,15 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { useAuth } from '@/context/AuthContext';
-import { UserRole } from '@/lib/api';
+import { UserRole, OrganizationQuota } from '@/lib/api';
 import { atsStore, AuditEvent, RecruiterMetric, JobItem, CandidateItem } from '@/lib/atsStore';
 
 
 export default function AdminPage() {
   const { user, setRole, signin } = useAuth();
   const [mounted, setMounted] = useState(false);
+  const [quota, setQuota] = useState<OrganizationQuota | null>(null);
+  const [loadingQuota, setLoadingQuota] = useState(false);
   const [podFilter, setPodFilter] = useState<string>('All');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [searchRecruiter, setSearchRecruiter] = useState('');
@@ -71,14 +73,14 @@ export default function AdminPage() {
   const isPurgedMember = (email?: string, name?: string): boolean => {
     const e = String(email || '').toLowerCase().trim();
     const n = String(name || '').toLowerCase().trim();
-    if (e === 'admin@gmail.com') return true;
+    if (e === 'admin@gmail.com' || e === 'admin@tasknera.com') return true;
     if (e.includes('harsh') || n.includes('harsh')) return true;
     if (e.includes('aditya') || n.includes('aditya')) return true;
     return false;
   };
 
   const syncData = () => {
-    setRecruiters(atsStore.getRecruiters().filter(r => !isPurgedMember(r.email, r.name) && r.role !== 'ADMIN'));
+    setRecruiters(atsStore.getRecruiters().filter(r => !isPurgedMember(r.email, r.name) && r.role !== 'ADMIN' && (r as any).role !== 'CLIENT_ADMIN' && (r as any).role !== 'SUPER_ADMIN'));
     setJobs(atsStore.getJobs().filter(j => !isPurgedMember(j.assignedRecruiter, j.assignedRecruiter)));
     setCandidates(atsStore.getCandidates().filter(c => !isPurgedMember(c.assignedRecruiter, c.assignedRecruiter)));
     setAuditEvents(atsStore.getAuditEvents().filter(a => !isPurgedMember(a.user, a.user)));
@@ -99,7 +101,7 @@ export default function AdminPage() {
         if (Array.isArray(data.members)) {
           // Cascade delete purged members from backend database if found
           data.members.forEach(async (m: any) => {
-            if (isPurgedMember(m.email, m.name) && m.email?.toLowerCase().trim() !== 'admin@gmail.com') {
+            if (isPurgedMember(m.email, m.name) && m.email?.toLowerCase().trim() !== 'admin@gmail.com' && m.email?.toLowerCase().trim() !== 'admin@tasknera.com') {
               try {
                 await fetch(`${backendUrl}/users/${encodeURIComponent(m.id)}?email=${encodeURIComponent(m.email)}`, {
                   method: 'DELETE',
@@ -109,7 +111,7 @@ export default function AdminPage() {
             }
           });
 
-          const nonAdmin = data.members.filter((m: any) => !isPurgedMember(m.email, m.name) && m.role !== 'ADMIN');
+          const nonAdmin = data.members.filter((m: any) => !isPurgedMember(m.email, m.name) && m.role !== 'ADMIN' && m.role !== 'CLIENT_ADMIN' && m.role !== 'SUPER_ADMIN');
           atsStore.setRecruitersFromDatabase(nonAdmin);
           setRecruiters(nonAdmin);
         }
@@ -118,6 +120,28 @@ export default function AdminPage() {
       console.warn('Failed to fetch live TA members from database:', err);
     } finally {
       setLoadingMembers(false);
+    }
+  };
+
+  const fetchQuota = async () => {
+    try {
+      setLoadingQuota(true);
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
+      if (!token) return;
+      const res = await fetch(`${backendUrl}/users/quota`, {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.quota) {
+          setQuota(data.quota);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to fetch quota:', err);
+    } finally {
+      setLoadingQuota(false);
     }
   };
 
@@ -239,6 +263,7 @@ export default function AdminPage() {
 
       // Refresh live member list and sync
       await fetchLiveTAMembers();
+      await fetchQuota();
       syncData();
 
       // If drill-down modal had this member selected, update selectedRecruiter
@@ -301,6 +326,7 @@ export default function AdminPage() {
 
       // Refresh live member list and sync
       await fetchLiveTAMembers();
+      await fetchQuota();
       syncData();
 
       if (selectedRecruiter?.id === memberToDelete.id) {
@@ -337,6 +363,7 @@ export default function AdminPage() {
     }
     syncData();
     fetchLiveTAMembers();
+    fetchQuota();
     const unsubscribe = atsStore.subscribe(syncData);
     return () => unsubscribe();
   }, []);
@@ -345,7 +372,7 @@ export default function AdminPage() {
 
   // Filtered recruiters
   const filteredRecruiters = recruiters.filter(r => {
-    if (isPurgedMember(r.email, r.name) || r.role === 'ADMIN' || r.name?.toLowerCase().trim() === 'admin') {
+    if (isPurgedMember(r.email, r.name) || r.role === 'ADMIN' || (r as any).role === 'CLIENT_ADMIN' || (r as any).role === 'SUPER_ADMIN' || r.name?.toLowerCase().trim() === 'admin') {
       return false;
     }
     const q = searchRecruiter.toLowerCase();
@@ -415,6 +442,7 @@ export default function AdminPage() {
 
       // Refresh member list from database
       await fetchLiveTAMembers();
+      await fetchQuota();
 
 
       const skillsArray = newMemberSkills
@@ -472,7 +500,11 @@ export default function AdminPage() {
     }
   };
 
-  const isAuthorizedAdmin = user?.email?.toLowerCase().trim() === 'admin@gmail.com' && user?.role === 'ADMIN';
+  const isAuthorizedAdmin =
+    user?.role === 'SUPER_ADMIN' ||
+    user?.role === 'CLIENT_ADMIN' ||
+    user?.role === 'ADMIN' ||
+    user?.email?.toLowerCase().trim() === 'admin@gmail.com';
 
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -480,11 +512,8 @@ export default function AdminPage() {
     setAdminLoginLoading(true);
     try {
       const cleanInputEmail = adminLoginEmail.trim().toLowerCase();
-      if (cleanInputEmail !== 'admin@gmail.com') {
-        throw new Error('Access denied. Only admin@gmail.com is authorized as Administrator.');
-      }
       const role = await signin(cleanInputEmail, adminLoginPassword);
-      if (role !== 'ADMIN') {
+      if (role !== 'ADMIN' && role !== 'SUPER_ADMIN' && role !== 'CLIENT_ADMIN') {
         throw new Error('Could not authenticate as Administrator. Please verify your credentials.');
       }
     } catch (err: any) {
@@ -494,7 +523,7 @@ export default function AdminPage() {
     }
   };
 
-  // Strict Role Guard: Only admin@gmail.com with role ADMIN can enter
+  // Strict Role Guard: Only administrators (SUPER_ADMIN, CLIENT_ADMIN, or ADMIN) can enter
   if (mounted && !isAuthorizedAdmin) {
     return (
       <div className="min-h-screen bg-[#EEF2F6] flex flex-col selection:bg-brand-orange-pale selection:text-brand-orange">
@@ -514,7 +543,7 @@ export default function AdminPage() {
             </h1>
 
             <p className="text-xs text-slate-500 mb-6 leading-relaxed">
-              Strict Security Policy: Only the designated Administrator account (<strong className="text-slate-800">admin@gmail.com</strong>) is authorized to access executive administration and member insights.
+              Strict Security Policy: Only designated Administrator accounts (<strong className="text-slate-800">Super Admin</strong> or <strong className="text-slate-800">Client Admin</strong>) are authorized to access executive administration and member insights.
             </p>
 
             {user && (
@@ -541,7 +570,7 @@ export default function AdminPage() {
                   required
                   value={adminLoginEmail}
                   onChange={e => setAdminLoginEmail(e.target.value)}
-                  placeholder="admin@gmail.com"
+                  placeholder="admin@tasknera.com or admin@gmail.com"
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
                 />
               </div>
@@ -622,19 +651,83 @@ export default function AdminPage() {
 
             <div className="flex-shrink-0">
               <button
+                disabled={quota ? quota.availableSlots <= 0 : false}
                 onClick={() => {
                   setAddMemberError('');
                   setAddMemberSuccess('');
                   setShowAddMemberModal(true);
                 }}
-                className="px-5 py-3 bg-brand-orange hover:bg-brand-orange-hover active:scale-[0.98] text-white text-xs font-black rounded-2xl shadow-orange transition-all cursor-pointer flex items-center gap-2"
+                className={`px-5 py-3 text-xs font-black rounded-2xl transition-all flex items-center gap-2 ${
+                  quota && quota.availableSlots <= 0
+                    ? 'bg-slate-400 text-slate-200 cursor-not-allowed opacity-75'
+                    : 'bg-brand-orange hover:bg-brand-orange-hover active:scale-[0.98] text-white shadow-orange cursor-pointer'
+                }`}
+                title={
+                  quota && quota.availableSlots <= 0
+                    ? `User quota reached (${quota.totalLimit} accounts). Please contact platform administrator to increase limit.`
+                    : 'Provision new team member'
+                }
               >
                 <span className="text-base leading-none font-black">+</span>
-                <span>Add Team Member</span>
+                <span>{quota && quota.availableSlots <= 0 ? 'User Quota Reached' : 'Add Team Member'}</span>
               </button>
             </div>
           </div>
         </div>
+
+        {/* ── ORGANIZATION QUOTA & CREDENTIAL LIMIT BANNER ── */}
+        {quota && (
+          <div className="mb-8 p-5 bg-white border border-slate-200/90 rounded-3xl shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-violet-100 text-violet-700 flex items-center justify-center font-bold flex-shrink-0">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-black text-slate-900">{quota.organizationName || 'Client Organization'}</h3>
+                  <span className="px-2.5 py-0.5 rounded-full bg-violet-100 text-violet-800 text-[10px] font-black uppercase tracking-wider">
+                    {quota.subscriptionPlan} Plan
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                    {quota.status}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Tenant Organization ID: <code className="font-mono text-slate-700 font-semibold">{quota.organizationId}</code>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-4 sm:gap-6 bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+              <div>
+                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">User Credential Quota</div>
+                <div className="text-sm font-black text-slate-900 mt-0.5">
+                  {quota.currentUsers} / {quota.totalLimit} <span className="text-xs font-normal text-slate-500">accounts</span>
+                </div>
+              </div>
+
+              <div className="h-8 w-px bg-slate-200 hidden sm:block"></div>
+
+              <div>
+                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Available Slots</div>
+                <div className={`text-sm font-black mt-0.5 ${quota.availableSlots <= 0 ? 'text-rose-600 font-black' : 'text-emerald-600 font-black'}`}>
+                  {quota.availableSlots} {quota.availableSlots === 1 ? 'slot' : 'slots'} remaining
+                </div>
+              </div>
+
+              <div className="h-8 w-px bg-slate-200 hidden sm:block"></div>
+
+              <div>
+                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Active Jobs Quota</div>
+                <div className="text-sm font-black text-slate-900 mt-0.5">
+                  {quota.currentActiveJobs} / {quota.maxActiveJobs}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── EXECUTIVE KPI METRIC CARDS ── */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5 mb-8">
@@ -1076,6 +1169,28 @@ export default function AdminPage() {
                 </button>
               </div>
 
+              {/* Quota Status Notice */}
+              {quota && (
+                <div className={`mb-4 p-3 rounded-xl border text-xs flex items-center justify-between ${
+                  quota.availableSlots <= 0
+                    ? 'bg-rose-50 border-rose-200 text-rose-800'
+                    : 'bg-violet-50 border-violet-200 text-violet-800'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold">{quota.availableSlots <= 0 ? '⚠️' : 'ℹ️'}</span>
+                    <span>
+                      {quota.availableSlots <= 0 ? (
+                        <strong>User limit reached ({quota.totalLimit}/{quota.totalLimit}). No available slots. Contact platform administrator.</strong>
+                      ) : (
+                        <span>
+                          Organization user quota: <strong>{quota.currentUsers} / {quota.totalLimit}</strong> ({quota.availableSlots} slots available)
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {addMemberError && (
                 <div className="mb-4 p-3 bg-rose-50 rounded-xl border border-rose-200 text-xs text-rose-700 flex items-center gap-2">
                   <span className="font-bold">✕</span>
@@ -1183,7 +1298,7 @@ export default function AdminPage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={addMemberLoading}
+                    disabled={addMemberLoading || (quota ? quota.availableSlots <= 0 : false)}
                     className="px-5 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-black rounded-xl shadow-orange transition-all cursor-pointer disabled:opacity-60 flex items-center gap-2"
                   >
                     {addMemberLoading ? (
@@ -1194,6 +1309,8 @@ export default function AdminPage() {
                         </svg>
                         <span>Provisioning Member...</span>
                       </>
+                    ) : quota && quota.availableSlots <= 0 ? (
+                      <span>Quota Full (0 Slots)</span>
                     ) : (
                       <span>Save &amp; Create Member</span>
                     )}

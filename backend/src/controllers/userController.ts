@@ -2,20 +2,30 @@ import { Response } from 'express';
 import bcrypt from 'bcryptjs';
 import prisma from '../config/prisma';
 import { AuthRequest, UserRole } from '../middleware/authMiddleware';
+import { checkUserQuota, getOrganizationQuota } from '../services/organizationService';
 
-// @desc    Create a new member (Admin only)
+// @desc    Create a new member (Admin / Client Admin only)
 // @route   POST /api/users/create-member
 // @route   POST /api/users
-// @access  Private (ADMIN)
+// @access  Private (ADMIN, CLIENT_ADMIN, SUPER_ADMIN)
 export const createMember = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    // 1. Verify authenticated user is ADMIN
-    if (!req.user || req.user.role !== 'ADMIN') {
+    // 1. Verify authenticated user has administrative authorization
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const callerRole = req.user.role || 'MEMBER';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
+
+    if (!isSuperAdmin && !isClientAdmin) {
       res.status(403).json({ error: 'Forbidden: Only administrators are authorized to create new members.' });
       return;
     }
 
-    const { name, email, password, teamId, role } = req.body;
+    const { name, email, password, teamId, role, organizationId: bodyOrgId } = req.body;
 
     // 2. Validate required fields
     if (!email || !password) {
@@ -45,38 +55,76 @@ export const createMember = async (req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
-    // 4. Role assignment: restrict to MEMBER or TEAM_LEADER; never allow arbitrary escalation
-    let assignedRole: UserRole = 'MEMBER';
-    if (role && (role === 'TEAM_LEADER' || role === 'TEAM_LEAD')) {
-      assignedRole = 'TEAM_LEADER';
-    } else {
-      assignedRole = 'MEMBER';
+    // 4. Role assignment: Client Admins can NEVER create SUPER_ADMIN or CLIENT_ADMIN
+    let assignedRole: UserRole = 'RECRUITER';
+    const requestedRole = (role || '').toUpperCase();
+
+    if (!isSuperAdmin && (requestedRole === 'SUPER_ADMIN' || requestedRole === 'CLIENT_ADMIN')) {
+      res.status(403).json({ error: 'Forbidden: Client Administrators cannot create administrator roles.' });
+      return;
     }
 
-    // 5. Securely hash password before storing
+    if (requestedRole === 'TEAM_LEADER' || requestedRole === 'TEAM_LEAD') {
+      assignedRole = 'TEAM_LEADER';
+    } else if (requestedRole === 'MEMBER') {
+      assignedRole = 'MEMBER';
+    } else if (requestedRole === 'RECRUITER') {
+      assignedRole = 'RECRUITER';
+    } else {
+      assignedRole = 'RECRUITER';
+    }
+
+    // 5. Derive organization ID strictly from authenticated session (never trust client body for Client Admins)
+    const targetOrgId = isSuperAdmin && bodyOrgId ? bodyOrgId : (req.user.organizationId || 'org-tasknera');
+
+    // 6. Concurrency-safe atomic transaction checking quota & creating user
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(String(password), salt);
 
-    // 6. Save new user to database
-    const newUser = await prisma.user.create({
-      data: {
-        name: name ? String(name).trim() : cleanEmail.split('@')[0],
-        email: cleanEmail,
-        password: hashedPassword,
-        role: assignedRole,
-        teamId: teamId || null,
-        organizationId: req.user.organizationId || 'org-tasknera'
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        teamId: true,
-        organizationId: true,
-        createdAt: true,
-        updatedAt: true
-      }
+    const newUser = await prisma.$transaction(async (tx) => {
+      // Concurrency-safe quota check
+      await checkUserQuota(tx, targetOrgId, assignedRole);
+
+      // Create new user inside the organization
+      const created = await tx.user.create({
+        data: {
+          name: name ? String(name).trim() : cleanEmail.split('@')[0],
+          email: cleanEmail,
+          password: hashedPassword,
+          role: assignedRole,
+          isActive: true,
+          teamId: teamId || null,
+          organizationId: targetOrgId
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          isActive: true,
+          teamId: true,
+          organizationId: true,
+          createdAt: true,
+          updatedAt: true
+        }
+      });
+
+      // Audit log
+      await tx.auditLog.create({
+        data: {
+          organizationId: targetOrgId,
+          userId: (req.user?.userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.user.userId)) ? req.user.userId : null,
+          action: 'CREATE_USER',
+          targetType: 'User',
+          targetId: created.id,
+          details: {
+            createdUserEmail: created.email,
+            role: created.role
+          }
+        }
+      });
+
+      return created;
     });
 
     res.status(201).json({
@@ -86,29 +134,44 @@ export const createMember = async (req: AuthRequest, res: Response): Promise<voi
     });
   } catch (error: any) {
     console.error('[User Controller] Error creating member:', error);
-    res.status(500).json({ error: error.message || 'Failed to create member' });
+    res.status(400).json({ error: error.message || 'Failed to create member' });
   }
 };
 
-// @desc    Get all users (Admin only)
+// @desc    Get all users (Admin / Client Admin only)
 // @route   GET /api/users
-// @access  Private (ADMIN)
+// @access  Private (ADMIN, CLIENT_ADMIN, SUPER_ADMIN)
 export const getAllUsers = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const callerRole = req.user?.role || 'MEMBER';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const targetOrgId = req.query.organizationId ? String(req.query.organizationId) : req.user?.organizationId;
+
+    const whereClause: any = {
+      AND: [
+        { email: { not: { contains: 'harsh' } } },
+        { name: { not: { contains: 'harsh' } } },
+        { email: { not: { contains: 'aditya' } } },
+        { name: { not: { contains: 'aditya' } } }
+      ]
+    };
+
+    // If not super admin, strictly filter by authenticated user's organization
+    if (!isSuperAdmin) {
+      whereClause.organizationId = req.user?.organizationId || 'org-tasknera';
+    } else if (targetOrgId) {
+      whereClause.organizationId = targetOrgId;
+    }
+
     const users = await prisma.user.findMany({
-      where: {
-        AND: [
-          { email: { not: { contains: 'harsh' } } },
-          { name: { not: { contains: 'harsh' } } },
-          { email: { not: { contains: 'aditya' } } },
-          { name: { not: { contains: 'aditya' } } }
-        ]
-      },
+      where: whereClause,
       select: {
         id: true,
         name: true,
         email: true,
         role: true,
+        isActive: true,
+        organizationId: true,
         teamId: true,
         createdAt: true,
         updatedAt: true,
@@ -138,16 +201,28 @@ export const getAllUsers = async (req: AuthRequest, res: Response): Promise<void
 // @access  Public / Authenticated
 export const getTAMembers = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const callerRole = req.user?.role || 'MEMBER';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const filterOrgId = req.query.organizationId ? String(req.query.organizationId) : req.user?.organizationId;
+
+    const andConditions: any[] = [
+      { email: { not: 'admin@gmail.com' } },
+      { role: { notIn: ['ADMIN', 'SUPER_ADMIN', 'CLIENT_ADMIN'] } },
+      { email: { not: { contains: 'harsh' } } },
+      { name: { not: { contains: 'harsh' } } },
+      { email: { not: { contains: 'aditya' } } },
+      { name: { not: { contains: 'aditya' } } }
+    ];
+
+    if (!isSuperAdmin) {
+      andConditions.push({ organizationId: req.user?.organizationId || 'org-tasknera' });
+    } else if (filterOrgId) {
+      andConditions.push({ organizationId: filterOrgId });
+    }
+
     const users = await prisma.user.findMany({
       where: {
-        AND: [
-          { email: { not: 'admin@gmail.com' } },
-          { role: { not: 'ADMIN' } },
-          { email: { not: { contains: 'harsh' } } },
-          { name: { not: { contains: 'harsh' } } },
-          { email: { not: { contains: 'aditya' } } },
-          { name: { not: { contains: 'aditya' } } }
-        ]
+        AND: andConditions
       },
       include: {
         jobs: {
@@ -375,13 +450,22 @@ export const assignUserTeam = async (req: AuthRequest, res: Response): Promise<v
   }
 };
 
-// @desc    Update member details (Admin only)
+// @desc    Update member details (Admin / Client Admin only)
 // @route   PUT /api/users/:id
 // @route   PATCH /api/users/:id
-// @access  Private (ADMIN)
+// @access  Private (ADMIN, CLIENT_ADMIN, SUPER_ADMIN)
 export const updateMember = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    if (!req.user || req.user.role !== 'ADMIN') {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const callerRole = req.user.role || 'MEMBER';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
+
+    if (!isSuperAdmin && !isClientAdmin) {
       res.status(403).json({ error: 'Forbidden: Only administrators are authorized to edit member accounts.' });
       return;
     }
@@ -389,7 +473,7 @@ export const updateMember = async (req: AuthRequest, res: Response): Promise<voi
     const rawId = String(req.params.id || '').trim();
     const queryEmail = req.query.email ? String(req.query.email).toLowerCase().trim() : '';
     const bodyCurrentEmail = req.body.currentEmail ? String(req.body.currentEmail).toLowerCase().trim() : '';
-    const { name, email, password, role, teamId } = req.body;
+    const { name, email, password, role, teamId, isActive } = req.body;
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawId);
 
@@ -412,8 +496,14 @@ export const updateMember = async (req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
-    if (targetUser.email?.toLowerCase().trim() === 'admin@gmail.com') {
-      if (role && role !== 'ADMIN') {
+    // Multi-tenant security check: Client Admins can only edit members within their organization
+    if (!isSuperAdmin && targetUser.organizationId !== req.user.organizationId) {
+      res.status(403).json({ error: 'Forbidden: You cannot modify user accounts belonging to another organization.' });
+      return;
+    }
+
+    if (targetUser.email?.toLowerCase().trim() === 'admin@gmail.com' || targetUser.role === 'SUPER_ADMIN') {
+      if (role && role !== 'SUPER_ADMIN') {
         res.status(403).json({ error: 'Cannot demote or alter primary administrator role' });
         return;
       }
@@ -423,6 +513,10 @@ export const updateMember = async (req: AuthRequest, res: Response): Promise<voi
 
     if (name && typeof name === 'string' && name.trim().length > 0) {
       updateData.name = name.trim();
+    }
+
+    if (typeof isActive === 'boolean') {
+      updateData.isActive = isActive;
     }
 
     if (email && typeof email === 'string') {
@@ -454,10 +548,15 @@ export const updateMember = async (req: AuthRequest, res: Response): Promise<voi
 
     if (role && typeof role === 'string') {
       const normalizedRole = role.toUpperCase();
+      // Client Admins cannot escalate users to SUPER_ADMIN or CLIENT_ADMIN
+      if (!isSuperAdmin && (normalizedRole === 'SUPER_ADMIN' || normalizedRole === 'CLIENT_ADMIN')) {
+        res.status(403).json({ error: 'Forbidden: Client Administrators cannot grant administrator privileges.' });
+        return;
+      }
       if (normalizedRole === 'TEAM_LEAD' || normalizedRole === 'TEAM_LEADER') {
         updateData.role = 'TEAM_LEADER';
-      } else if (normalizedRole === 'MEMBER' || normalizedRole === 'RECRUITER_MEMBER') {
-        updateData.role = 'MEMBER';
+      } else if (normalizedRole === 'RECRUITER' || normalizedRole === 'MEMBER' || normalizedRole === 'RECRUITER_MEMBER') {
+        updateData.role = normalizedRole === 'MEMBER' ? 'MEMBER' : 'RECRUITER';
       }
     }
 
@@ -473,6 +572,8 @@ export const updateMember = async (req: AuthRequest, res: Response): Promise<voi
         name: true,
         email: true,
         role: true,
+        isActive: true,
+        organizationId: true,
         teamId: true,
         updatedAt: true
       }
@@ -489,11 +590,25 @@ export const updateMember = async (req: AuthRequest, res: Response): Promise<voi
   }
 };
 
-// @desc    Delete user and all associated data (Admin only)
+// @desc    Delete user and all associated data (Admin / Client Admin only)
 // @route   DELETE /api/users/:id
-// @access  Private (ADMIN)
+// @access  Private (ADMIN, CLIENT_ADMIN, SUPER_ADMIN)
 export const deleteUser = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const callerRole = req.user.role || 'MEMBER';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
+
+    if (!isSuperAdmin && !isClientAdmin) {
+      res.status(403).json({ error: 'Forbidden: Only administrators are authorized to delete user accounts.' });
+      return;
+    }
+
     const rawId = String(req.params.id || '').trim();
     const queryEmail = req.query.email ? String(req.query.email).toLowerCase().trim() : '';
 
@@ -515,7 +630,6 @@ export const deleteUser = async (req: AuthRequest, res: Response): Promise<void>
     });
 
     if (!targetUser) {
-      // User might be only in local state; respond 200 so UI can clean up local store
       res.status(200).json({
         success: true,
         message: 'Member account not found in database or already removed'
@@ -523,13 +637,19 @@ export const deleteUser = async (req: AuthRequest, res: Response): Promise<void>
       return;
     }
 
-    if (targetUser.email?.toLowerCase().trim() === 'admin@gmail.com' || targetUser.role === 'ADMIN') {
+    // Multi-tenant check: non-super-admins cannot delete users from other organizations
+    if (!isSuperAdmin && targetUser.organizationId !== req.user.organizationId) {
+      res.status(403).json({ error: 'Forbidden: You cannot delete user accounts belonging to another organization.' });
+      return;
+    }
+
+    if (targetUser.email?.toLowerCase().trim() === 'admin@gmail.com' || targetUser.role === 'SUPER_ADMIN') {
       res.status(403).json({ error: 'Super Administrator accounts cannot be deleted' });
       return;
     }
 
-    if (targetUser.id === req.user?.userId) {
-      res.status(400).json({ error: 'You cannot delete your own administrator account' });
+    if (!isSuperAdmin && targetUser.role === 'CLIENT_ADMIN') {
+      res.status(403).json({ error: 'Client Administrator accounts can only be removed by the platform Super Administrator.' });
       return;
     }
 
@@ -537,14 +657,12 @@ export const deleteUser = async (req: AuthRequest, res: Response): Promise<void>
 
     // Comprehensive cascade deletion inside an atomic transaction
     await prisma.$transaction(async (tx) => {
-      // 1. Identify all jobs created by this user
       const userJobs = await tx.job.findMany({
         where: { created_by: userId },
         select: { id: true }
       });
       const userJobIds = userJobs.map(j => j.id);
 
-      // 2. Identify all candidates created by this user or linked to their jobs
       const userCandidates = await tx.candidate.findMany({
         where: {
           OR: [
@@ -556,7 +674,6 @@ export const deleteUser = async (req: AuthRequest, res: Response): Promise<void>
       });
       const userCandidateIds = userCandidates.map(c => c.id);
 
-      // 3. Delete candidate sub-records (experiences, educations, skills, certifications, languages, projects)
       if (userCandidateIds.length > 0) {
         await tx.candidateExperience.deleteMany({ where: { candidate_id: { in: userCandidateIds } } });
         await tx.candidateEducation.deleteMany({ where: { candidate_id: { in: userCandidateIds } } });
@@ -566,7 +683,6 @@ export const deleteUser = async (req: AuthRequest, res: Response): Promise<void>
         await tx.candidateProject.deleteMany({ where: { candidate_id: { in: userCandidateIds } } });
       }
 
-      // 4. Delete candidate applications
       if (userCandidateIds.length > 0 || userJobIds.length > 0) {
         await tx.candidateApplication.deleteMany({
           where: {
@@ -578,7 +694,6 @@ export const deleteUser = async (req: AuthRequest, res: Response): Promise<void>
         });
       }
 
-      // 5. Delete evaluations created by, evaluated by, assigned to this user, or referencing their candidates/jobs
       await tx.evaluation.deleteMany({
         where: {
           OR: [
@@ -591,22 +706,18 @@ export const deleteUser = async (req: AuthRequest, res: Response): Promise<void>
         }
       });
 
-      // 6. Delete job requirements
       if (userJobIds.length > 0) {
         await tx.requirement.deleteMany({ where: { job_id: { in: userJobIds } } });
       }
 
-      // 7. Delete candidates
       if (userCandidateIds.length > 0) {
         await tx.candidate.deleteMany({ where: { id: { in: userCandidateIds } } });
       }
 
-      // 8. Delete jobs
       if (userJobIds.length > 0) {
         await tx.job.deleteMany({ where: { id: { in: userJobIds } } });
       }
 
-      // 9. Delete user
       await tx.user.delete({ where: { id: userId } });
     });
 
@@ -617,5 +728,61 @@ export const deleteUser = async (req: AuthRequest, res: Response): Promise<void>
   } catch (error: any) {
     console.error('[User Controller] Error deleting user and associated data:', error);
     res.status(500).json({ error: error.message || 'Failed to delete user and associated data' });
+  }
+};
+
+// @desc    Get organization quota (Client Admin & Recruiter)
+// @route   GET /api/users/quota
+// @access  Private
+export const getUserQuotaController = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const orgId = req.user?.organizationId || 'org-tasknera';
+    const quota = await getOrganizationQuota(orgId);
+    res.status(200).json({ success: true, quota });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to fetch user quota' });
+  }
+};
+
+// @desc    Toggle user active/inactive status (Client Admin / Super Admin)
+// @route   PATCH /api/users/:id/toggle-active
+// @access  Private (ADMIN, CLIENT_ADMIN, SUPER_ADMIN)
+export const toggleUserActiveController = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const rawId = String(req.params.id || '').trim();
+    const { isActive } = req.body;
+
+    const callerRole = req.user?.role || 'MEMBER';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+
+    const targetUser = await prisma.user.findUnique({ where: { id: rawId } });
+    if (!targetUser) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    if (!isSuperAdmin && targetUser.organizationId !== req.user?.organizationId) {
+      res.status(403).json({ error: 'Forbidden: You cannot modify users belonging to another organization.' });
+      return;
+    }
+
+    if (targetUser.email?.toLowerCase().trim() === 'admin@gmail.com' || targetUser.role === 'SUPER_ADMIN') {
+      res.status(400).json({ error: 'Cannot deactivate Super Administrator accounts.' });
+      return;
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: rawId },
+      data: { isActive: Boolean(isActive) },
+      select: { id: true, name: true, email: true, isActive: true, role: true, organizationId: true }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `User ${updated.email} is now ${updated.isActive ? 'active' : 'deactivated'}.`,
+      user: updated
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to toggle user status' });
   }
 };

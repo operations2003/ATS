@@ -407,11 +407,17 @@ export default function CandidatesPage() {
       }
 
       // Merge candidates saved in browser localStorage across jobs and pool
+      // Merge candidates saved in browser localStorage only if belonging to current organization
+      const currentOrgId = user?.organizationId || 'org-tasknera';
+      const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+
       if (typeof window !== 'undefined') {
         try {
           const localPool = JSON.parse(localStorage.getItem('tasknera_candidates_pool') || '[]');
           if (Array.isArray(localPool)) {
             for (const lc of localPool) {
+              const lcOrgId = lc.organizationId || 'org-tasknera';
+              if (!isSuperAdmin && lcOrgId !== currentOrgId) continue;
               if (!rawList.some((r: any) => r.id === lc.id || (r.fileName && r.fileName === lc.fileName))) {
                 rawList.unshift(lc);
               }
@@ -426,6 +432,8 @@ export default function CandidatesPage() {
                 const jobCands = JSON.parse(localStorage.getItem(key) || '[]');
                 if (Array.isArray(jobCands)) {
                   for (const jc of jobCands) {
+                    const jcOrgId = jc.organizationId || 'org-tasknera';
+                    if (!isSuperAdmin && jcOrgId !== currentOrgId) continue;
                     if (!rawList.some((r: any) => r.id === jc.id || (r.fileName && r.fileName === jc.fileName))) {
                       rawList.push(jc);
                     }

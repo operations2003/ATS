@@ -62,8 +62,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
           if (cleanEmail.includes('harsh') || cleanName.includes('harsh') || cleanEmail.includes('aditya') || cleanName.includes('aditya')) {
             throw new Error('Account has been removed from the system.');
           }
-          const isDesignatedAdmin = cleanEmail === DESIGNATED_ADMIN_EMAIL || data.user.role === 'ADMIN';
-          const userRole: UserRole = isDesignatedAdmin ? 'ADMIN' : (data.user.role || 'MEMBER');
+          const isSuperAdmin = cleanEmail === DESIGNATED_ADMIN_EMAIL || data.user.role === 'SUPER_ADMIN';
+          const isClientAdmin = data.user.role === 'CLIENT_ADMIN';
+          const userRole: UserRole = isSuperAdmin
+            ? 'SUPER_ADMIN'
+            : isClientAdmin
+            ? 'CLIENT_ADMIN'
+            : data.user.role === 'ADMIN'
+            ? 'ADMIN'
+            : (data.user.role || 'MEMBER');
 
           let resolvedPassword =
             localStorage.getItem('tasknera_user_pwd_' + cleanEmail) ||
@@ -77,13 +84,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
             } catch {}
           }
 
-          if (!resolvedPassword && isDesignatedAdmin) {
+          if (!resolvedPassword && isSuperAdmin) {
             resolvedPassword = DESIGNATED_ADMIN_PASSWORD;
           }
 
           const fullUser = { 
             ...data.user, 
-            name: isDesignatedAdmin ? 'Admin User' : (data.user.name || data.user.email.split('@')[0]),
+            name: isSuperAdmin ? 'Super Admin' : (data.user.name || data.user.email.split('@')[0]),
             role: userRole,
             password: resolvedPassword
           };
@@ -145,10 +152,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
           message: 'Signed in successfully',
           token: 'tasknera-admin-session-token-' + Date.now(),
           user: {
-            id: 'd2a446f3-7d0f-4114-96fc-cc2ba0d0381c',
-            name: 'Admin User',
+            id: 'admin-user',
+            name: 'Super Admin',
             email: DESIGNATED_ADMIN_EMAIL,
-            role: 'ADMIN',
+            role: 'SUPER_ADMIN',
             organizationId: 'org-tasknera'
           } as any
         };
@@ -157,10 +164,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
       }
     }
 
-    const isDesignatedAdmin = cleanEmail === DESIGNATED_ADMIN_EMAIL || data.user?.role === 'ADMIN';
-    const userRole: UserRole = isDesignatedAdmin ? 'ADMIN' : (data.user?.role || 'MEMBER');
+    const isSuperAdmin = cleanEmail === DESIGNATED_ADMIN_EMAIL || data.user?.role === 'SUPER_ADMIN';
+    const isClientAdmin = data.user?.role === 'CLIENT_ADMIN';
+    const userRole: UserRole = isSuperAdmin
+      ? 'SUPER_ADMIN'
+      : isClientAdmin
+      ? 'CLIENT_ADMIN'
+      : data.user?.role === 'ADMIN'
+      ? 'ADMIN'
+      : (data.user?.role || 'MEMBER');
+
     const resolvedUserId = data.user?.id;
-    const resolvedName = isDesignatedAdmin ? 'Admin User' : (data.user?.name || cleanEmail.split('@')[0]);
+    const resolvedName = isSuperAdmin ? 'Super Admin' : (data.user?.name || cleanEmail.split('@')[0]);
 
     localStorage.setItem('tasknera_token', data.token);
     localStorage.setItem('tasknera_role', userRole);
@@ -184,6 +199,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
       role: userRole,
       password: password
     };
+    atsStore.clearAll();
     setUser(signedUser);
     atsStore.ensureMember(signedUser);
     return userRole;
@@ -356,12 +372,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
   };
 
   const logout = (): void => {
-    localStorage.removeItem('tasknera_token');
-    localStorage.removeItem('tasknera_role');
-    localStorage.removeItem('tasknera_email');
-    localStorage.removeItem('tasknera_name');
-    localStorage.removeItem('tasknera_user_id');
-    localStorage.removeItem('tasknera_current_password');
+    atsStore.clearAll();
+    if (typeof window !== 'undefined') {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (
+          key.startsWith('tasknera_') ||
+          key.startsWith('candidates_') ||
+          key.startsWith('job_') ||
+          key.includes('pool') ||
+          key.includes('eval')
+        )) {
+          if (key !== 'tasknera_credential_registry' && !key.startsWith('tasknera_user_pwd_')) {
+            keysToRemove.push(key);
+          }
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+      sessionStorage.clear();
+    }
     setToken(null);
     setUser(null);
     if (typeof window !== 'undefined') {

@@ -1389,105 +1389,112 @@ export default function JobCandidatesPage() {
     setIsUploading(true);
 
     try {
-      const formData = new FormData();
-      formData.append('jobId', jobId);
-      if (job?.position) formData.append('jobPosition', job.position);
-      if (job?.client) formData.append('jobClient', job.client);
-      if (job?.requirements && Array.isArray(job.requirements)) {
-        formData.append('requirements', JSON.stringify(job.requirements));
-      }
-      items.forEach(item => {
-        formData.append('files', item.file);
-      });
-
-      setUploadQueue(prev =>
-        prev.map(q =>
-          items.some(it => it.id === q.id)
-            ? { ...q, status: 'PROCESSING', progress: 50 }
-            : q
-        )
-      );
-
       const authToken = token || (typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null);
-      const res = await fetch(`${backendUrl}/jobs/${jobId}/candidates/upload`, {
-        method: 'POST',
-        headers: {
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
-        },
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || `Server responded with HTTP ${res.status}`);
+      const CHUNK_SIZE = 5;
+      const chunks: UploadQueueItem[][] = [];
+      for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+        chunks.push(items.slice(i, i + CHUNK_SIZE));
       }
 
-      const result = await res.json();
+      for (const chunk of chunks) {
+        const formData = new FormData();
+        formData.append('jobId', jobId);
+        if (job?.position) formData.append('jobPosition', job.position);
+        if (job?.client) formData.append('jobClient', job.client);
+        if (job?.requirements && Array.isArray(job.requirements)) {
+          formData.append('requirements', JSON.stringify(job.requirements));
+        }
+        chunk.forEach(item => {
+          formData.append('files', item.file);
+        });
 
-      setUploadQueue(prev =>
-        prev.map(q => {
-          const matchedCandidate = result.candidates?.find(
-            (c: CandidateRecord) => (c.fileName && c.fileName.toLowerCase() === q.name.toLowerCase())
-          );
-          if (matchedCandidate) {
-            const isDup = matchedCandidate.isDuplicate || matchedCandidate.parsingStatus === 'DUPLICATE';
-            return {
-              ...q,
-              status: isDup ? 'DUPLICATE' : matchedCandidate.parsingStatus,
-              progress: 100,
-              error: isDup ? (matchedCandidate.errorMessage || 'This CV is already uploaded to this JD.') : matchedCandidate.errorMessage,
-              candidateId: matchedCandidate.id,
-            };
+        setUploadQueue(prev =>
+          prev.map(q =>
+            chunk.some(it => it.id === q.id)
+              ? { ...q, status: 'PROCESSING', progress: 50 }
+              : q
+          )
+        );
+
+        try {
+          const res = await fetch(`${backendUrl}/jobs/${jobId}/candidates/upload`, {
+            method: 'POST',
+            headers: {
+              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+            },
+            body: formData,
+          });
+
+          if (!res.ok) {
+            const errJson = await res.json().catch(() => ({}));
+            throw new Error(errJson.error || `Server responded with HTTP ${res.status}`);
           }
-          return q;
-        })
-      );
 
-      const finalCandidatesList = (result.allCandidates && result.allCandidates.length > 0)
-        ? result.allCandidates
-        : (result.candidates && result.candidates.length > 0)
-          ? (() => {
+          const result = await res.json();
+
+          setUploadQueue(prev =>
+            prev.map(q => {
+              const matchedCandidate = result.candidates?.find(
+                (c: CandidateRecord) => (c.fileName && c.fileName.toLowerCase() === q.name.toLowerCase())
+              );
+              if (matchedCandidate) {
+                const isDup = matchedCandidate.isDuplicate || matchedCandidate.parsingStatus === 'DUPLICATE';
+                return {
+                  ...q,
+                  status: isDup ? 'DUPLICATE' : matchedCandidate.parsingStatus,
+                  progress: 100,
+                  error: isDup ? (matchedCandidate.errorMessage || 'This CV is already uploaded to this JD.') : matchedCandidate.errorMessage,
+                  candidateId: matchedCandidate.id,
+                };
+              }
+              return q;
+            })
+          );
+
+          if (result.candidates && result.candidates.length > 0) {
+            setCandidates(prevCandidates => {
               const map = new Map<string, CandidateRecord>();
               for (const c of result.candidates) {
                 const key = (c.fileName || c.id || `${c.name}_${c.email}`).toLowerCase();
                 map.set(key, c);
               }
-              for (const c of candidates) {
+              for (const c of prevCandidates) {
                 const key = (c.fileName || c.id || `${c.name}_${c.email}`).toLowerCase();
                 if (!map.has(key)) map.set(key, c);
               }
-              return Array.from(map.values());
-            })()
-          : null;
+              const updatedList = Array.from(map.values());
 
-      if (finalCandidatesList) {
-        setCandidates(finalCandidatesList);
-        if (typeof window !== 'undefined') {
-          try {
-            localStorage.setItem(`tasknera_candidates_${jobId}`, JSON.stringify(finalCandidatesList));
-            localStorage.setItem(`tasknera_candidates_count_${jobId}`, String(finalCandidatesList.length));
+              if (typeof window !== 'undefined') {
+                try {
+                  localStorage.setItem(`tasknera_candidates_${jobId}`, JSON.stringify(updatedList));
+                  localStorage.setItem(`tasknera_candidates_count_${jobId}`, String(updatedList.length));
 
-            const poolSaved = JSON.parse(localStorage.getItem('tasknera_candidates_pool') || '[]');
-            for (const fc of finalCandidatesList) {
-              if (!poolSaved.some((c: any) => c.id === fc.id || (c.fileName && c.fileName === fc.fileName))) {
-                poolSaved.unshift(fc);
+                  const poolSaved = JSON.parse(localStorage.getItem('tasknera_candidates_pool') || '[]');
+                  for (const fc of updatedList) {
+                    if (!poolSaved.some((c: any) => c.id === fc.id || (c.fileName && c.fileName === fc.fileName))) {
+                      poolSaved.unshift(fc);
+                    }
+                  }
+                  localStorage.setItem('tasknera_candidates_pool', JSON.stringify(poolSaved));
+                } catch {}
               }
-            }
-            localStorage.setItem('tasknera_candidates_pool', JSON.stringify(poolSaved));
 
-            const created = JSON.parse(localStorage.getItem('tasknera_created_jobs') || '[]');
-            const updatedCreated = created.map((cj: any) => {
-              if (String(cj.id) === String(jobId)) {
-                return { ...cj, candidatesCount: finalCandidatesList.length, candidates: finalCandidatesList.length };
-              }
-              return cj;
+              return updatedList;
             });
-            localStorage.setItem('tasknera_created_jobs', JSON.stringify(updatedCreated));
-          } catch {}
+          }
+        } catch (chunkErr: any) {
+          console.error('[Chunk Upload Error]:', chunkErr);
+          setUploadQueue(prev =>
+            prev.map(q =>
+              chunk.some(it => it.id === q.id)
+                ? { ...q, status: 'FAILED', progress: 100, error: chunkErr.message || 'Parsing failed on server' }
+                : q
+            )
+          );
         }
-      } else {
-        await fetchJobAndCandidates();
       }
+
+      await fetchJobAndCandidates();
     } catch (err: any) {
       console.error('Upload failed:', err);
       setUploadQueue(prev =>

@@ -5,6 +5,7 @@ import authRoutes from './routes/authRoutes';
 import jobRoutes from './routes/jobRoutes';
 import userRoutes from './routes/userRoutes';
 import candidateRoutes from './routes/candidateRoutes';
+import superAdminRoutes from './routes/superAdminRoutes';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -27,7 +28,7 @@ app.get('/', (req: Request, res: Response) => {
 app.get('/api/health', (req: Request, res: Response) => {
   res.json({
     status: 'ok',
-    message: 'Backend server is running successfully',
+    message: 'Backend server is running successfully v1.0.1',
     timestamp: new Date().toISOString()
   });
 });
@@ -40,11 +41,12 @@ import {
   deleteEvaluationController
 } from './controllers/evaluationController';
 
-// Authentication, User, Job, Candidate & Evaluation Routes
+// Authentication, User, Job, Candidate, Evaluation & Super Admin Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/candidates', candidateRoutes);
+app.use('/api/super-admin', superAdminRoutes);
 
 // Evaluation Endpoints (Secured by database-level ownership)
 app.get('/api/evaluations', protect, getAllEvaluations);
