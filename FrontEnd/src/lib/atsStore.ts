@@ -520,9 +520,9 @@ class ATSStore {
       name: cleanName,
       email: cleanEmail,
       role: (user.role === 'ADMIN' ? 'ADMIN' : user.role === 'TEAM_LEAD' ? 'TEAM_LEAD' : 'RECRUITER_MEMBER'),
-      customRole: (user as any).customRole,
-      displayRole: (user as any).displayRole || (user.role === 'ADMIN' ? 'Admin' : user.role === 'TEAM_LEAD' ? 'Team Lead' : 'TA Member'),
-      team: (user as any).team || (user.role === 'ADMIN' ? 'Executive & TA Leadership' : 'General Pod'),
+      customRole: (user as any).customRole || 'General',
+      displayRole: (user as any).displayRole || (user as any).customRole || (user.role === 'ADMIN' ? 'Admin' : user.role === 'TEAM_LEAD' ? 'Team Lead' : 'General'),
+      team: (user as any).team || (user.role === 'ADMIN' ? 'Executive & TA Leadership' : 'General'),
       activeJobs: 0,
       jdsUploaded: 0,
       resumesSeen: 0,
@@ -651,11 +651,28 @@ class ATSStore {
   }
 
   public getPodAnalytics() {
-    return [
-      { name: 'SAP & Enterprise Practice', jds: 6, resumes: 424, screenings: 90, shortlists: 57, avgScore: 89, lead: 'John Reynolds' },
-      { name: 'Cloud & Engineering Pod', jds: 8, resumes: 538, screenings: 127, shortlists: 79, avgScore: 87, lead: 'Alex Morales' },
-      { name: 'Finance & Operations TA', jds: 3, resumes: 160, screenings: 35, shortlists: 18, avgScore: 84, lead: 'David Park' },
-    ];
+    const teams = Array.from(new Set(this.recruiters.map(r => r.team || 'General')));
+    if (teams.length === 0) teams.push('General');
+    return teams.map(teamName => {
+      const teamRecruiters = this.recruiters.filter(r => (r.team || 'General') === teamName);
+      const jds = teamRecruiters.reduce((sum, r) => sum + (r.activeJobs || 0), 0);
+      const resumes = teamRecruiters.reduce((sum, r) => sum + (r.resumesSeen || 0), 0);
+      const screenings = teamRecruiters.reduce((sum, r) => sum + (r.screenedThisWeek || 0), 0);
+      const shortlists = teamRecruiters.reduce((sum, r) => sum + (r.tlApprovedCount || 0), 0);
+      const avgScore = teamRecruiters.length > 0
+        ? Math.round(teamRecruiters.reduce((sum, r) => sum + (r.avgMatchScore || 0), 0) / teamRecruiters.length)
+        : 0;
+      const lead = teamRecruiters.find(r => r.role === 'TEAM_LEAD')?.name || teamRecruiters[0]?.name || 'Unassigned';
+      return {
+        name: teamName,
+        jds,
+        resumes,
+        screenings,
+        shortlists,
+        avgScore,
+        lead
+      };
+    });
   }
 
   public getScoreTierDistribution() {

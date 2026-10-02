@@ -274,21 +274,9 @@ export const getTAMembers = async (req: AuthRequest, res: Response): Promise<voi
         const cleanRole = user.role === 'TEAM_LEADER' ? 'TEAM_LEAD' : 'RECRUITER_MEMBER';
         const cleanName = user.name || user.email.split('@')[0].replace('.', ' ').replace(/\b\w/g, l => l.toUpperCase());
 
-        // Determine pod from stored team or fallback
+        // Determine department from stored team or default to General
         const dbTeam = (user as any).team;
-        let team = dbTeam && dbTeam !== 'General' ? dbTeam : '';
-        if (!team) {
-          const jobTitles = user.jobs.map(j => j.position || '').join(' ').toLowerCase();
-          if (jobTitles.includes('sap') || jobTitles.includes('enterprise')) {
-            team = 'SAP & Enterprise Practice';
-          } else if (jobTitles.includes('sales') || jobTitles.includes('relationship') || jobTitles.includes('marketing') || jobTitles.includes('hr')) {
-            team = 'Sales & Growth Practice';
-          } else if (jobTitles.includes('react') || jobTitles.includes('python') || jobTitles.includes('devops') || jobTitles.includes('ml') || jobTitles.includes('engineer') || jobTitles.includes('windchill')) {
-            team = 'Cloud & Engineering Pod';
-          } else {
-            team = 'General Pod';
-          }
-        }
+        const team = dbTeam && String(dbTeam).trim() ? String(dbTeam).trim() : 'General';
 
         const activeJobs = user.jobs.filter(j => j.status?.toLowerCase() === 'active' || !j.status).length;
         const jdsUploaded = user.jobs.length;
@@ -330,7 +318,7 @@ export const getTAMembers = async (req: AuthRequest, res: Response): Promise<voi
         const strengths = Array.from(strengthsSet).slice(0, 3);
 
         const customRole = (user as any).customRole || undefined;
-        const displayRole = customRole || (cleanRole === 'TEAM_LEAD' ? 'Team Lead' : 'TA Member');
+        const displayRole = customRole || (cleanRole === 'TEAM_LEAD' ? 'Team Lead' : 'General');
 
         const insightsSummary = hasActivity
           ? `${cleanName} has managed ${jdsUploaded} requisition${jdsUploaded === 1 ? '' : 's'} and evaluated ${resumesSeen} candidates with an average match quality of ${avgMatchScore}% across ${team}.`
