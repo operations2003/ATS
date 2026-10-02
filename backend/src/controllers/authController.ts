@@ -34,9 +34,9 @@ export const ensureDefaultAdmin = async (): Promise<void> => {
           name: 'Super Admin',
           email: adminEmail,
           password: hashedPassword,
-          role: 'SUPER_ADMIN',
+          role: 'SUPER_ADMIN' as any,
           organizationId: 'org-tasknera'
-        }
+        } as any
       });
       console.log(`[Auth] Designated Administrator account (${adminEmail}) initialized as SUPER_ADMIN in database.`);
     } else {
@@ -44,9 +44,9 @@ export const ensureDefaultAdmin = async (): Promise<void> => {
         where: { email: adminEmail },
         data: {
           name: 'Super Admin',
-          role: 'SUPER_ADMIN',
+          role: 'SUPER_ADMIN' as any,
           password: hashedPassword
-        }
+        } as any
       });
       console.log(`[Auth] Designated Administrator account (${adminEmail}) verified as SUPER_ADMIN in database.`);
     }
@@ -60,10 +60,10 @@ export const ensureDefaultAdmin = async (): Promise<void> => {
           name: 'Tasknera Admin',
           email: taskneraOrgAdminEmail,
           password: hashedPassword,
-          role: 'CLIENT_ADMIN',
+          role: 'CLIENT_ADMIN' as any,
           organizationId: 'org-tasknera',
           isActive: true
-        }
+        } as any
       });
       console.log(`[Auth] Tasknera Global Client Admin (${taskneraOrgAdminEmail}) initialized.`);
     } else {
@@ -71,11 +71,11 @@ export const ensureDefaultAdmin = async (): Promise<void> => {
         where: { email: taskneraOrgAdminEmail },
         data: {
           name: 'Tasknera Admin',
-          role: 'CLIENT_ADMIN',
+          role: 'CLIENT_ADMIN' as any,
           organizationId: 'org-tasknera',
           password: hashedPassword,
           isActive: true
-        }
+        } as any
       });
     }
 

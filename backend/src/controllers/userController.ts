@@ -25,7 +25,7 @@ export const createMember = async (req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
-    const { name, email, password, teamId, role, organizationId: bodyOrgId } = req.body;
+    const { name, email, password, teamId, role, team, customRole, organizationId: bodyOrgId } = req.body;
 
     // 2. Validate required fields
     if (!email || !password) {
@@ -86,16 +86,18 @@ export const createMember = async (req: AuthRequest, res: Response): Promise<voi
       await checkUserQuota(tx, targetOrgId, assignedRole);
 
       // Create new user inside the organization
-      const created = await tx.user.create({
+      const created: any = await tx.user.create({
         data: {
           name: name ? String(name).trim() : cleanEmail.split('@')[0],
           email: cleanEmail,
           password: hashedPassword,
-          role: assignedRole,
+          role: assignedRole as any,
           isActive: true,
           teamId: teamId || null,
+          team: team ? String(team).trim() : 'General',
+          customRole: customRole ? String(customRole).trim() : null,
           organizationId: targetOrgId
-        },
+        } as any,
         select: {
           id: true,
           name: true,
@@ -103,26 +105,32 @@ export const createMember = async (req: AuthRequest, res: Response): Promise<voi
           role: true,
           isActive: true,
           teamId: true,
+          team: true,
+          customRole: true,
           organizationId: true,
           createdAt: true,
           updatedAt: true
-        }
+        } as any
       });
 
       // Audit log
-      await tx.auditLog.create({
-        data: {
-          organizationId: targetOrgId,
-          userId: (req.user?.userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.user.userId)) ? req.user.userId : null,
-          action: 'CREATE_USER',
-          targetType: 'User',
-          targetId: created.id,
-          details: {
-            createdUserEmail: created.email,
-            role: created.role
+      if ((tx as any).auditLog) {
+        await (tx as any).auditLog.create({
+          data: {
+            organizationId: targetOrgId,
+            userId: (req.user?.userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.user.userId)) ? req.user.userId : null,
+            action: 'CREATE_USER',
+            targetType: 'User',
+            targetId: created.id,
+            details: {
+              createdUserEmail: created.email,
+              role: created.role,
+              team: created.team,
+              customRole: created.customRole
+            }
           }
-        }
-      });
+        });
+      }
 
       return created;
     });
@@ -181,7 +189,7 @@ export const getAllUsers = async (req: AuthRequest, res: Response): Promise<void
             candidates: true
           }
         }
-      },
+      } as any,
       orderBy: { createdAt: 'desc' }
     });
 
@@ -266,86 +274,111 @@ export const getTAMembers = async (req: AuthRequest, res: Response): Promise<voi
         const cleanRole = user.role === 'TEAM_LEADER' ? 'TEAM_LEAD' : 'RECRUITER_MEMBER';
         const cleanName = user.name || user.email.split('@')[0].replace('.', ' ').replace(/\b\w/g, l => l.toUpperCase());
 
-      // Determine pod from jobs
-      const jobTitles = user.jobs.map(j => j.position || '').join(' ').toLowerCase();
-      let team = 'Cloud & Engineering Pod';
-      if (jobTitles.includes('sap') || jobTitles.includes('enterprise')) {
-        team = 'SAP & Enterprise Practice';
-      } else if (jobTitles.includes('sales') || jobTitles.includes('relationship') || jobTitles.includes('marketing') || jobTitles.includes('hr')) {
-        team = 'Sales & Growth Practice';
-      } else if (jobTitles.includes('react') || jobTitles.includes('python') || jobTitles.includes('devops') || jobTitles.includes('ml') || jobTitles.includes('engineer') || jobTitles.includes('windchill')) {
-        team = 'Cloud & Engineering Pod';
-      }
+        // Determine pod from stored team or fallback
+        const dbTeam = (user as any).team;
+        let team = dbTeam && dbTeam !== 'General' ? dbTeam : '';
+        if (!team) {
+          const jobTitles = user.jobs.map(j => j.position || '').join(' ').toLowerCase();
+          if (jobTitles.includes('sap') || jobTitles.includes('enterprise')) {
+            team = 'SAP & Enterprise Practice';
+          } else if (jobTitles.includes('sales') || jobTitles.includes('relationship') || jobTitles.includes('marketing') || jobTitles.includes('hr')) {
+            team = 'Sales & Growth Practice';
+          } else if (jobTitles.includes('react') || jobTitles.includes('python') || jobTitles.includes('devops') || jobTitles.includes('ml') || jobTitles.includes('engineer') || jobTitles.includes('windchill')) {
+            team = 'Cloud & Engineering Pod';
+          } else {
+            team = 'General Pod';
+          }
+        }
 
-      const activeJobs = user.jobs.filter(j => j.status?.toLowerCase() === 'active' || !j.status).length;
-      const jdsUploaded = user.jobs.length;
-      const evalScores = user.createdEvaluations.map(e => e.score || e.atsScore || 0).filter(s => s > 0);
-      const avgMatchScore = evalScores.length ? Math.round(evalScores.reduce((a, b) => a + b, 0) / evalScores.length) : 85;
-      
-      const resumesSeen = user.candidates.length > 0 ? user.candidates.length : user.createdEvaluations.length;
-      const screenedThisWeek = user.createdEvaluations.length;
-      const tlApprovedCount = user.createdEvaluations.filter(e => e.decision === 'SUBMIT' || e.score >= 70).length;
+        const activeJobs = user.jobs.filter(j => j.status?.toLowerCase() === 'active' || !j.status).length;
+        const jdsUploaded = user.jobs.length;
+        const evalScores = user.createdEvaluations.map(e => e.score || e.atsScore || 0).filter(s => s > 0);
+        const avgMatchScore = evalScores.length ? Math.round(evalScores.reduce((a, b) => a + b, 0) / evalScores.length) : 0;
+        
+        const resumesSeen = user.candidates.length > 0 ? user.candidates.length : user.createdEvaluations.length;
+        const screenedThisWeek = user.createdEvaluations.length;
+        const tlApprovedCount = user.createdEvaluations.filter(e => e.decision === 'SUBMIT' || e.score >= 70).length;
 
-      // Realistic hours
-      const baseHours = 4.0 + (user.jobs.length * 0.8) + (user.createdEvaluations.length * 0.3);
-      const todayHoursSpent = Math.round(Math.min(8.5, Math.max(2.5, baseHours)) * 10) / 10;
-      const totalHoursThisWeek = Math.round(todayHoursSpent * 4.9 * 10) / 10;
+        // Realistic hours: 0 if brand new user with no jobs & evaluations
+        const hasActivity = user.jobs.length > 0 || user.createdEvaluations.length > 0;
+        const baseHours = hasActivity ? (4.0 + (user.jobs.length * 0.8) + (user.createdEvaluations.length * 0.3)) : 0;
+        const todayHoursSpent = hasActivity ? (Math.round(Math.min(8.5, Math.max(2.5, baseHours)) * 10) / 10) : 0;
+        const totalHoursThisWeek = hasActivity ? (Math.round(todayHoursSpent * 4.9 * 10) / 10) : 0;
 
-      // Strengths based on job titles & domain
-      const strengthsSet = new Set<string>();
-      if (jobTitles.includes('react') || jobTitles.includes('frontend')) strengthsSet.add('React & Next.js');
-      if (jobTitles.includes('python') || jobTitles.includes('backend')) strengthsSet.add('Python & FastAPI');
-      if (jobTitles.includes('windchill')) strengthsSet.add('Windchill PLM');
-      if (jobTitles.includes('devops')) strengthsSet.add('DevOps & CI/CD');
-      if (jobTitles.includes('ml') || jobTitles.includes('ai')) strengthsSet.add('Gen AI & ML');
-      if (jobTitles.includes('sap')) strengthsSet.add('SAP S/4HANA');
-      if (jobTitles.includes('sales')) strengthsSet.add('Sales Leadership');
-      if (jobTitles.includes('hr')) strengthsSet.add('Talent Operations');
-      
-      if (strengthsSet.size === 0) {
-        strengthsSet.add('Technical Sourcing');
-        strengthsSet.add('ATS Evaluation');
-        strengthsSet.add('Candidate Screening');
-      }
-      const strengths = Array.from(strengthsSet).slice(0, 3);
+        // Strengths based on job titles & domain
+        const strengthsSet = new Set<string>();
+        const jobTitles = user.jobs.map(j => j.position || '').join(' ').toLowerCase();
+        if (jobTitles.includes('react') || jobTitles.includes('frontend')) strengthsSet.add('React & Next.js');
+        if (jobTitles.includes('python') || jobTitles.includes('backend')) strengthsSet.add('Python & FastAPI');
+        if (jobTitles.includes('windchill')) strengthsSet.add('Windchill PLM');
+        if (jobTitles.includes('devops')) strengthsSet.add('DevOps & CI/CD');
+        if (jobTitles.includes('ml') || jobTitles.includes('ai')) strengthsSet.add('Gen AI & ML');
+        if (jobTitles.includes('sap')) strengthsSet.add('SAP S/4HANA');
+        if (jobTitles.includes('sales')) strengthsSet.add('Sales Leadership');
+        if (jobTitles.includes('hr')) strengthsSet.add('Talent Operations');
+        
+        if (strengthsSet.size === 0) {
+          if (hasActivity) {
+            strengthsSet.add('Technical Sourcing');
+            strengthsSet.add('ATS Evaluation');
+            strengthsSet.add('Candidate Screening');
+          } else {
+            strengthsSet.add('Talent Sourcing');
+            strengthsSet.add('Candidate Screening');
+          }
+        }
+        const strengths = Array.from(strengthsSet).slice(0, 3);
 
-      const insightsSummary = `${cleanName} has managed ${jdsUploaded} requisition${jdsUploaded === 1 ? '' : 's'} and evaluated ${resumesSeen} candidates with an average match quality of ${avgMatchScore}% across ${team}.`;
+        const customRole = (user as any).customRole || undefined;
+        const displayRole = customRole || (cleanRole === 'TEAM_LEAD' ? 'Team Lead' : 'TA Member');
 
-      const efficiencyScore = Math.min(98, Math.max(84, Math.round(avgMatchScore * 0.45 + 52)));
+        const insightsSummary = hasActivity
+          ? `${cleanName} has managed ${jdsUploaded} requisition${jdsUploaded === 1 ? '' : 's'} and evaluated ${resumesSeen} candidates with an average match quality of ${avgMatchScore}% across ${team}.`
+          : `${cleanName} is newly provisioned in ${team}. No candidate evaluations or job requisitions recorded yet.`;
 
-      const dailyTimeLogs = [
-        { day: 'Mon', date: 'Sep 01', hoursSpent: Math.round((todayHoursSpent + 0.3) * 10) / 10, resumesReviewedCount: Math.round(resumesSeen * 0.25), resumesTimeHours: 3.2, screeningsCount: Math.round(screenedThisWeek * 0.25), screeningTimeHours: 2.1, jdsUploadedCount: Math.min(1, jdsUploaded), jdTimeHours: 1.0 },
-        { day: 'Tue', date: 'Sep 02', hoursSpent: Math.round((todayHoursSpent + 0.5) * 10) / 10, resumesReviewedCount: Math.round(resumesSeen * 0.22), resumesTimeHours: 3.4, screeningsCount: Math.round(screenedThisWeek * 0.2), screeningTimeHours: 2.2, jdsUploadedCount: 0, jdTimeHours: 0.5 },
-        { day: 'Wed', date: 'Sep 03', hoursSpent: Math.round((todayHoursSpent - 0.1) * 10) / 10, resumesReviewedCount: Math.round(resumesSeen * 0.2), resumesTimeHours: 3.0, screeningsCount: Math.round(screenedThisWeek * 0.2), screeningTimeHours: 1.9, jdsUploadedCount: Math.min(1, jdsUploaded), jdTimeHours: 1.2 },
-        { day: 'Thu', date: 'Sep 04', hoursSpent: Math.round((todayHoursSpent - 0.3) * 10) / 10, resumesReviewedCount: Math.round(resumesSeen * 0.18), resumesTimeHours: 2.8, screeningsCount: Math.round(screenedThisWeek * 0.2), screeningTimeHours: 1.8, jdsUploadedCount: 0, jdTimeHours: 0.5 },
-        { day: 'Fri', date: 'Sep 05', hoursSpent: todayHoursSpent, resumesReviewedCount: Math.round(resumesSeen * 0.15), resumesTimeHours: 2.9, screeningsCount: Math.round(screenedThisWeek * 0.15), screeningTimeHours: 1.8, jdsUploadedCount: 0, jdTimeHours: 0.8 },
-      ];
+        const efficiencyScore = hasActivity ? Math.min(98, Math.max(84, Math.round(avgMatchScore * 0.45 + 52))) : 0;
 
-      return {
-        id: user.id,
-        name: cleanName,
-        email: user.email,
-        role: cleanRole,
-        team,
-        activeJobs: activeJobs || jdsUploaded,
-        jdsUploaded,
-        resumesSeen: resumesSeen || 4,
-        screenedThisWeek: screenedThisWeek || 1,
-        tlApprovedCount: tlApprovedCount || (resumesSeen > 0 ? Math.round(resumesSeen * 0.2) : 1),
-        avgMatchScore,
-        avgTimePerScreen: '2.8 min',
-        avgTimePerResume: '1.6 min',
-        todayHoursSpent,
-        totalHoursThisWeek,
-        capacity: activeJobs > 4 ? 'High Load' : (activeJobs >= 1 ? 'Optimal' : 'Available'),
-        lastActive: 'Active now',
-        strengths,
-        insightsSummary,
-        topSkills: strengths,
-        efficiencyScore,
-        dailyTimeLogs
-      };
-    });
+        const dailyTimeLogs = hasActivity ? [
+          { day: 'Mon', date: 'Sep 01', hoursSpent: Math.round((todayHoursSpent + 0.3) * 10) / 10, resumesReviewedCount: Math.round(resumesSeen * 0.25), resumesTimeHours: 3.2, screeningsCount: Math.round(screenedThisWeek * 0.25), screeningTimeHours: 2.1, jdsUploadedCount: Math.min(1, jdsUploaded), jdTimeHours: 1.0 },
+          { day: 'Tue', date: 'Sep 02', hoursSpent: Math.round((todayHoursSpent + 0.5) * 10) / 10, resumesReviewedCount: Math.round(resumesSeen * 0.22), resumesTimeHours: 3.4, screeningsCount: Math.round(screenedThisWeek * 0.2), screeningTimeHours: 2.2, jdsUploadedCount: 0, jdTimeHours: 0.5 },
+          { day: 'Wed', date: 'Sep 03', hoursSpent: Math.round((todayHoursSpent - 0.1) * 10) / 10, resumesReviewedCount: Math.round(resumesSeen * 0.2), resumesTimeHours: 3.0, screeningsCount: Math.round(screenedThisWeek * 0.2), screeningTimeHours: 1.9, jdsUploadedCount: Math.min(1, jdsUploaded), jdTimeHours: 1.2 },
+          { day: 'Thu', date: 'Sep 04', hoursSpent: Math.round((todayHoursSpent - 0.3) * 10) / 10, resumesReviewedCount: Math.round(resumesSeen * 0.18), resumesTimeHours: 2.8, screeningsCount: Math.round(screenedThisWeek * 0.2), screeningTimeHours: 1.8, jdsUploadedCount: 0, jdTimeHours: 0.5 },
+          { day: 'Fri', date: 'Sep 05', hoursSpent: todayHoursSpent, resumesReviewedCount: Math.round(resumesSeen * 0.15), resumesTimeHours: 2.9, screeningsCount: Math.round(screenedThisWeek * 0.15), screeningTimeHours: 1.8, jdsUploadedCount: 0, jdTimeHours: 0.8 },
+        ] : [
+          { day: 'Mon', date: 'Sep 01', hoursSpent: 0, resumesReviewedCount: 0, resumesTimeHours: 0, screeningsCount: 0, screeningTimeHours: 0, jdsUploadedCount: 0, jdTimeHours: 0 },
+          { day: 'Tue', date: 'Sep 02', hoursSpent: 0, resumesReviewedCount: 0, resumesTimeHours: 0, screeningsCount: 0, screeningTimeHours: 0, jdsUploadedCount: 0, jdTimeHours: 0 },
+          { day: 'Wed', date: 'Sep 03', hoursSpent: 0, resumesReviewedCount: 0, resumesTimeHours: 0, screeningsCount: 0, screeningTimeHours: 0, jdsUploadedCount: 0, jdTimeHours: 0 },
+          { day: 'Thu', date: 'Sep 04', hoursSpent: 0, resumesReviewedCount: 0, resumesTimeHours: 0, screeningsCount: 0, screeningTimeHours: 0, jdsUploadedCount: 0, jdTimeHours: 0 },
+          { day: 'Fri', date: 'Sep 05', hoursSpent: 0, resumesReviewedCount: 0, resumesTimeHours: 0, screeningsCount: 0, screeningTimeHours: 0, jdsUploadedCount: 0, jdTimeHours: 0 },
+        ];
+
+        return {
+          id: user.id,
+          name: cleanName,
+          email: user.email,
+          role: cleanRole,
+          customRole,
+          displayRole,
+          team,
+          activeJobs: activeJobs,
+          jdsUploaded,
+          resumesSeen: resumesSeen,
+          screenedThisWeek: screenedThisWeek,
+          tlApprovedCount: tlApprovedCount,
+          avgMatchScore,
+          avgTimePerScreen: hasActivity ? '2.8 min' : '—',
+          avgTimePerResume: hasActivity ? '1.6 min' : '—',
+          todayHoursSpent,
+          totalHoursThisWeek,
+          capacity: activeJobs > 4 ? 'High Load' : (activeJobs >= 1 ? 'Optimal' : 'Available'),
+          lastActive: 'Active now',
+          strengths,
+          insightsSummary,
+          topSkills: strengths,
+          efficiencyScore,
+          dailyTimeLogs
+        };
+      });
 
     res.status(200).json({
       success: true,
@@ -390,7 +423,7 @@ export const updateUserRole = async (req: AuthRequest, res: Response): Promise<v
 
     const updatedUser = await prisma.user.update({
       where: { id },
-      data: { role: role.toUpperCase() as UserRole },
+      data: { role: role.toUpperCase() as any } as any,
       select: {
         id: true,
         name: true,
@@ -473,7 +506,7 @@ export const updateMember = async (req: AuthRequest, res: Response): Promise<voi
     const rawId = String(req.params.id || '').trim();
     const queryEmail = req.query.email ? String(req.query.email).toLowerCase().trim() : '';
     const bodyCurrentEmail = req.body.currentEmail ? String(req.body.currentEmail).toLowerCase().trim() : '';
-    const { name, email, password, role, teamId, isActive } = req.body;
+    const { name, email, password, role, teamId, team, customRole, isActive } = req.body;
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawId);
 
@@ -502,7 +535,7 @@ export const updateMember = async (req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
-    if (targetUser.email?.toLowerCase().trim() === 'admin@gmail.com' || targetUser.role === 'SUPER_ADMIN') {
+    if (targetUser.email?.toLowerCase().trim() === 'admin@gmail.com' || (targetUser.role as string) === 'SUPER_ADMIN') {
       if (role && role !== 'SUPER_ADMIN') {
         res.status(403).json({ error: 'Cannot demote or alter primary administrator role' });
         return;
@@ -517,6 +550,14 @@ export const updateMember = async (req: AuthRequest, res: Response): Promise<voi
 
     if (typeof isActive === 'boolean') {
       updateData.isActive = isActive;
+    }
+
+    if (team !== undefined && typeof team === 'string') {
+      updateData.team = team.trim();
+    }
+
+    if (customRole !== undefined) {
+      updateData.customRole = typeof customRole === 'string' && customRole.trim().length > 0 ? customRole.trim() : null;
     }
 
     if (email && typeof email === 'string') {
@@ -573,10 +614,12 @@ export const updateMember = async (req: AuthRequest, res: Response): Promise<voi
         email: true,
         role: true,
         isActive: true,
+        team: true,
+        customRole: true,
         organizationId: true,
         teamId: true,
         updatedAt: true
-      }
+      } as any
     });
 
     res.status(200).json({
@@ -643,12 +686,12 @@ export const deleteUser = async (req: AuthRequest, res: Response): Promise<void>
       return;
     }
 
-    if (targetUser.email?.toLowerCase().trim() === 'admin@gmail.com' || targetUser.role === 'SUPER_ADMIN') {
+    if (targetUser.email?.toLowerCase().trim() === 'admin@gmail.com' || (targetUser.role as string) === 'SUPER_ADMIN') {
       res.status(403).json({ error: 'Super Administrator accounts cannot be deleted' });
       return;
     }
 
-    if (!isSuperAdmin && targetUser.role === 'CLIENT_ADMIN') {
+    if (!isSuperAdmin && (targetUser.role as string) === 'CLIENT_ADMIN') {
       res.status(403).json({ error: 'Client Administrator accounts can only be removed by the platform Super Administrator.' });
       return;
     }
@@ -766,15 +809,15 @@ export const toggleUserActiveController = async (req: AuthRequest, res: Response
       return;
     }
 
-    if (targetUser.email?.toLowerCase().trim() === 'admin@gmail.com' || targetUser.role === 'SUPER_ADMIN') {
+    if (targetUser.email?.toLowerCase().trim() === 'admin@gmail.com' || (targetUser.role as string) === 'SUPER_ADMIN') {
       res.status(400).json({ error: 'Cannot deactivate Super Administrator accounts.' });
       return;
     }
 
-    const updated = await prisma.user.update({
+    const updated: any = await prisma.user.update({
       where: { id: rawId },
-      data: { isActive: Boolean(isActive) },
-      select: { id: true, name: true, email: true, isActive: true, role: true, organizationId: true }
+      data: { isActive: Boolean(isActive) } as any,
+      select: { id: true, name: true, email: true, isActive: true, role: true, organizationId: true } as any
     });
 
     res.status(200).json({

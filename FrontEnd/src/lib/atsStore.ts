@@ -108,7 +108,9 @@ export interface RecruiterMetric {
   id: string;
   name: string;
   email: string;
-  role: 'RECRUITER_MEMBER' | 'TEAM_LEAD' | 'ADMIN';
+  role: 'RECRUITER_MEMBER' | 'TEAM_LEAD' | 'ADMIN' | string;
+  customRole?: string;
+  displayRole?: string;
   team: string;
   activeJobs: number;
   jdsUploaded: number;
@@ -518,33 +520,34 @@ class ATSStore {
       name: cleanName,
       email: cleanEmail,
       role: (user.role === 'ADMIN' ? 'ADMIN' : user.role === 'TEAM_LEAD' ? 'TEAM_LEAD' : 'RECRUITER_MEMBER'),
-      team: user.role === 'ADMIN' ? 'Executive & TA Leadership' : 'Cloud & Engineering Pod',
-      activeJobs: 3,
-      jdsUploaded: 5,
-      resumesSeen: 142,
-      screenedThisWeek: 34,
-      tlApprovedCount: 18,
-      avgMatchScore: 87,
-      avgTimePerScreen: '3.0 min',
-      avgTimePerResume: '1.7 min',
-      todayHoursSpent: 6.5,
-      totalHoursThisWeek: 32.5,
-      capacity: 'Optimal',
+      customRole: (user as any).customRole,
+      displayRole: (user as any).displayRole || (user.role === 'ADMIN' ? 'Admin' : user.role === 'TEAM_LEAD' ? 'Team Lead' : 'TA Member'),
+      team: (user as any).team || (user.role === 'ADMIN' ? 'Executive & TA Leadership' : 'General Pod'),
+      activeJobs: 0,
+      jdsUploaded: 0,
+      resumesSeen: 0,
+      screenedThisWeek: 0,
+      tlApprovedCount: 0,
+      avgMatchScore: 0,
+      avgTimePerScreen: '—',
+      avgTimePerResume: '—',
+      todayHoursSpent: 0,
+      totalHoursThisWeek: 0,
+      capacity: 'Available',
       lastActive: 'Active now',
-      strengths: ['AI Resume Analysis', 'Talent Engagement', 'Fast Evaluation'],
-      insightsSummary: `${cleanName} is actively engaged in candidate screening with 6.5 hours logged today. Maintains strong 87% match quality and 1.7 min/CV review velocity.`,
-      topSkills: ['Full-Cycle Recruiting', 'Technical Screening', 'Candidate Calibration'],
-      efficiencyScore: 93,
+      strengths: ['Talent Sourcing', 'Candidate Screening'],
+      insightsSummary: `${cleanName} is newly provisioned. No candidate evaluations or job requisitions recorded yet.`,
+      topSkills: ['Sourcing', 'Interviewing'],
+      efficiencyScore: 0,
       dailyTimeLogs: [
-        { day: 'Mon', date: 'Aug 28', hoursSpent: 6.6, resumesReviewedCount: 32, resumesTimeHours: 3.2, screeningsCount: 8, screeningTimeHours: 2.1, jdsUploadedCount: 1, jdTimeHours: 1.3 },
-        { day: 'Tue', date: 'Aug 29', hoursSpent: 6.8, resumesReviewedCount: 36, resumesTimeHours: 3.5, screeningsCount: 9, screeningTimeHours: 2.1, jdsUploadedCount: 1, jdTimeHours: 1.2 },
-        { day: 'Wed', date: 'Aug 30', hoursSpent: 6.4, resumesReviewedCount: 30, resumesTimeHours: 3.1, screeningsCount: 7, screeningTimeHours: 1.9, jdsUploadedCount: 1, jdTimeHours: 1.4 },
-        { day: 'Thu', date: 'Aug 31', hoursSpent: 6.2, resumesReviewedCount: 28, resumesTimeHours: 2.9, screeningsCount: 6, screeningTimeHours: 1.8, jdsUploadedCount: 1, jdTimeHours: 1.5 },
-        { day: 'Fri', date: 'Sep 01', hoursSpent: 6.5, resumesReviewedCount: 32, resumesTimeHours: 3.2, screeningsCount: 8, screeningTimeHours: 2.0, jdsUploadedCount: 1, jdTimeHours: 1.3 },
+        { day: 'Mon', date: 'Sep 01', hoursSpent: 0, resumesReviewedCount: 0, resumesTimeHours: 0, screeningsCount: 0, screeningTimeHours: 0, jdsUploadedCount: 0, jdTimeHours: 0 },
+        { day: 'Tue', date: 'Sep 02', hoursSpent: 0, resumesReviewedCount: 0, resumesTimeHours: 0, screeningsCount: 0, screeningTimeHours: 0, jdsUploadedCount: 0, jdTimeHours: 0 },
+        { day: 'Wed', date: 'Sep 03', hoursSpent: 0, resumesReviewedCount: 0, resumesTimeHours: 0, screeningsCount: 0, screeningTimeHours: 0, jdsUploadedCount: 0, jdTimeHours: 0 },
+        { day: 'Thu', date: 'Sep 04', hoursSpent: 0, resumesReviewedCount: 0, resumesTimeHours: 0, screeningsCount: 0, screeningTimeHours: 0, jdsUploadedCount: 0, jdTimeHours: 0 },
+        { day: 'Fri', date: 'Sep 05', hoursSpent: 0, resumesReviewedCount: 0, resumesTimeHours: 0, screeningsCount: 0, screeningTimeHours: 0, jdsUploadedCount: 0, jdTimeHours: 0 },
       ],
       recentActivity: [
-        'Reviewed candidate batch on active jobs (Took 1.2 hrs)',
-        'Calibrated ATS scoring rules and candidate match rankings',
+        'Provisioned database credentials by Administrator',
       ]
     };
 
@@ -613,15 +616,13 @@ class ATSStore {
 
   // --- Admin Analytics Helpers ---
   public getAdminOverviewStats() {
-    const totalJds = this.jobs.length > 0 ? this.jobs.length : this.recruiters.reduce((sum, r) => sum + (r.activeJobs || r.jdsUploaded || 0), 0);
+    const totalJds = this.jobs.length;
     const totalJdsUploaded = totalJds;
 
-    // Resumes evaluated: count distinct evaluated candidates
-    const recruiterResumesSeen = this.recruiters.reduce((sum, r) => sum + (r.resumesSeen || 0), 0);
-    const totalResumesSeen = this.candidates.length > 0 ? this.candidates.length : recruiterResumesSeen;
+    const totalResumesSeen = this.candidates.length;
 
-    const totalScreened = this.candidates.filter(c => c.stageStatus === 'SCREENED' || c.stageStatus === 'TL_APPROVED' || c.stageStatus === 'SHORTLISTED').length || this.recruiters.reduce((sum, r) => sum + (r.screenedThisWeek || 0), 0);
-    const totalShortlisted = this.candidates.filter(c => c.decision === 'SUBMIT' || c.stageStatus === 'TL_APPROVED' || c.stageStatus === 'SHORTLISTED').length || this.recruiters.reduce((sum, r) => sum + (r.tlApprovedCount || 0), 0);
+    const totalScreened = this.candidates.filter(c => c.stageStatus === 'SCREENED' || c.stageStatus === 'TL_APPROVED' || c.stageStatus === 'SHORTLISTED').length;
+    const totalShortlisted = this.candidates.filter(c => c.decision === 'SUBMIT' || c.stageStatus === 'TL_APPROVED' || c.stageStatus === 'SHORTLISTED').length;
     const activeRecruiters = this.recruiters.length;
     const agingJdsCount = this.jobs.filter(j => (j.createdAtDaysAgo || 0) >= 25).length;
 
@@ -633,7 +634,7 @@ class ATSStore {
       totalShortlisted,
       activeRecruiters,
       agingJdsCount,
-      conversionRate: totalScreened > 0 ? Math.round((totalShortlisted / totalScreened) * 100) : (totalResumesSeen > 0 ? 100 : 0),
+      conversionRate: totalScreened > 0 ? Math.round((totalShortlisted / totalScreened) * 100) : (totalResumesSeen > 0 && totalShortlisted > 0 ? Math.round((totalShortlisted / totalResumesSeen) * 100) : 0),
     };
   }
 

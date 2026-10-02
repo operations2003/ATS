@@ -25,6 +25,8 @@ model User {
   role                UserRole     @default(MEMBER)
   isActive            Boolean      @default(true) @map("is_active")
   teamId              String?      @map("team_id") @db.Uuid
+  team                String?      @default("General")
+  customRole          String?      @map("custom_role")
   organizationId      String?      @default("org-tasknera") @map("organization_id")
   createdAt           DateTime     @default(now()) @map("created_at")
   updatedAt           DateTime     @updatedAt @map("updated_at")
