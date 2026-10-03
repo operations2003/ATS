@@ -297,33 +297,9 @@ export default function PublicJobApplyPage() {
                 )}
               </div>
 
-              {/* Job Requirements preview */}
-              {job.requirements && job.requirements.length > 0 && (
-                <div className="pt-6">
-                  <h2 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-3">
-                    Key Role Requirements ({job.requirements.length})
-                  </h2>
-                  <div className="flex flex-wrap gap-2">
-                    {job.requirements.map((req, idx) => (
-                      <span
-                        key={req.id || idx}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border ${
-                          req.is_mandatory
-                            ? 'bg-rose-50 text-rose-800 border-rose-200'
-                            : 'bg-slate-50 text-slate-700 border-slate-200'
-                        }`}
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full ${req.is_mandatory ? 'bg-rose-500' : 'bg-slate-400'}`} />
-                        <span>{req.requirement}</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* JD description summary */}
               {job.jd_text && (
-                <div className="pt-6 border-t border-slate-100 mt-6">
+                <div className="pt-6">
                   <h2 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2">
                     About The Role
                   </h2>
