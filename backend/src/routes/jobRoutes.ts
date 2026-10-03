@@ -42,10 +42,19 @@ import {
 // Available Jobs for Candidate Evaluation & Matching (Entry Point 2)
 router.get('/available-for-evaluation', protect, getAvailableJobsForEvaluation);
 
+import {
+  getOrCreateJobPublicLink,
+  getJobPublicLink,
+  toggleJobPublicLink,
+} from '../controllers/publicCandidateController';
+
 // Database routes
 router.post('/', protect, createJob);
 router.get('/', protect, getAllJobs);
 router.get('/:id', protect, getJobById);
+router.post('/:id/public-link', protect, getOrCreateJobPublicLink);
+router.get('/:id/public-link', protect, getJobPublicLink);
+router.patch('/:id/public-link', protect, toggleJobPublicLink);
 router.post('/:id/normalize-ai', protect, normalizeJobWithAiController);
 router.put('/:id', protect, updateJob);
 router.delete('/:id', protect, deleteJob);

@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { useAuth } from '@/context/AuthContext';
+import CandidateLinkModal from '@/components/CandidateLinkModal';
 
 interface Requirement {
   id: string;
@@ -38,6 +39,7 @@ export default function JobDetailPage() {
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isCandidateLinkOpen, setIsCandidateLinkOpen] = useState(false);
 
   useEffect(() => {
     async function fetchJob() {
@@ -89,6 +91,17 @@ export default function JobDetailPage() {
           </Link>
 
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setIsCandidateLinkOpen(true)}
+              className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold rounded-xl border border-slate-200 transition-colors shadow-2xs flex items-center gap-1.5 cursor-pointer"
+              title="Generate or copy public candidate application link"
+            >
+              <svg className="w-3.5 h-3.5 text-brand-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+              <span>Candidate Link</span>
+            </button>
             <Link
               href={`/jobs/${jobId}/requirements`}
               className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 transition-colors"
@@ -224,6 +237,14 @@ export default function JobDetailPage() {
             </div>
           </div>
         )}
+
+        {/* Public Candidate Application Link Modal */}
+        <CandidateLinkModal
+          isOpen={isCandidateLinkOpen}
+          onClose={() => setIsCandidateLinkOpen(false)}
+          jobId={jobId}
+          jobTitle={job?.position || 'Job Requisition'}
+        />
       </main>
 
       <Footer />

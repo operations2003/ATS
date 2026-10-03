@@ -60,6 +60,8 @@ model Job {
   evaluation_profile_id String?     @map("evaluation_profile_id") @db.Uuid
   created_by            String      @map("created_by") @db.Uuid
   organizationId        String?     @default("org-tasknera") @map("organization_id")
+  publicToken           String?     @unique @map("public_token")
+  isPublicLinkActive    Boolean     @default(true) @map("is_public_link_active")
   created_at            DateTime    @default(now()) @map("created_at")
   updated_at            DateTime    @updatedAt @map("updated_at")
 
@@ -122,6 +124,7 @@ model Candidate {
   file_hash        String?                @map("file_hash")
   parsing_status   ParsingStatus          @default(UPLOADED) @map("parsing_status")
   error_message    String?                @map("error_message")
+  source           String?                @default("manual_upload")
   created_by       String                 @map("created_by") @db.Uuid
   created_at       DateTime               @default(now()) @map("created_at")
   updated_at       DateTime               @updatedAt @map("updated_at")
@@ -141,6 +144,7 @@ model Candidate {
   @@index([created_by], map: "idx_candidates_created_by")
   @@index([file_hash], map: "idx_candidates_file_hash")
   @@index([organizationId], map: "idx_candidates_organization_id")
+  @@index([source], map: "idx_candidates_source")
   @@map("candidates")
 }
 

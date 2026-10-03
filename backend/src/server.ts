@@ -6,6 +6,7 @@ import jobRoutes from './routes/jobRoutes';
 import userRoutes from './routes/userRoutes';
 import candidateRoutes from './routes/candidateRoutes';
 import superAdminRoutes from './routes/superAdminRoutes';
+import publicRoutes from './routes/publicRoutes';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -41,12 +42,13 @@ import {
   deleteEvaluationController
 } from './controllers/evaluationController';
 
-// Authentication, User, Job, Candidate, Evaluation & Super Admin Routes
+// Authentication, User, Job, Candidate, Evaluation, Public Application & Super Admin Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/candidates', candidateRoutes);
 app.use('/api/super-admin', superAdminRoutes);
+app.use('/api/public', publicRoutes);
 
 // Evaluation Endpoints (Secured by database-level ownership)
 app.get('/api/evaluations', protect, getAllEvaluations);

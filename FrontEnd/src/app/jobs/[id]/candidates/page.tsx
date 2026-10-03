@@ -19,6 +19,7 @@ import {
   areSkillsEquivalent,
 } from '@/utils/requirementUtils';
 import { RequirementStatus, ConfidenceLevel } from '@/types';
+import CandidateLinkModal from '@/components/CandidateLinkModal';
 
 
 export interface CandidateEducation {
@@ -101,6 +102,7 @@ export interface CandidateRecord {
   fileSize: number;
   fileHash?: string;
   isDuplicate?: boolean;
+  source?: string;
   uploadedAt: string;
   decision?: 'REVIEW' | 'SUBMIT' | 'REJECT' | string;
   matchScore?: number;
@@ -592,6 +594,7 @@ export default function JobCandidatesPage() {
   const [editCompanyInput, setEditCompanyInput] = useState('');
   const [isEditingPosition, setIsEditingPosition] = useState(false);
   const [editPositionInput, setEditPositionInput] = useState('');
+  const [isCandidateLinkOpen, setIsCandidateLinkOpen] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
@@ -1761,6 +1764,17 @@ export default function JobCandidatesPage() {
                 Configure Job Criteria
               </Link>
               <button
+                type="button"
+                onClick={() => setIsCandidateLinkOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl border border-white/20 transition-all cursor-pointer backdrop-blur-sm shadow-xs"
+                title="Generate or copy public candidate application link"
+              >
+                <svg className="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+                <span>Candidate Link</span>
+              </button>
+              <button
                 onClick={() => setShowUploadZone(prev => !prev)}
                 className="flex items-center gap-2 px-5 py-2.5 bg-brand-orange hover:bg-orange-600 text-white text-xs font-bold rounded-xl transition-all shadow-lg shadow-orange-500/25 hover:-translate-y-0.5 cursor-pointer"
               >
@@ -2033,7 +2047,7 @@ export default function JobCandidatesPage() {
                               {(c.name || 'Candidate').charAt(0).toUpperCase()}
                             </div>
                             <div>
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <button
                                   onClick={() => {
                                     setSelectedCandidate(c);
@@ -2043,6 +2057,11 @@ export default function JobCandidatesPage() {
                                 >
                                   {c.name || c.fileName || 'Unnamed Candidate'}
                                 </button>
+                                {c.source === 'public_application' && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-purple-50 text-purple-700 border border-purple-200 shrink-0" title="Applied via public job link">
+                                    Public Applicant
+                                  </span>
+                                )}
                               </div>
                               <div className="text-xs text-slate-500 truncate max-w-[200px] font-medium mt-0.5">
                                 {c.location || c.email || 'Verified Candidate'}
@@ -2798,6 +2817,14 @@ export default function JobCandidatesPage() {
             </div>
           </div>
         )}
+
+        {/* Public Candidate Application Link Modal */}
+        <CandidateLinkModal
+          isOpen={isCandidateLinkOpen}
+          onClose={() => setIsCandidateLinkOpen(false)}
+          jobId={jobId}
+          jobTitle={job?.position || 'Job Requisition'}
+        />
       </main>
 
       <Footer />

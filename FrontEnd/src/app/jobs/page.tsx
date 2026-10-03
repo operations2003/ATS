@@ -6,6 +6,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { useAuth } from '@/context/AuthContext';
 import { atsStore } from '@/lib/atsStore';
+import CandidateLinkModal from '@/components/CandidateLinkModal';
 
 interface JobWorker {
   id: string;
@@ -191,6 +192,8 @@ export default function JobsPage() {
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [isLoading, setIsLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedJobForLink, setSelectedJobForLink] = useState<JobItem | null>(null);
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
 
   const fetchJobs = async () => {
     try {
@@ -698,6 +701,19 @@ export default function JobsPage() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedJobForLink(j);
+                              setIsLinkModalOpen(true);
+                            }}
+                            className="p-1.5 text-slate-500 hover:text-brand-orange bg-slate-100 hover:bg-orange-50 rounded-xl transition-all"
+                            title="Candidate Application Link"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                            </svg>
+                          </button>
                           <Link href={`/jobs/${j.id}/requirements`} className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all">Criteria</Link>
                           <Link href={`/jobs/${j.id}/candidates`} className="px-3 py-1.5 text-xs font-bold text-white bg-brand-orange hover:bg-brand-orange-hover rounded-xl transition-all">Evaluate</Link>
                           <button onClick={() => handleDeleteJob(j.id, j.title)} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg">
@@ -766,6 +782,19 @@ export default function JobsPage() {
                 </div>
 
                 <div className="flex items-center gap-2 pt-4 border-t border-slate-100 mt-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedJobForLink(j);
+                      setIsLinkModalOpen(true);
+                    }}
+                    className="p-2 text-slate-500 hover:text-brand-orange bg-slate-100 hover:bg-orange-50 rounded-xl transition-all shrink-0 cursor-pointer"
+                    title="Candidate Application Link"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                  </button>
                   <Link href={`/jobs/${j.id}/requirements`} className="flex-1 text-center py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all">Criteria</Link>
                   <Link href={`/jobs/${j.id}/candidates`} className="flex-1 text-center py-2 text-xs font-bold text-white bg-brand-orange hover:bg-brand-orange-hover rounded-xl transition-all shadow-orange">Evaluate</Link>
                 </div>
@@ -791,6 +820,13 @@ export default function JobsPage() {
           </div>
         )}
 
+        {/* Public Candidate Application Link Modal */}
+        <CandidateLinkModal
+          isOpen={isLinkModalOpen}
+          onClose={() => setIsLinkModalOpen(false)}
+          jobId={selectedJobForLink?.id || ''}
+          jobTitle={selectedJobForLink?.title || 'Job Requisition'}
+        />
       </main>
       <Footer />
     </div>

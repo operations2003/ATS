@@ -28,11 +28,14 @@ export interface CandidateRecord extends CandidateParsedProfile {
   uploadedBy?: string;
   createdBy?: string;
   isDuplicate?: boolean;
+  source?: string;
   matchScore?: number;
   atsScore?: number;
   decision?: string;
+  recommendation?: string;
   matchLevel?: string;
   mandatoryCompliance?: string;
+  evaluation?: any;
 }
 
 // In-memory store for fast state sync and test resilience
@@ -340,6 +343,7 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
     uploadedBy: c.created_by,
     createdBy: c.created_by,
     organizationId: c.organizationId || c.user?.organizationId || 'org-tasknera',
+    source: c.source || 'manual_upload',
     ...(() => {
       const latestEval = Array.isArray(c.evaluations) && c.evaluations.length > 0 ? c.evaluations[0] : null;
       const latestApp = Array.isArray(c.applications) && c.applications.length > 0 ? c.applications[0] : null;
@@ -1808,6 +1812,7 @@ export const uploadCandidateCVs = async (req: AuthRequest, res: Response): Promi
           uploadedAt: new Date().toISOString(),
           uploadedBy: uploaderId,
           createdBy: uploaderId,
+          source: 'bulk_upload',
         };
 
         // Cache globally for duplicate detection across jobs
@@ -1830,6 +1835,7 @@ export const uploadCandidateCVs = async (req: AuthRequest, res: Response): Promi
                 summary: newRecord.summary,
                 raw_text: rawText,
                 parsing_status: 'PARSED',
+                source: 'bulk_upload',
                 organizationId: userOrgId,
                 job_id: dbJobId,
                 resume_file_url: fileName,
