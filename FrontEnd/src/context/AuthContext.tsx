@@ -52,8 +52,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
       return;
     }
 
+    setToken(savedToken);
+
+    // Fast-path hydration: immediately restore user session from localStorage to prevent UI flashing or false unauthenticated state on page refresh
+    const cachedEmail = (localStorage.getItem('tasknera_email') || '').trim();
+    const cachedRole = (localStorage.getItem('tasknera_role') as UserRole) || 'MEMBER';
+    const cachedName = localStorage.getItem('tasknera_name') || '';
+    const cachedUserId = localStorage.getItem('tasknera_user_id') || 'cached';
+
+    if (cachedEmail) {
+      const cleanEmail = cachedEmail.toLowerCase().trim();
+      const isSuper = cleanEmail === DESIGNATED_ADMIN_EMAIL || cachedRole === 'SUPER_ADMIN';
+      const isClient = cachedRole === 'CLIENT_ADMIN';
+      const initialRole: UserRole = isSuper ? 'SUPER_ADMIN' : isClient ? 'CLIENT_ADMIN' : cachedRole;
+
+      setUser({
+        id: cachedUserId,
+        email: cleanEmail,
+        name: isSuper ? 'Super Admin' : (cachedName || cleanEmail.split('@')[0]),
+        role: initialRole,
+      });
+    }
+
     const loadUser = async () => {
-      setToken(savedToken);
       try {
         const data = await fetchApi<{ user: User }>('/auth/me', {}, savedToken);
         if (data && data.user) {

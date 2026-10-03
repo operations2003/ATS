@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { useAuth } from '@/context/AuthContext';
@@ -10,19 +11,14 @@ import { atsStore, AuditEvent, RecruiterMetric, JobItem, CandidateItem } from '@
 
 
 export default function AdminPage() {
-  const { user, setRole, signin } = useAuth();
+  const router = useRouter();
+  const { user, setRole, signin, isLoading: authLoading } = useAuth();
   const [mounted, setMounted] = useState(false);
   const [quota, setQuota] = useState<OrganizationQuota | null>(null);
   const [loadingQuota, setLoadingQuota] = useState(false);
   const [podFilter, setPodFilter] = useState<string>('All');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [searchRecruiter, setSearchRecruiter] = useState('');
-
-  // Designated Admin Login State
-  const [adminLoginEmail, setAdminLoginEmail] = useState('admin@gmail.com');
-  const [adminLoginPassword, setAdminLoginPassword] = useState('admin@123');
-  const [adminLoginLoading, setAdminLoginLoading] = useState(false);
-  const [adminLoginError, setAdminLoginError] = useState('');
 
   // Modals & detail view
   const [selectedRecruiter, setSelectedRecruiter] = useState<RecruiterMetric | null>(null);
@@ -561,117 +557,56 @@ export default function AdminPage() {
     }
   };
 
+  // Check authorization from both user context and cached localStorage for zero-flicker reload
+  const cachedRole = typeof window !== 'undefined' ? (localStorage.getItem('tasknera_role') as UserRole) : null;
+  const cachedEmail = typeof window !== 'undefined' ? localStorage.getItem('tasknera_email') : null;
+  const currentRole = user?.role || cachedRole;
+  const currentEmail = (user?.email || cachedEmail || '').toLowerCase().trim();
+
   const isAuthorizedAdmin =
-    user?.role === 'SUPER_ADMIN' ||
-    user?.role === 'CLIENT_ADMIN' ||
-    user?.role === 'ADMIN' ||
-    user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    currentRole === 'SUPER_ADMIN' ||
+    currentRole === 'CLIENT_ADMIN' ||
+    currentRole === 'ADMIN' ||
+    currentEmail === 'admin@gmail.com' ||
+    currentEmail === 'admin@tasknera.com';
 
-  const handleAdminLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAdminLoginError('');
-    setAdminLoginLoading(true);
-    try {
-      const cleanInputEmail = adminLoginEmail.trim().toLowerCase();
-      const role = await signin(cleanInputEmail, adminLoginPassword);
-      if (role !== 'ADMIN' && role !== 'SUPER_ADMIN' && role !== 'CLIENT_ADMIN') {
-        throw new Error('Could not authenticate as Administrator. Please verify your credentials.');
+  // Smooth redirection for recruiters or unauthenticated visitors without showing any unauthorized login card
+  useEffect(() => {
+    if (mounted && !authLoading) {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
+      if (!token) {
+        router.replace('/login');
+      } else if (!isAuthorizedAdmin) {
+        router.replace('/dashboard');
       }
-    } catch (err: any) {
-      setAdminLoginError(err?.message || 'Failed to sign in as Administrator.');
-    } finally {
-      setAdminLoginLoading(false);
     }
-  };
+  }, [mounted, authLoading, isAuthorizedAdmin, router]);
 
-  // Strict Role Guard: Only administrators (SUPER_ADMIN, CLIENT_ADMIN, or ADMIN) can enter
-  if (mounted && !isAuthorizedAdmin) {
+  // Loading state while verifying authentication / hydration
+  if (!mounted || authLoading) {
     return (
-      <div className="min-h-screen bg-[#EEF2F6] flex flex-col selection:bg-brand-orange-pale selection:text-brand-orange">
+      <div className="min-h-screen bg-[#EEF2F6] flex flex-col justify-between selection:bg-brand-orange-pale selection:text-brand-orange">
         <Header />
-        <main className="max-w-md mx-auto px-6 pt-28 pb-16 flex-1 flex flex-col items-center justify-center w-full">
-          <div className="w-full bg-white rounded-3xl p-8 shadow-xl border border-slate-200 text-center animate-in fade-in duration-200">
-            <div className="w-16 h-16 rounded-3xl bg-violet-100 text-violet-700 border border-violet-200 flex items-center justify-center text-3xl font-bold mx-auto mb-4 shadow-xs">
-              👑
-            </div>
+        <main className="flex-1 flex items-center justify-center p-6">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-10 h-10 border-4 border-brand-orange border-t-transparent rounded-full animate-spin" />
+            <p className="text-xs font-bold text-slate-500">Loading Administrator Dashboard...</p>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
-            <span className="inline-block px-3 py-1 rounded-full text-[10px] font-black bg-violet-50 text-violet-700 border border-violet-200 uppercase tracking-widest mb-2">
-              Exclusive Administrator Access
-            </span>
-
-            <h1 className="text-xl font-black text-slate-900 mb-1">
-              Admin &amp; Team Insights Portal
-            </h1>
-
-            <p className="text-xs text-slate-500 mb-6 leading-relaxed">
-              Strict Security Policy: Only designated Administrator accounts (<strong className="text-slate-800">Super Admin</strong> or <strong className="text-slate-800">Client Admin</strong>) are authorized to access executive administration and member insights.
-            </p>
-
-            {user && (
-              <div className="mb-4 p-3 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-800 text-left flex items-start gap-2">
-                <span className="text-amber-600 font-bold">⚠️</span>
-                <div>
-                  Currently signed in as <strong>{user.email}</strong> ({user.role}). This account does not possess executive administrative authority.
-                </div>
-              </div>
-            )}
-
-            {adminLoginError && (
-              <div className="mb-4 p-3 bg-rose-50 rounded-xl border border-rose-200 text-xs text-rose-700 text-left flex items-center gap-2">
-                <span>✕</span>
-                <span className="font-semibold">{adminLoginError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleAdminLogin} className="space-y-3.5 text-left text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Authorized Admin Email</label>
-                <input
-                  type="email"
-                  required
-                  value={adminLoginEmail}
-                  onChange={e => setAdminLoginEmail(e.target.value)}
-                  placeholder="admin@tasknera.com or admin@gmail.com"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Admin Password</label>
-                <input
-                  type="password"
-                  required
-                  value={adminLoginPassword}
-                  onChange={e => setAdminLoginPassword(e.target.value)}
-                  placeholder="admin@123"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={adminLoginLoading}
-                className="w-full mt-2 py-3 bg-violet-600 hover:bg-violet-700 active:scale-[0.99] text-white text-xs font-black rounded-xl shadow-lg shadow-violet-500/25 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
-              >
-                {adminLoginLoading ? (
-                  <span>Authenticating Administrator...</span>
-                ) : (
-                  <>
-                    <span>👑 Sign In as Administrator</span>
-                    <span>→</span>
-                  </>
-                )}
-              </button>
-            </form>
-
-            <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-center">
-              <Link
-                href="/dashboard"
-                className="text-xs font-bold text-slate-500 hover:text-slate-700 transition-colors"
-              >
-                Return to Recruiter Workspace
-              </Link>
-            </div>
+  // If a recruiter or unauthenticated visitor lands here, redirect seamlessly without showing the old admin login portal
+  if (!isAuthorizedAdmin) {
+    return (
+      <div className="min-h-screen bg-[#EEF2F6] flex flex-col justify-between selection:bg-brand-orange-pale selection:text-brand-orange">
+        <Header />
+        <main className="flex-1 flex items-center justify-center p-6">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-3 border-violet-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-xs font-semibold text-slate-500">Redirecting to your workspace...</p>
           </div>
         </main>
         <Footer />
