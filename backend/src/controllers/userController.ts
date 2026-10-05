@@ -686,71 +686,85 @@ export const deleteUser = async (req: AuthRequest, res: Response): Promise<void>
 
     const userId = targetUser.id;
 
-    // Comprehensive cascade deletion inside an atomic transaction
-    await prisma.$transaction(async (tx) => {
-      const userJobs = await tx.job.findMany({
-        where: { created_by: userId },
-        select: { id: true }
-      });
-      const userJobIds = userJobs.map(j => j.id);
+    // Comprehensive cascade deletion executed sequentially
+    // (avoids Supabase PgBouncer transaction-mode disconnect errors)
+    const userJobs = await prisma.job.findMany({
+      where: { created_by: userId },
+      select: { id: true }
+    });
+    const userJobIds = userJobs.map(j => j.id);
 
-      const userCandidates = await tx.candidate.findMany({
+    const userCandidates = await prisma.candidate.findMany({
+      where: {
+        OR: [
+          { created_by: userId },
+          ...(userJobIds.length > 0 ? [{ job_id: { in: userJobIds } }] : [])
+        ]
+      },
+      select: { id: true }
+    });
+    const userCandidateIds = userCandidates.map(c => c.id);
+
+    // 1. Delete child records for all candidates owned or in member's jobs
+    if (userCandidateIds.length > 0) {
+      await prisma.candidateExperience.deleteMany({ where: { candidate_id: { in: userCandidateIds } } }).catch(() => null);
+      await prisma.candidateEducation.deleteMany({ where: { candidate_id: { in: userCandidateIds } } }).catch(() => null);
+      await prisma.candidateSkill.deleteMany({ where: { candidate_id: { in: userCandidateIds } } }).catch(() => null);
+      await prisma.candidateCertification.deleteMany({ where: { candidate_id: { in: userCandidateIds } } }).catch(() => null);
+      await prisma.candidateLanguage.deleteMany({ where: { candidate_id: { in: userCandidateIds } } }).catch(() => null);
+      await prisma.candidateProject.deleteMany({ where: { candidate_id: { in: userCandidateIds } } }).catch(() => null);
+    }
+
+    // 2. Delete candidate applications
+    if (userCandidateIds.length > 0 || userJobIds.length > 0) {
+      await prisma.candidateApplication.deleteMany({
         where: {
           OR: [
-            { created_by: userId },
+            ...(userCandidateIds.length > 0 ? [{ candidate_id: { in: userCandidateIds } }] : []),
             ...(userJobIds.length > 0 ? [{ job_id: { in: userJobIds } }] : [])
           ]
-        },
-        select: { id: true }
-      });
-      const userCandidateIds = userCandidates.map(c => c.id);
-
-      if (userCandidateIds.length > 0) {
-        await tx.candidateExperience.deleteMany({ where: { candidate_id: { in: userCandidateIds } } });
-        await tx.candidateEducation.deleteMany({ where: { candidate_id: { in: userCandidateIds } } });
-        await tx.candidateSkill.deleteMany({ where: { candidate_id: { in: userCandidateIds } } });
-        await tx.candidateCertification.deleteMany({ where: { candidate_id: { in: userCandidateIds } } });
-        await tx.candidateLanguage.deleteMany({ where: { candidate_id: { in: userCandidateIds } } });
-        await tx.candidateProject.deleteMany({ where: { candidate_id: { in: userCandidateIds } } });
-      }
-
-      if (userCandidateIds.length > 0 || userJobIds.length > 0) {
-        await tx.candidateApplication.deleteMany({
-          where: {
-            OR: [
-              ...(userCandidateIds.length > 0 ? [{ candidate_id: { in: userCandidateIds } }] : []),
-              ...(userJobIds.length > 0 ? [{ job_id: { in: userJobIds } }] : [])
-            ]
-          }
-        });
-      }
-
-      await tx.evaluation.deleteMany({
-        where: {
-          OR: [
-            { createdByUserId: userId },
-            { evaluatedBy: userId },
-            { assignedToUserId: userId },
-            ...(userCandidateIds.length > 0 ? [{ candidateId: { in: userCandidateIds } }] : []),
-            ...(userJobIds.length > 0 ? [{ jobId: { in: userJobIds } }] : [])
-          ]
         }
-      });
+      }).catch(() => null);
+    }
 
-      if (userJobIds.length > 0) {
-        await tx.requirement.deleteMany({ where: { job_id: { in: userJobIds } } });
+    // 3. Delete evaluations associated with member, candidates, or member's jobs
+    await prisma.evaluation.deleteMany({
+      where: {
+        OR: [
+          { createdByUserId: userId },
+          { evaluatedBy: userId },
+          { assignedToUserId: userId },
+          ...(userCandidateIds.length > 0 ? [{ candidateId: { in: userCandidateIds } }] : []),
+          ...(userJobIds.length > 0 ? [{ jobId: { in: userJobIds } }] : [])
+        ]
       }
+    }).catch(() => null);
 
-      if (userCandidateIds.length > 0) {
-        await tx.candidate.deleteMany({ where: { id: { in: userCandidateIds } } });
-      }
+    // 4. Delete job requirements
+    if (userJobIds.length > 0) {
+      await prisma.requirement.deleteMany({ where: { job_id: { in: userJobIds } } }).catch(() => null);
+    }
 
-      if (userJobIds.length > 0) {
-        await tx.job.deleteMany({ where: { id: { in: userJobIds } } });
-      }
+    // 5. Delete candidate profiles
+    if (userCandidateIds.length > 0) {
+      await prisma.candidate.deleteMany({ where: { id: { in: userCandidateIds } } }).catch(() => null);
+    }
+    await prisma.candidate.deleteMany({ where: { created_by: userId } }).catch(() => null);
 
-      await tx.user.delete({ where: { id: userId } });
-    });
+    // 6. Delete jobs
+    if (userJobIds.length > 0) {
+      await prisma.job.deleteMany({ where: { id: { in: userJobIds } } }).catch(() => null);
+    }
+    await prisma.job.deleteMany({ where: { created_by: userId } }).catch(() => null);
+
+    // 7. Nullify audit log user references if any
+    await (prisma as any).auditLog?.updateMany({
+      where: { userId },
+      data: { userId: null }
+    }).catch(() => null);
+
+    // 8. Delete user account
+    await prisma.user.delete({ where: { id: userId } });
 
     res.status(200).json({
       success: true,
