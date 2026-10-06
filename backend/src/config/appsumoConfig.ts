@@ -20,21 +20,34 @@ export interface AppSumoTierConfig {
 
 export const APPSUMO_CONFIG = {
   // AppSumo API credentials
-  apiKey: process.env.APPSUMO_API_KEY || '',
-  clientId: process.env.APPSUMO_CLIENT_ID || '',
-  clientSecret: process.env.APPSUMO_CLIENT_SECRET || '',
-  // HMAC verification secret: AppSumo Licensing Guide specifies using AppSumo API key as HMAC secret,
-  // with APPSUMO_WEBHOOK_SECRET supported as an explicit override.
-  webhookSecret: process.env.APPSUMO_WEBHOOK_SECRET || process.env.APPSUMO_API_KEY || '',
+  _apiKey: '',
+  get apiKey(): string { return this._apiKey || process.env.APPSUMO_API_KEY || ''; },
+  set apiKey(val: string) { this._apiKey = val; },
+
+  _clientId: '',
+  get clientId(): string { return this._clientId || process.env.APPSUMO_CLIENT_ID || ''; },
+  set clientId(val: string) { this._clientId = val; },
+
+  _clientSecret: '',
+  get clientSecret(): string { return this._clientSecret || process.env.APPSUMO_CLIENT_SECRET || ''; },
+  set clientSecret(val: string) { this._clientSecret = val; },
+
+  _webhookSecret: '',
+  get webhookSecret(): string { return this._webhookSecret || process.env.APPSUMO_WEBHOOK_SECRET || this.apiKey; },
+  set webhookSecret(val: string) { this._webhookSecret = val; },
   
   // AppSumo API base URL
-  apiBaseUrl: process.env.APPSUMO_API_BASE_URL || 'https://api.licensing.appsumo.com/v2/',
+  _apiBaseUrl: '',
+  get apiBaseUrl(): string { return this._apiBaseUrl || process.env.APPSUMO_API_BASE_URL || 'https://api.licensing.appsumo.com/v2/'; },
+  set apiBaseUrl(val: string) { this._apiBaseUrl = val; },
   
   // AppSumo API rate limit (20 req / minute)
   rateLimitPerMinute: 20,
   
   // Frontend redirection URL for OAuth onboarding
-  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
+  _frontendUrl: '',
+  get frontendUrl(): string { return this._frontendUrl || process.env.FRONTEND_URL || 'http://localhost:3000'; },
+  set frontendUrl(val: string) { this._frontendUrl = val; },
   
   // Central Tier Configurations
   tiers: {
