@@ -11,6 +11,12 @@ import {
   getAuditLogs
 } from '../controllers/superAdminController';
 
+import {
+  getSuperAdminAppSumoLicenses,
+  getSuperAdminLicenseDetails,
+  syncLicenseFromAppSumoController
+} from '../controllers/appsumoController';
+
 const router = Router();
 
 // All super-admin routes are strictly protected and restricted to SUPER_ADMIN (or platform admin)
@@ -25,6 +31,11 @@ router.post('/organizations/:id/toggle-status', toggleStatus);
 router.post('/organizations/:id/reset-admin-password', resetAdminPassword);
 router.get('/stats', getPlatformStats);
 router.get('/audit-logs', getAuditLogs);
+
+// Super Admin: AppSumo Licensing Management & Support
+router.get('/appsumo/licenses', getSuperAdminAppSumoLicenses);
+router.get('/appsumo/licenses/:licenseKey', getSuperAdminLicenseDetails);
+router.post('/appsumo/licenses/:licenseKey/sync', syncLicenseFromAppSumoController);
 
 export default router;
 

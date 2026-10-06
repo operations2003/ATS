@@ -1822,7 +1822,7 @@ export const uploadCandidateCVs = async (req: AuthRequest, res: Response): Promi
         // Update / Persist full candidate metadata into Prisma database
         try {
           if (dbCandidateId) {
-            await prisma.candidate.update({
+            await (prisma as any).candidate.update({
               where: { id: dbCandidateId },
               data: {
                 name: newRecord.name,
@@ -1839,7 +1839,7 @@ export const uploadCandidateCVs = async (req: AuthRequest, res: Response): Promi
                 organizationId: userOrgId,
                 job_id: dbJobId,
                 resume_file_url: fileName,
-              }
+              } as any
             });
 
             // Link candidate to job application record if job exists

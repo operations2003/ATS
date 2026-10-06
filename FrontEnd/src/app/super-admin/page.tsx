@@ -13,7 +13,15 @@ export default function SuperAdminPage() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<any>(null);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'organizations' | 'stats' | 'audit'>('organizations');
+  const [activeTab, setActiveTab] = useState<'organizations' | 'stats' | 'audit' | 'appsumo'>('organizations');
+
+  // AppSumo State
+  const [appsumoLicenses, setAppsumoLicenses] = useState<any[]>([]);
+  const [appsumoSearch, setAppsumoSearch] = useState('');
+  const [appsumoStatusFilter, setAppsumoStatusFilter] = useState('ALL');
+  const [selectedLicenseDetails, setSelectedLicenseDetails] = useState<any>(null);
+  const [showLicenseModal, setShowLicenseModal] = useState(false);
+  const [syncingLicKey, setSyncingLicKey] = useState<string | null>(null);
 
   // Search & Filter
   const [searchTerm, setSearchTerm] = useState('');
@@ -106,10 +114,53 @@ export default function SuperAdminPage() {
       if (auditRes && Array.isArray(auditRes.logs)) {
         setAuditLogs(auditRes.logs);
       }
+
+      // Fetch AppSumo licenses
+      try {
+        const sumoRes = await fetchApi<{ licenses: any[] }>('/super-admin/appsumo/licenses', {}, token);
+        if (sumoRes && Array.isArray(sumoRes.licenses)) {
+          setAppsumoLicenses(sumoRes.licenses);
+        }
+      } catch (sumoErr) {
+        console.warn('[Super Admin] AppSumo licenses fetch notice:', sumoErr);
+      }
     } catch (err: any) {
       console.error('[Super Admin] Error loading data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleInspectLicense = async (licKey: string) => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
+      const res = await fetchApi<{ license: any; tierLimits: any }>(
+        `/super-admin/appsumo/licenses/${encodeURIComponent(licKey)}`,
+        {},
+        token
+      );
+      setSelectedLicenseDetails(res);
+      setShowLicenseModal(true);
+    } catch (err: any) {
+      alert(err.message || 'Failed to inspect license details');
+    }
+  };
+
+  const handleSyncLicense = async (licKey: string) => {
+    try {
+      setSyncingLicKey(licKey);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
+      await fetchApi<{ success: boolean; message: string }>(
+        `/super-admin/appsumo/licenses/${encodeURIComponent(licKey)}/sync`,
+        { method: 'POST' },
+        token
+      );
+      await loadData();
+      alert(`License ${licKey} synced successfully with AppSumo!`);
+    } catch (err: any) {
+      alert(err.message || 'Sync with AppSumo failed');
+    } finally {
+      setSyncingLicKey(null);
     }
   };
 
@@ -477,6 +528,16 @@ export default function SuperAdminPage() {
             >
               Security Audit Logs ({auditLogs.length})
             </button>
+            <button
+              onClick={() => setActiveTab('appsumo')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'appsumo'
+                  ? 'bg-amber-500 text-slate-950 shadow'
+                  : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+              }`}
+            >
+              AppSumo LTD Licenses ({appsumoLicenses.length})
+            </button>
           </div>
 
           {activeTab === 'organizations' && (
@@ -503,6 +564,34 @@ export default function SuperAdminPage() {
                 <option value="ACTIVE">Active</option>
                 <option value="SUSPENDED">Suspended</option>
                 <option value="EXPIRED">Expired</option>
+              </select>
+            </div>
+          )}
+
+          {activeTab === 'appsumo' && (
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search license key, org, email..."
+                  value={appsumoSearch}
+                  onChange={(e) => setAppsumoSearch(e.target.value)}
+                  className="w-64 text-xs px-3 py-2 pl-8 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+                <svg className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+
+              <select
+                value={appsumoStatusFilter}
+                onChange={(e) => setAppsumoStatusFilter(e.target.value)}
+                className="text-xs px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium text-slate-700"
+              >
+                <option value="ALL">All Statuses</option>
+                <option value="ACTIVE">Active</option>
+                <option value="INACTIVE">Inactive</option>
+                <option value="DEACTIVATED">Deactivated</option>
               </select>
             </div>
           )}
@@ -742,7 +831,265 @@ export default function SuperAdminPage() {
           </div>
         )}
 
+        {/* Tab 3: AppSumo Licenses Table */}
+        {activeTab === 'appsumo' && (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-4 bg-amber-500/10 border-b border-amber-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                <span className="text-xs font-bold text-amber-900">
+                  AppSumo Licensing Partner Integration Dashboard (v2)
+                </span>
+              </div>
+              <span className="text-[11px] text-amber-800">
+                Total Tracked Licenses: <strong>{appsumoLicenses.length}</strong>
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200 uppercase text-[10px] tracking-wider">
+                  <tr>
+                    <th className="px-5 py-3.5">License Key & History</th>
+                    <th className="px-5 py-3.5">Tier & Plan</th>
+                    <th className="px-5 py-3.5">Status</th>
+                    <th className="px-5 py-3.5">Linked Tenant Org</th>
+                    <th className="px-5 py-3.5">Customer Admin</th>
+                    <th className="px-5 py-3.5">Timestamps</th>
+                    <th className="px-5 py-3.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
+                  {appsumoLicenses
+                    .filter((lic) => {
+                      const matchesSearch =
+                        !appsumoSearch.trim() ||
+                        lic.licenseKey.toLowerCase().includes(appsumoSearch.toLowerCase()) ||
+                        (lic.previousLicenseKey &&
+                          lic.previousLicenseKey.toLowerCase().includes(appsumoSearch.toLowerCase())) ||
+                        (lic.organization?.name &&
+                          lic.organization.name.toLowerCase().includes(appsumoSearch.toLowerCase())) ||
+                        (lic.user?.email &&
+                          lic.user.email.toLowerCase().includes(appsumoSearch.toLowerCase()));
+                      const matchesStatus =
+                        appsumoStatusFilter === 'ALL' || lic.status === appsumoStatusFilter;
+                      return matchesSearch && matchesStatus;
+                    })
+                    .length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-5 py-8 text-center text-slate-400 font-sans">
+                        No AppSumo licenses found matching filter criteria.
+                      </td>
+                    </tr>
+                  ) : (
+                    appsumoLicenses
+                      .filter((lic) => {
+                        const matchesSearch =
+                          !appsumoSearch.trim() ||
+                          lic.licenseKey.toLowerCase().includes(appsumoSearch.toLowerCase()) ||
+                          (lic.previousLicenseKey &&
+                            lic.previousLicenseKey.toLowerCase().includes(appsumoSearch.toLowerCase())) ||
+                          (lic.organization?.name &&
+                            lic.organization.name.toLowerCase().includes(appsumoSearch.toLowerCase())) ||
+                          (lic.user?.email &&
+                            lic.user.email.toLowerCase().includes(appsumoSearch.toLowerCase()));
+                        const matchesStatus =
+                          appsumoStatusFilter === 'ALL' || lic.status === appsumoStatusFilter;
+                        return matchesSearch && matchesStatus;
+                      })
+                      .map((lic) => (
+                        <tr key={lic.id} className="hover:bg-slate-50 font-sans">
+                          <td className="px-5 py-3.5">
+                            <div className="font-mono font-bold text-slate-900">{lic.licenseKey}</div>
+                            {lic.previousLicenseKey && (
+                              <div className="text-[10px] text-amber-600 font-mono">
+                                Prev: {lic.previousLicenseKey}
+                              </div>
+                            )}
+                            {lic.parentLicenseKey && (
+                              <div className="text-[10px] text-teal-600 font-mono">
+                                Parent: {lic.parentLicenseKey}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                              Tier {lic.tier}
+                            </span>
+                            <div className="text-[10px] text-slate-400 mt-0.5">
+                              {lic.partnerPlanName || `Plan Tier ${lic.tier}`}
+                            </div>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span
+                              className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                lic.status === 'ACTIVE'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : lic.status === 'DEACTIVATED'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : 'bg-slate-100 text-slate-700'
+                              }`}
+                            >
+                              {lic.status}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5 text-slate-700 font-semibold">
+                            {lic.organization?.name ? (
+                              <span>{lic.organization.name}</span>
+                            ) : (
+                              <span className="text-slate-400 font-normal italic">Unlinked</span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3.5 text-slate-600">
+                            {lic.user?.email || <span className="text-slate-400 italic">None</span>}
+                          </td>
+                          <td className="px-5 py-3.5 text-[10px] text-slate-500">
+                            <div>Purchased: {new Date(lic.createdAt).toLocaleDateString()}</div>
+                            {lic.activatedAt && (
+                              <div className="text-emerald-600">
+                                Activated: {new Date(lic.activatedAt).toLocaleDateString()}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-5 py-3.5 text-right space-x-1">
+                            <button
+                              onClick={() => handleInspectLicense(lic.licenseKey)}
+                              className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-semibold rounded-lg transition-colors cursor-pointer"
+                            >
+                              Inspect
+                            </button>
+                            <button
+                              onClick={() => handleSyncLicense(lic.licenseKey)}
+                              disabled={syncingLicKey === lic.licenseKey}
+                              className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold rounded-lg border border-slate-200 transition-colors cursor-pointer disabled:opacity-50"
+                              title="Sync with AppSumo API"
+                            >
+                              {syncingLicKey === lic.licenseKey ? '...' : '↻'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
       </main>
+
+      {/* MODAL: Inspect AppSumo License & Event History */}
+      {showLicenseModal && selectedLicenseDetails && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-3xl w-full p-6 sm:p-8 my-8 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-wider text-amber-600">
+                  AppSumo License Inspector
+                </div>
+                <h3 className="text-lg font-black text-slate-900 font-mono">
+                  {selectedLicenseDetails.license?.licenseKey}
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowLicenseModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-lg p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 space-y-5 text-xs pr-2">
+              {/* License Details Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Tier</span>
+                  <span className="font-bold text-slate-900 text-sm">
+                    Tier {selectedLicenseDetails.license?.tier}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Status</span>
+                  <span className="font-bold text-slate-900 text-sm">
+                    {selectedLicenseDetails.license?.status}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Organization</span>
+                  <span className="font-bold text-slate-900">
+                    {selectedLicenseDetails.license?.organization?.name || 'Unlinked'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Customer Admin</span>
+                  <span className="font-bold text-slate-900 truncate block">
+                    {selectedLicenseDetails.license?.user?.email || 'None'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Quotas Breakdown */}
+              {selectedLicenseDetails.tierLimits && (
+                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20">
+                  <h4 className="font-bold text-amber-900 mb-2">Entitled LTD Quotas</h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-slate-700 font-medium text-[11px]">
+                    <div>Seats: <strong>{selectedLicenseDetails.tierLimits.maxUsers}</strong></div>
+                    <div>Recruiters: <strong>{selectedLicenseDetails.tierLimits.maxRecruiters}</strong></div>
+                    <div>Active Jobs: <strong>{selectedLicenseDetails.tierLimits.maxActiveJobs}</strong></div>
+                    <div>Resumes/mo: <strong>{selectedLicenseDetails.tierLimits.maxResumesPerMonth}</strong></div>
+                  </div>
+                </div>
+              )}
+
+              {/* Webhook Event History */}
+              <div>
+                <h4 className="font-bold text-slate-900 mb-2">
+                  Audit History ({selectedLicenseDetails.license?.events?.length || 0} Webhook Events)
+                </h4>
+                {selectedLicenseDetails.license?.events?.length === 0 ? (
+                  <p className="text-slate-400 italic">No events recorded for this license yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {selectedLicenseDetails.license?.events?.map((ev: any) => (
+                      <div key={ev.id} className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-mono font-bold uppercase text-[11px] text-indigo-700">
+                            {ev.event}
+                          </span>
+                          <span className="text-[10px] text-slate-500">
+                            {new Date(ev.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-600 mb-1">
+                          Status: <strong className="text-slate-800">{ev.processingStatus}</strong>
+                          {ev.errorMessage && <span className="text-rose-600 ml-2">Error: {ev.errorMessage}</span>}
+                        </div>
+                        <details className="text-[10px] text-slate-500">
+                          <summary className="cursor-pointer hover:text-slate-800 font-semibold">
+                            View Raw Webhook Payload
+                          </summary>
+                          <pre className="mt-1 p-2 bg-slate-900 text-slate-200 rounded-lg overflow-x-auto font-mono">
+                            {JSON.stringify(ev.payload, null, 2)}
+                          </pre>
+                        </details>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-slate-100 flex justify-end">
+              <button
+                onClick={() => setShowLicenseModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              >
+                Close Inspector
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL 1: Provision New Client Organization */}
       {showCreateModal && (
