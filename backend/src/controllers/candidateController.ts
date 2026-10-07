@@ -289,9 +289,30 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
     }
   }
 
-  const finalExpString = roleMonths > 0
-    ? formatNumericExperience(roleMonths)
-    : (totalExp || (experience.length ? `${experience.length} yrs` : '0 yrs'));
+  // Parse explicit totalExp from candidate record (e.g. "6.5years", "6.5 years", "10 yrs")
+  let parsedTotalExpMonths = 0;
+  let parsedTotalExpYears: number | undefined = undefined;
+  if (totalExp) {
+    const yrMatch = String(totalExp).match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs?)?/i);
+    const moMatch = String(totalExp).match(/(\d+)\s*(?:months?|mos?)/i);
+    if (yrMatch && parseFloat(yrMatch[1]) > 0) {
+      parsedTotalExpYears = parseFloat(yrMatch[1]);
+      parsedTotalExpMonths = Math.round(parsedTotalExpYears * 12);
+    }
+    if (moMatch && parseInt(moMatch[1], 10) > 0) {
+      parsedTotalExpMonths += parseInt(moMatch[1], 10);
+    }
+  }
+
+  // If candidate has an explicit total_experience that exceeds partial parsed role entries, honor the total experience
+  const effectiveMonths = Math.max(roleMonths, parsedTotalExpMonths);
+  const effectiveYears = parsedTotalExpYears !== undefined && Math.round(parsedTotalExpYears * 12) >= effectiveMonths
+    ? parsedTotalExpYears
+    : (effectiveMonths > 0 ? parseFloat((effectiveMonths / 12).toFixed(1)) : undefined);
+
+  const finalExpString = effectiveYears !== undefined
+    ? `${effectiveYears} yrs`
+    : (effectiveMonths > 0 ? formatNumericExperience(effectiveMonths) : (totalExp || (experience.length ? `${experience.length} yrs` : '0 yrs')));
 
   return {
     id: c.id,
@@ -301,8 +322,8 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
     phone: c.phone || '',
     location: location || 'Remote',
     totalExperience: finalExpString,
-    totalExperienceMonths: roleMonths > 0 ? roleMonths : undefined,
-    totalExperienceYears: roleMonths > 0 ? parseFloat((roleMonths / 12).toFixed(1)) : undefined,
+    totalExperienceMonths: effectiveMonths > 0 ? effectiveMonths : undefined,
+    totalExperienceYears: effectiveYears,
     relevantExperience: finalExpString,
     currentTitle: title || 'Software Professional',
     currentCompany: company || '',

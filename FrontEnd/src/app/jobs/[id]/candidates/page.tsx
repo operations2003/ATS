@@ -156,15 +156,19 @@ const parseMonthsFromText = (text?: string | null): number => {
   if (!text) return 0;
   const t = text.trim();
 
-  // Pattern 1: "X years Y months" or "X.Y years" or "X yrs"
-  const yrMatch = t.match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs?)/i);
+  // Pattern 1: "X years Y months" or "X.Y years" or "X yrs" or "6.5years"
+  const yrMatch = t.match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs?)?/i);
   const moMatch = t.match(/(\d+)\s*(?:months?|mos?)/i);
 
-  if (yrMatch || moMatch) {
-    let total = 0;
-    if (yrMatch) total += parseFloat(yrMatch[1]) * 12;
-    if (moMatch) total += parseInt(moMatch[1], 10);
+  if (yrMatch && (t.toLowerCase().includes('yr') || t.toLowerCase().includes('year') || /^\d+(?:\.\d+)?$/.test(t))) {
+    let total = parseFloat(yrMatch[1]) * 12;
+    if (moMatch && !yrMatch[0].includes(moMatch[1])) total += parseInt(moMatch[1], 10);
     return Math.round(total);
+  }
+
+  if (yrMatch && !t.includes('–') && !t.includes('-') && !t.includes('to')) {
+    const yrVal = parseFloat(yrMatch[1]);
+    if (yrVal > 0) return Math.round(yrVal * 12);
   }
 
   // Pattern 2: Date range like "Apr 2025 – Nov 2025" or "2021 – 2023"
@@ -203,56 +207,54 @@ const getNumericExperienceDetails = (cand: {
   totalExperienceYears?: number; 
   experience?: CandidateExperience[] 
 }) => {
-  let months = 0;
+  // 1. Calculate explicit months and years from candidate metadata
+  let explicitMonths = 0;
+  let explicitYears = 0;
 
-  // PRIORITY 1: Calculate directly from documented work experience roles (ground truth)
+  if (cand.totalExperienceYears && cand.totalExperienceYears > 0) {
+    explicitYears = cand.totalExperienceYears;
+    explicitMonths = Math.round(cand.totalExperienceYears * 12);
+  } else if (cand.totalExperienceMonths && cand.totalExperienceMonths > 0) {
+    explicitMonths = cand.totalExperienceMonths;
+    explicitYears = parseFloat((explicitMonths / 12).toFixed(1));
+  }
+
+  if (cand.totalExperience) {
+    const parsedFromText = parseMonthsFromText(cand.totalExperience);
+    if (parsedFromText > explicitMonths) {
+      explicitMonths = parsedFromText;
+      explicitYears = parseFloat((parsedFromText / 12).toFixed(1));
+    }
+  }
+
+  // 2. Calculate sum from individual experience entries if documented
+  let roleSum = 0;
   if (cand.experience && cand.experience.length > 0) {
-    let sum = 0;
     for (const exp of cand.experience) {
       const durMonths = parseMonthsFromText(exp.duration || (exp.startDate && exp.endDate ? `${exp.startDate} - ${exp.endDate}` : ''));
       if (durMonths > 0) {
-        sum += durMonths;
+        roleSum += durMonths;
       }
     }
-    if (sum > 0) {
-      months = sum;
-    }
   }
 
-  // PRIORITY 2: Pre-computed totalExperienceMonths
-  if (!months && cand.totalExperienceMonths && cand.totalExperienceMonths > 0) {
-    months = cand.totalExperienceMonths;
-  }
-
-  // PRIORITY 3: Parse from totalExperience string
-  if (!months && cand.totalExperience) {
-    months = parseMonthsFromText(cand.totalExperience);
-  }
-
-  // PRIORITY 4: totalExperienceYears
-  if (!months && cand.totalExperienceYears && cand.totalExperienceYears > 0) {
-    months = Math.round(cand.totalExperienceYears * 12);
-  }
-
-  const years = parseFloat((months / 12).toFixed(1));
+  // Use the maximum of explicit stated experience and sum of roles
+  const months = Math.max(explicitMonths, roleSum);
+  const years = explicitYears > 0 && Math.round(explicitYears * 12) >= months
+    ? explicitYears
+    : (months > 0 ? parseFloat((months / 12).toFixed(1)) : 0);
 
   let badgeText = '0 yrs';
   let fullLabel = '0 Years';
 
-  if (months > 0) {
-    if (months < 12) {
-      badgeText = `${months} mo${months === 1 ? '' : 's'}`;
-      fullLabel = `${months} ${months === 1 ? 'Month' : 'Months'}`;
+  if (years > 0) {
+    if (years < 1) {
+      badgeText = `${months} mos`;
+      fullLabel = `${months} Months`;
     } else {
-      const y = Math.floor(months / 12);
-      const m = months % 12;
-      if (m === 0) {
-        badgeText = `${y} yr${y === 1 ? '' : 's'}`;
-        fullLabel = `${y} ${y === 1 ? 'Year' : 'Years'}`;
-      } else {
-        badgeText = `${y} yr${y === 1 ? '' : 's'} ${m} mo${m === 1 ? '' : 's'}`;
-        fullLabel = `${y} ${y === 1 ? 'Year' : 'Years'} ${m} ${m === 1 ? 'Month' : 'Months'}`;
-      }
+      const yStr = years % 1 === 0 ? `${Math.round(years)}` : `${years}`;
+      badgeText = `${yStr} yrs`;
+      fullLabel = `${yStr} Years`;
     }
   } else if (cand.totalExperience && cand.totalExperience.trim()) {
     badgeText = cand.totalExperience;
@@ -263,7 +265,7 @@ const getNumericExperienceDetails = (cand: {
     months,
     years,
     badgeText,
-    subText: `${months} ${months === 1 ? 'mo' : 'mos'}`,
+    subText: `${months} mos`,
     fullLabel,
   };
 };
@@ -1352,8 +1354,13 @@ export default function JobCandidatesPage() {
 
       const effectiveDecision = (c as any).decision || (c as any).recommendation || autoDecision;
 
+      const expDetails = getNumericExperienceDetails(c);
+
       return {
         ...c,
+        totalExperience: expDetails.badgeText,
+        totalExperienceYears: expDetails.years,
+        totalExperienceMonths: expDetails.months,
         matchScore: finalScore,
         atsScore: finalScore,
         matchLevel: finalLevel,
