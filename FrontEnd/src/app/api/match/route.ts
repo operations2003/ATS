@@ -83,8 +83,13 @@ export async function POST(request: NextRequest) {
         ...candidate,
         id: candidateId,
         name: candidateName,
-        matchScore: matchResult.overallScore,
-        matchLevel: matchResult.matchLevel,
+        matchScore: typeof candidate.atsScore === 'number'
+          ? Math.round(candidate.atsScore)
+          : (typeof candidate.matchScore === 'number' ? Math.round(candidate.matchScore) : matchResult.overallScore),
+        atsScore: typeof candidate.atsScore === 'number'
+          ? Math.round(candidate.atsScore)
+          : (typeof candidate.matchScore === 'number' ? Math.round(candidate.matchScore) : matchResult.overallScore),
+        matchLevel: candidate.matchLevel || matchResult.matchLevel,
         breakdown: matchResult.breakdown,
         summary: matchResult.summary,
         evaluatedAt: new Date().toISOString(),

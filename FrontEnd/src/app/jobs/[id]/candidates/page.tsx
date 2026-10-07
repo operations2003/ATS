@@ -156,22 +156,34 @@ const parseMonthsFromText = (text?: string | null): number => {
   if (!text) return 0;
   const t = text.trim();
 
-  // Pattern 1: "X years Y months" or "X.Y years" or "X yrs" or "6.5years"
-  const yrMatch = t.match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs?)?/i);
-  const moMatch = t.match(/(\d+)\s*(?:months?|mos?)/i);
-
-  if (yrMatch && (t.toLowerCase().includes('yr') || t.toLowerCase().includes('year') || /^\d+(?:\.\d+)?$/.test(t))) {
-    let total = parseFloat(yrMatch[1]) * 12;
-    if (moMatch && !yrMatch[0].includes(moMatch[1])) total += parseInt(moMatch[1], 10);
-    return Math.round(total);
+  // Guard: If string is purely a 4-digit calendar year like "2019" or "2024", return 0
+  if (/^\b(19\d\d|20\d\d)\b$/.test(t)) {
+    return 0;
   }
 
-  if (yrMatch && !t.includes('–') && !t.includes('-') && !t.includes('to')) {
-    const yrVal = parseFloat(yrMatch[1]);
-    if (yrVal > 0) return Math.round(yrVal * 12);
+  // Pattern 1: Explicit years/months like "7.2 yrs", "10.8 yrs", "6.5 years", "10y 10m", "• 7.2 yrs"
+  const yrExplicitMatch = t.match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs|yr)\b/i);
+  const moExplicitMatch = t.match(/(\d+)\s*(?:months?|mos|mo)\b/i);
+
+  if (yrExplicitMatch) {
+    const yrVal = parseFloat(yrExplicitMatch[1]);
+    // Guard against calendar years mistakenly captured
+    if (yrVal > 0 && yrVal < 80) {
+      let total = yrVal * 12;
+      if (moExplicitMatch) {
+        const moVal = parseInt(moExplicitMatch[1], 10);
+        if (moVal > 0 && moVal < 12) total += moVal;
+      }
+      return Math.round(total);
+    }
   }
 
-  // Pattern 2: Date range like "Apr 2025 – Nov 2025" or "2021 – 2023"
+  if (moExplicitMatch) {
+    const moVal = parseInt(moExplicitMatch[1], 10);
+    if (moVal > 0 && moVal < 600) return moVal;
+  }
+
+  // Pattern 2: Date range like "Apr 2025 – Nov 2025" or "2021 – 2023" or "Sep 2019 – Present"
   const dateRangePattern = /\b((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4})\s*(?:[–—\-]|to)\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4}|Present|Current)\b/i;
   const match = t.match(dateRangePattern);
   if (match) {
@@ -194,7 +206,7 @@ const parseMonthsFromText = (text?: string | null): number => {
     const end = parseYM(match[2]);
     if (start && end) {
       const diff = (end.y - start.y) * 12 + (end.m - start.m) + 1;
-      return diff > 0 ? diff : 1;
+      return diff > 0 && diff < 600 ? diff : 0;
     }
   }
 
@@ -207,42 +219,41 @@ const getNumericExperienceDetails = (cand: {
   totalExperienceYears?: number; 
   experience?: CandidateExperience[] 
 }) => {
-  // 1. Calculate explicit months and years from candidate metadata
-  let explicitMonths = 0;
-  let explicitYears = 0;
+  let years = 0;
+  let months = 0;
 
-  if (cand.totalExperienceYears && cand.totalExperienceYears > 0) {
-    explicitYears = cand.totalExperienceYears;
-    explicitMonths = Math.round(cand.totalExperienceYears * 12);
-  } else if (cand.totalExperienceMonths && cand.totalExperienceMonths > 0) {
-    explicitMonths = cand.totalExperienceMonths;
-    explicitYears = parseFloat((explicitMonths / 12).toFixed(1));
-  }
-
-  if (cand.totalExperience) {
-    const parsedFromText = parseMonthsFromText(cand.totalExperience);
-    if (parsedFromText > explicitMonths) {
-      explicitMonths = parsedFromText;
-      explicitYears = parseFloat((parsedFromText / 12).toFixed(1));
-    }
-  }
-
-  // 2. Calculate sum from individual experience entries if documented
-  let roleSum = 0;
-  if (cand.experience && cand.experience.length > 0) {
-    for (const exp of cand.experience) {
-      const durMonths = parseMonthsFromText(exp.duration || (exp.startDate && exp.endDate ? `${exp.startDate} - ${exp.endDate}` : ''));
-      if (durMonths > 0) {
-        roleSum += durMonths;
+  // 1. Authoritative: Use candidate's verified totalExperienceYears (e.g. 10.8 for Naresh, 6.5 for Shaik)
+  if (typeof cand.totalExperienceYears === 'number' && cand.totalExperienceYears > 0 && cand.totalExperienceYears < 80) {
+    years = cand.totalExperienceYears;
+    months = Math.round(years * 12);
+  } else if (typeof cand.totalExperienceMonths === 'number' && cand.totalExperienceMonths > 0 && cand.totalExperienceMonths < 960) {
+    months = cand.totalExperienceMonths;
+    years = parseFloat((months / 12).toFixed(1));
+  } else if (cand.totalExperience) {
+    const m = String(cand.totalExperience).match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs?|y\b)?/i);
+    if (m) {
+      const parsedY = parseFloat(m[1]);
+      if (parsedY > 0 && parsedY < 80) {
+        years = parsedY;
+        months = Math.round(years * 12);
       }
     }
   }
 
-  // Use the maximum of explicit stated experience and sum of roles
-  const months = Math.max(explicitMonths, roleSum);
-  const years = explicitYears > 0 && Math.round(explicitYears * 12) >= months
-    ? explicitYears
-    : (months > 0 ? parseFloat((months / 12).toFixed(1)) : 0);
+  // 2. Fallback to parsing role durations only if years is still 0
+  if (years === 0 && Array.isArray(cand.experience) && cand.experience.length > 0) {
+    let roleMonths = 0;
+    for (const exp of cand.experience) {
+      const durMonths = parseMonthsFromText(exp.duration || (exp.startDate && exp.endDate ? `${exp.startDate} - ${exp.endDate}` : ''));
+      if (durMonths > 0 && durMonths < 600) {
+        roleMonths += durMonths;
+      }
+    }
+    if (roleMonths > 0) {
+      months = roleMonths;
+      years = parseFloat((months / 12).toFixed(1));
+    }
+  }
 
   let badgeText = '0 yrs';
   let fullLabel = '0 Years';
@@ -256,7 +267,7 @@ const getNumericExperienceDetails = (cand: {
       badgeText = `${yStr} yrs`;
       fullLabel = `${yStr} Years`;
     }
-  } else if (cand.totalExperience && cand.totalExperience.trim()) {
+  } else if (cand.totalExperience && cand.totalExperience.trim() && !/^\d{4}$/.test(cand.totalExperience.trim())) {
     badgeText = cand.totalExperience;
     fullLabel = cand.totalExperience;
   }
@@ -269,6 +280,7 @@ const getNumericExperienceDetails = (cand: {
     fullLabel,
   };
 };
+
 
 const parseDateToYMClient = (str: string) => {
   if (!str) return null;
@@ -1337,22 +1349,26 @@ export default function JobCandidatesPage() {
           },
         ];
 
-      // Authoritative ATS Score: Prioritize the official evaluated ATS score from database/backend
-      const storedScore = (c as any).atsScore ?? (c as any).matchScore ?? (c as any).evaluation?.atsScore ?? (c as any).evaluation?.score;
-      const hasStoredScore = typeof storedScore === 'number' && !isNaN(storedScore) && storedScore > 0;
+      // Authoritative ATS Score: Read official evaluated ATS score directly from backend
+      const storedScore = (c as any).atsScore ?? (c as any).matchScore ?? (c as any).evaluation?.atsScore ?? (c as any).evaluation?.score ?? (c as any).score;
+      const hasStoredScore = typeof storedScore === 'number' && !isNaN(storedScore);
       const finalScore = hasStoredScore ? Math.round(storedScore) : matchResult.overallScore;
 
-      const finalLevel = hasStoredScore
-        ? (finalScore >= 80 ? 'STRONG MATCH' : finalScore >= 50 ? 'GOOD MATCH' : 'LOW FIT')
-        : matchResult.matchLevel;
+      const finalLevel = (c as any).matchLevel || (c as any).evaluation?.matchLevel || (
+        finalScore >= 85 ? 'EXCELLENT MATCH' :
+        finalScore >= 70 ? 'STRONG MATCH' :
+        finalScore >= 50 ? 'MODERATE MATCH' :
+        finalScore >= 35 ? 'LOW MATCH' :
+        'MINIMAL MATCH'
+      );
 
-      const failedCount = matchResult.breakdown?.mandatoryCompliance?.failedCount ?? 0;
+      const backendDecision = (c as any).decision || (c as any).recommendation || (c as any).evaluation?.recommendation;
       const autoDecision: 'SUBMIT' | 'REVIEW' | 'REJECT' =
-        (finalScore >= 80 && failedCount === 0) ? 'SUBMIT' :
-        (finalScore < 45 || failedCount >= 2) ? 'REJECT' :
-        'REVIEW';
+        finalScore >= 75 ? 'SUBMIT' :
+        finalScore >= 50 ? 'REVIEW' :
+        'REJECT';
 
-      const effectiveDecision = (c as any).decision || (c as any).recommendation || autoDecision;
+      const effectiveDecision = backendDecision || autoDecision;
 
       const expDetails = getNumericExperienceDetails(c);
 

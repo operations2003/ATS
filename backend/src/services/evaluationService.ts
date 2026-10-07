@@ -7,7 +7,10 @@ import {
   MandatoryFailureDetail,
   PillarScores
 } from './atsScoringEngine';
-import { computeComprehensiveMatchScore, getEffectiveSkills } from '../utils/requirementUtils';
+import {
+  calculateCentralizedATSScore,
+  CENTRALIZED_ATS_SCORING_VERSION
+} from './centralizedATSScoringService';
 
 export type EvaluationStatus =
   | 'MATCHED'
@@ -208,8 +211,9 @@ export async function evaluateCandidateAgainstRequirements(
     };
   });
 
-  // 1. Attempt AI-Powered Semantic Evaluation via Python Service if available
-  let lastError: any = null;
+  // 1. Attempt AI-Powered Semantic Evidence Extraction via Python Service if available
+  let aiSemanticEvidence: any[] | undefined = undefined;
+  let evaluator = 'TaskNera Centralized Deterministic ATS Engine v6.0.0';
   const serviceUrl = await getHealthyEvaluationServiceUrl();
 
   if (serviceUrl) {
@@ -231,305 +235,107 @@ export async function evaluateCandidateAgainstRequirements(
 
       if (response.ok) {
         const aiResult: any = await response.json();
-        if (aiResult && typeof aiResult.overallScore === 'number') {
-          const mappedReqs: RequirementEvaluationResult[] = (aiResult.requirements || []).map((r: any) => ({
-            id: r.id,
-            requirement: r.requirement,
-            category: r.category || 'Technical Skill',
-            mandatory: Boolean(r.mandatory ?? r.isMandatory),
-            isMandatory: Boolean(r.mandatory ?? r.isMandatory),
-            evidence: r.candidateEvidence || r.evidence || '',
-            candidateEvidence: r.candidateEvidence || r.evidence || '',
-            evidenceSource: r.evidenceSource || 'Semantic AI Evaluation',
-            status: r.status,
-            confidence: r.confidence || 'High',
-            weight: r.weight || 1.0,
-            score: r.score ?? 0,
-            failureReason: r.failureReason || r.matchReason,
-            aiMatchReason: r.matchReason,
-            aiMatchedAlias: r.matchedAlias,
-            evidenceType: 'STRONG_SEMANTIC'
-          }));
-
-          const mandatoryTotal = aiResult.mandatoryCompliance?.total ?? mappedReqs.filter(r => r.mandatory).length;
-          const mandatoryMet = aiResult.mandatoryCompliance?.met ?? mappedReqs.filter(r => r.mandatory && r.status === 'MATCHED').length;
-          const mandatoryFailed = aiResult.mandatoryCompliance?.failed ?? (mandatoryTotal - mandatoryMet);
-
-          const matchedCount = mappedReqs.filter(r => r.status === 'MATCHED').length;
-          const partialCount = mappedReqs.filter(r => r.status === 'PARTIAL').length;
-          const notMatchedCount = mappedReqs.filter(r => r.status === 'NOT_MATCHED').length;
-          const unknownCount = mappedReqs.filter(r => r.status === 'UNKNOWN').length;
-
-          const rawScore = aiResult.rawScore ?? aiResult.overallScore;
-          const overallScore = aiResult.overallScore;
-
-          const payload: CandidateEvaluationPayload = {
-            evaluationId: aiResult.evaluationId || `eval-ai-${Date.now()}`,
-            candidateId: candidate.id,
-            candidateName: candidate.name || 'Candidate',
-            candidateRole: candidate.currentTitle || job.position || 'Professional',
-            candidateCompany: candidate.currentCompany || 'Organization',
-            candidateEmail: candidate.email || '',
-            candidatePhone: candidate.phone || '',
-            candidateLocation: candidate.location || '',
-            jobId: job.id,
-            jobTitle: job.position || job.title || 'Job Position',
-            jobClient: job.client || job.company || 'Client',
-            rawScore,
-            baseDeterministicScore: rawScore,
-            aiSemanticAdjustment: 0.0,
-            aiAssistanceEnabled: true,
-            inferredRequirementsCount: 0,
-            overallMatch: Math.round(overallScore),
-            atsScore: Math.round(overallScore),
-            overallScore,
-            matchLevel: aiResult.matchLevel || (overallScore >= 80 ? 'STRONG MATCH' : overallScore >= 50 ? 'MODERATE MATCH' : 'LOW MATCH'),
-            mandatoryRequirementFailed: Boolean(aiResult.mandatoryRequirementFailed),
-            mandatoryComplianceScore: aiResult.mandatoryComplianceScore ?? Math.round((mandatoryMet / Math.max(1, mandatoryTotal)) * 100),
-            mandatoryFailures: aiResult.mandatoryFailures || [],
-            mandatoryCompliance: {
-              total: mandatoryTotal,
-              met: mandatoryMet,
-              failed: mandatoryFailed,
-              passed: !aiResult.mandatoryRequirementFailed
-            },
-            recommendation: aiResult.recommendation || (overallScore >= 75 ? 'SUBMIT' : overallScore >= 50 ? 'REVIEW' : 'DO NOT SUBMIT'),
-            recommendationReason: aiResult.recommendationReason || 'Evaluated via Semantic AI ATS Matching Engine.',
-            pillarScores: aiResult.pillarScores || {
-              technicalSkills: Math.round(rawScore),
-              experience: Math.round(rawScore * 0.95),
-              education: 90,
-              genAI: Math.round(rawScore * 0.85),
-              semanticRelevance: Math.round(rawScore)
-            },
-            pillars: aiResult.pillarScores || {
-              technicalSkills: Math.round(rawScore),
-              experience: Math.round(rawScore * 0.95),
-              education: 90,
-              genAI: Math.round(rawScore * 0.85),
-              semanticRelevance: Math.round(rawScore)
-            },
-            scoreBreakdown: {
-              mandatory: {
-                score: aiResult.mandatoryComplianceScore ?? 100,
-                max: 100,
-                pct: aiResult.mandatoryComplianceScore ?? 100,
-                label: mandatoryTotal > 0 ? `Mandatory Compliance (${mandatoryMet}/${mandatoryTotal})` : 'Mandatory Compliance (N/A)'
-              },
-              skills: {
-                score: aiResult.pillarScores?.technicalSkills ?? Math.round(rawScore),
-                max: 100,
-                pct: aiResult.pillarScores?.technicalSkills ?? Math.round(rawScore),
-                label: 'Technical Skills'
-              },
-              experience: {
-                score: aiResult.pillarScores?.experience ?? Math.round(rawScore * 0.95),
-                max: 100,
-                pct: aiResult.pillarScores?.experience ?? Math.round(rawScore * 0.95),
-                label: 'Experience'
-              },
-              responsibilities: {
-                score: aiResult.pillarScores?.genAI ?? Math.round(rawScore * 0.85),
-                max: 100,
-                pct: aiResult.pillarScores?.genAI ?? Math.round(rawScore * 0.85),
-                label: 'Role Competencies'
-              },
-              preferred: {
-                score: aiResult.pillarScores?.education ?? 90,
-                max: 100,
-                pct: aiResult.pillarScores?.education ?? 90,
-                label: 'Education & Preferred'
-              }
-            },
-            summaryCounts: {
-              mandatoryTotal,
-              preferredTotal: mappedReqs.filter(r => !r.mandatory).length,
-              matched: matchedCount,
-              partial: partialCount,
-              notMatched: notMatchedCount,
-              unknown: unknownCount,
-              fullyMet: matchedCount,
-              partiallyMet: partialCount,
-              notMet: notMatchedCount,
-              needsVerification: unknownCount,
-              notFound: notMatchedCount
-            },
-            requirements: mappedReqs,
-            requirementResults: mappedReqs,
-            strengths: aiResult.strengths || [],
-            gaps: aiResult.gaps || [],
-            warnings: aiResult.warnings || [],
-            explanation: {
-              summary: `${aiResult.matchLevel} (${overallScore}% Overall Match). ${mandatoryTotal > 0 ? `Mandatory: ${mandatoryMet}/${mandatoryTotal}` : 'No mandatory constraints'}.`,
-              strengths: aiResult.strengths || [],
-              gaps: aiResult.gaps || [],
-              mandatoryStatus: aiResult.mandatoryRequirementFailed ? 'FAILED' : 'PASSED'
-            },
-            scoringConfigVersion: '5.0.0-ai-semantic-matcher',
-            evaluatedAt: new Date().toISOString(),
-            evaluator: 'TaskNera Semantic AI Engine (all-MiniLM-L6-v2)'
-          };
-
-          return payload;
+        if (aiResult && Array.isArray(aiResult.requirements)) {
+          aiSemanticEvidence = aiResult.requirements;
+          evaluator = 'TaskNera Semantic AI Engine (all-MiniLM-L6-v2) + Central ATS Engine v6.0.0';
         }
-      } else {
-        const errText = await response.text().catch(() => '');
-        lastError = new Error(`Python service returned status ${response.status}: ${errText}`);
       }
     } catch (err: any) {
-      lastError = err;
-      console.warn(`[EvaluationService] Python service (${serviceUrl}) evaluation failed:`, err.message);
+      console.warn(`[EvaluationService] Python semantic service (${serviceUrl}) unavailable:`, err.message);
     }
   }
 
-  // 2. Resilient Deterministic Fallback: Run local TypeScript ATS Engine if Python service is unreachable
-  console.warn(`[EvaluationService] Python evaluation engine unavailable (${lastError?.message}). Engaging local ATS scoring fallback...`);
-  try {
-    const { calculateATSScore } = await import('./atsScoringEngine');
-    const tsResult = calculateATSScore(
-      candidate,
-      {
-        id: job.id,
-        position: job.position || job.title,
-        client: job.client || job.company,
-        jd_text: job.jd_text
-      },
-      enrichedRequirements as any
-    );
+  // 2. Authoritative Centralized Deterministic ATS Scoring Engine (Single Source of Truth v6.0.0)
+  const centralResult = calculateCentralizedATSScore({
+    candidate,
+    job: {
+      id: job.id,
+      position: job.position || job.title,
+      title: job.position || job.title,
+      client: job.client || job.company,
+      company: job.client || job.company,
+      jd_text: job.jd_text,
+      normalized_jd: job.normalized_jd
+    },
+    requirements: enrichedRequirements as any,
+    semanticEvidence: aiSemanticEvidence
+  });
 
-    const mappedReqs: RequirementEvaluationResult[] = tsResult.requirements.map((r: any) => ({
-      id: r.id,
-      requirement: r.requirement,
-      category: r.category,
-      mandatory: r.mandatory,
-      isMandatory: r.mandatory,
-      evidence: r.candidateEvidence || r.evidence || '',
-      candidateEvidence: r.candidateEvidence || r.evidence || '',
-      evidenceSource: r.evidenceSource || 'Local ATS Evaluation',
-      status: r.status,
-      confidence: r.confidence || 'High',
-      weight: r.weight,
-      score: r.score,
-      failureReason: r.failureReason,
-      evidenceType: r.evidenceType
-    }));
+  const mappedReqs: RequirementEvaluationResult[] = centralResult.requirements.map(r => ({
+    id: r.id,
+    requirement: r.requirement,
+    category: r.category,
+    mandatory: r.mandatory,
+    isMandatory: r.mandatory,
+    evidence: r.candidateEvidence || r.evidence || '',
+    candidateEvidence: r.candidateEvidence || r.evidence || '',
+    evidenceSource: r.evidenceSource || 'Centralized ATS Evaluation',
+    status: r.status,
+    confidence: r.confidence || 'High',
+    weight: r.weight,
+    score: r.score,
+    failureReason: r.failureReason,
+    evidenceType: r.evidenceType
+  }));
 
-    // Ensure score matches the exact Job Candidates calculation
-    let calculatedScore = tsResult.overallScore;
-    let calculatedLevel = tsResult.matchLevel;
-    let reqFailed = tsResult.mandatoryRequirementFailed;
+  const finalScore = centralResult.atsScore;
 
-    try {
-      const effectiveSkills = getEffectiveSkills(candidate, enrichedRequirements);
-      const compResult = computeComprehensiveMatchScore(
-        {
-          skills: effectiveSkills,
-          totalExperience: candidate.totalExperience || candidate.totalExperienceYears,
-          totalExperienceYears: candidate.totalExperienceYears,
-          education: candidate.education || [],
-          rawText: candidate.rawText || '',
-          summary: candidate.summary || candidate.professionalSummary || '',
-          currentTitle: candidate.currentTitle || '',
-          certifications: candidate.certifications || [],
-          experience: candidate.experience || [],
-          parsingMetadata: candidate.parsingMetadata,
-          parsingStatus: candidate.parsingStatus,
-        },
-        {
-          position: job.position || job.title,
-          jd_text: job.jd_text,
-          requirements: enrichedRequirements.map((r: any) => ({
-            id: r.id,
-            requirement: r.requirement,
-            category: r.category,
-            is_mandatory: r.is_mandatory || r.mandatory,
-            weight: r.weight,
-            source_evidence: r.source_evidence,
-          })),
-        }
-      );
-      if (typeof compResult?.overallScore === 'number') {
-        calculatedScore = Math.round(compResult.overallScore);
-        const mapTier = (lvl?: string): MatchTier => {
-          if (!lvl) return calculatedLevel;
-          if (lvl === 'STRONG MATCH' || lvl === 'GOOD MATCH') return 'STRONG MATCH';
-          if (lvl === 'EXCELLENT MATCH') return 'EXCELLENT MATCH';
-          if (lvl === 'MODERATE MATCH') return 'MODERATE MATCH';
-          if (lvl === 'LOW FIT' || lvl === 'LOW MATCH') return 'LOW MATCH';
-          return 'MINIMAL MATCH';
-        };
-        calculatedLevel = mapTier(compResult.matchLevel);
-        reqFailed = Boolean(compResult.mandatoryRequirementFailed);
-      }
-    } catch (compErr) {
-      console.warn('[EvaluationService] Comprehensive match fallback error:', compErr);
-    }
-
-    return {
-      evaluationId: tsResult.evaluationId,
-      candidateId: candidate.id,
-      candidateName: candidate.name || 'Candidate',
-      candidateRole: candidate.currentTitle || job.position || 'Professional',
-      candidateCompany: candidate.currentCompany || 'Organization',
-      candidateEmail: candidate.email || '',
-      candidatePhone: candidate.phone || '',
-      candidateLocation: candidate.location || '',
-      jobId: job.id,
-      jobTitle: job.position || job.title || 'Job Position',
-      jobClient: job.client || job.company || 'Client',
-      rawScore: calculatedScore,
-      baseDeterministicScore: calculatedScore,
-      aiSemanticAdjustment: 0.0,
-      aiAssistanceEnabled: false,
-      inferredRequirementsCount: 0,
-      overallMatch: calculatedScore,
-      atsScore: calculatedScore,
-      overallScore: calculatedScore,
-      matchLevel: calculatedLevel,
-      mandatoryRequirementFailed: reqFailed,
-      mandatoryComplianceScore: tsResult.mandatoryComplianceScore,
-      mandatoryFailures: tsResult.mandatoryFailures,
-      mandatoryCompliance: tsResult.mandatoryCompliance,
-      recommendation: calculatedScore >= 75 && !reqFailed ? 'SUBMIT' : (calculatedScore >= 50 ? 'REVIEW' : 'DO NOT SUBMIT'),
-      recommendationReason: reqFailed ? 'Mandatory knockout criteria failed in candidate profile.' : 'Evaluated via Deterministic ATS Engine.',
-      pillarScores: tsResult.pillarScores,
-      pillars: tsResult.pillars,
-      scoreBreakdown: {
-        mandatory: { score: tsResult.mandatoryComplianceScore, max: 100, pct: tsResult.mandatoryComplianceScore, label: 'Mandatory Compliance' },
-        skills: { score: tsResult.pillarScores.technicalSkills, max: 100, pct: tsResult.pillarScores.technicalSkills, label: 'Technical Skills' },
-        experience: { score: tsResult.pillarScores.experience, max: 100, pct: tsResult.pillarScores.experience, label: 'Experience' },
-        responsibilities: { score: tsResult.pillarScores.genAI, max: 100, pct: tsResult.pillarScores.genAI, label: 'Role Competencies' },
-        preferred: { score: tsResult.pillarScores.education, max: 100, pct: tsResult.pillarScores.education, label: 'Education & Preferred' }
-      },
-      summaryCounts: {
-        mandatoryTotal: tsResult.mandatoryCompliance.total,
-        preferredTotal: mappedReqs.filter(r => !r.mandatory).length,
-        matched: mappedReqs.filter(r => r.status === 'MATCHED').length,
-        partial: mappedReqs.filter(r => r.status === 'PARTIAL').length,
-        notMatched: mappedReqs.filter(r => r.status === 'NOT_MATCHED').length,
-        unknown: 0,
-        fullyMet: mappedReqs.filter(r => r.status === 'MATCHED').length,
-        partiallyMet: mappedReqs.filter(r => r.status === 'PARTIAL').length,
-        notMet: mappedReqs.filter(r => r.status === 'NOT_MATCHED').length,
-        needsVerification: 0,
-        notFound: mappedReqs.filter(r => r.status === 'NOT_MATCHED').length
-      },
-      requirements: mappedReqs,
-      requirementResults: mappedReqs,
-      strengths: tsResult.strengths,
-      gaps: tsResult.gaps,
-      warnings: tsResult.warnings,
-      explanation: {
-        summary: `${tsResult.matchLevel} (${tsResult.overallScore}% Overall Match).`,
-        strengths: tsResult.strengths,
-        gaps: tsResult.gaps,
-        mandatoryStatus: tsResult.mandatoryRequirementFailed ? 'FAILED' : 'PASSED'
-      },
-      scoringConfigVersion: '5.0.0-ats-scoring-fallback',
-      evaluatedAt: new Date().toISOString(),
-      evaluator: 'TaskNera ATS Engine (Local Fallback)'
-    };
-  } catch (fallbackErr: any) {
-    throw new Error(`Evaluation engine failed: Python unreachable (${lastError?.message}) and fallback failed (${fallbackErr.message})`);
-  }
+  return {
+    evaluationId: centralResult.evaluationId,
+    candidateId: candidate.id,
+    candidateName: candidate.name || 'Candidate',
+    candidateRole: candidate.currentTitle || job.position || job.title || 'Professional',
+    candidateCompany: candidate.currentCompany || 'Organization',
+    candidateEmail: candidate.email || '',
+    candidatePhone: candidate.phone || '',
+    candidateLocation: candidate.location || '',
+    jobId: job.id,
+    jobTitle: job.position || job.title || 'Job Position',
+    jobClient: job.client || job.company || 'Client',
+    rawScore: centralResult.rawScore,
+    baseDeterministicScore: finalScore,
+    aiSemanticAdjustment: 0.0,
+    aiAssistanceEnabled: Boolean(aiSemanticEvidence && aiSemanticEvidence.length > 0),
+    inferredRequirementsCount: 0,
+    overallMatch: finalScore,
+    atsScore: finalScore,
+    overallScore: finalScore,
+    matchLevel: centralResult.matchLevel,
+    mandatoryRequirementFailed: centralResult.mandatoryRequirementFailed,
+    mandatoryComplianceScore: centralResult.mandatoryComplianceScore,
+    mandatoryFailures: centralResult.mandatoryFailures,
+    mandatoryCompliance: centralResult.mandatoryCompliance,
+    recommendation: centralResult.recommendation,
+    recommendationReason: centralResult.recommendationReason,
+    pillarScores: centralResult.pillarScores,
+    pillars: centralResult.pillars,
+    scoreBreakdown: centralResult.scoreBreakdown,
+    summaryCounts: {
+      mandatoryTotal: centralResult.mandatoryCompliance.total,
+      preferredTotal: mappedReqs.filter(r => !r.mandatory).length,
+      matched: mappedReqs.filter(r => r.status === 'MATCHED').length,
+      partial: mappedReqs.filter(r => r.status === 'PARTIAL').length,
+      notMatched: mappedReqs.filter(r => r.status === 'NOT_MATCHED').length,
+      unknown: mappedReqs.filter(r => r.status === 'UNKNOWN').length,
+      fullyMet: mappedReqs.filter(r => r.status === 'MATCHED').length,
+      partiallyMet: mappedReqs.filter(r => r.status === 'PARTIAL').length,
+      notMet: mappedReqs.filter(r => r.status === 'NOT_MATCHED').length,
+      needsVerification: 0,
+      notFound: mappedReqs.filter(r => r.status === 'NOT_MATCHED').length
+    },
+    requirements: mappedReqs,
+    requirementResults: mappedReqs,
+    strengths: centralResult.strengths,
+    gaps: centralResult.gaps,
+    warnings: centralResult.warnings,
+    explanation: {
+      summary: `${centralResult.matchLevel} (${finalScore}% ATS Score). ${centralResult.mandatoryCompliance.total > 0 ? `Mandatory: ${centralResult.mandatoryCompliance.matched}/${centralResult.mandatoryCompliance.total}` : 'No mandatory constraints'}.`,
+      strengths: centralResult.strengths,
+      gaps: centralResult.gaps,
+      mandatoryStatus: centralResult.mandatoryRequirementFailed ? 'FAILED' : 'PASSED'
+    },
+    scoringConfigVersion: CENTRALIZED_ATS_SCORING_VERSION,
+    evaluatedAt: centralResult.evaluatedAt,
+    evaluator
+  };
 }

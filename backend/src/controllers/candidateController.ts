@@ -13,9 +13,10 @@ import {
   formatNumericExperience
 } from '../services/cvParsingService';
 import { evaluateCandidateAgainstRequirements } from '../services/evaluationService';
+import { calculateCentralizedATSScore } from '../services/centralizedATSScoringService';
 import { getStandardRequirementsForPosition } from './evaluationController';
 import { getJobFromStoreOrDb, GLOBAL_JOB_STORE } from './jobController';
-import { computeComprehensiveMatchScore, getEffectiveSkills } from '../utils/requirementUtils';
+import { getEffectiveSkills } from '../utils/requirementUtils';
 
 export interface CandidateRecord extends CandidateParsedProfile {
   id: string;
@@ -289,13 +290,13 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
     }
   }
 
-  // Parse explicit totalExp from candidate record (e.g. "6.5years", "6.5 years", "10 yrs")
+  // Parse explicit totalExp from candidate record (e.g. "10.8 yrs (10y 10m)", "6.5 yrs", "10 yrs")
   let parsedTotalExpMonths = 0;
   let parsedTotalExpYears: number | undefined = undefined;
   if (totalExp) {
-    const yrMatch = String(totalExp).match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs?)?/i);
+    const yrMatch = String(totalExp).match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs?|y\b)?/i);
     const moMatch = String(totalExp).match(/(\d+)\s*(?:months?|mos?)/i);
-    if (yrMatch && parseFloat(yrMatch[1]) > 0) {
+    if (yrMatch && parseFloat(yrMatch[1]) > 0 && parseFloat(yrMatch[1]) < 70) {
       parsedTotalExpYears = parseFloat(yrMatch[1]);
       parsedTotalExpMonths = Math.round(parsedTotalExpYears * 12);
     }
@@ -304,9 +305,22 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
     }
   }
 
-  // If candidate has an explicit total_experience that exceeds partial parsed role entries, honor the total experience
-  const effectiveMonths = Math.max(roleMonths, parsedTotalExpMonths);
-  const effectiveYears = parsedTotalExpYears !== undefined && Math.round(parsedTotalExpYears * 12) >= effectiveMonths
+  // Check if raw_text mentions explicit overall experience in summary (e.g. "over 6.5 years of IT experience")
+  if (c.raw_text) {
+    const rawExpMatch = c.raw_text.match(/(?:over|with|having)?\s*(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)\s*(?:of\s*)?(?:IT\s*|industry\s*|professional\s*|relevant\s*|total\s*|work\s*)?experience/i);
+    if (rawExpMatch) {
+      const rawYears = parseFloat(rawExpMatch[1]);
+      if (!isNaN(rawYears) && rawYears > 0 && rawYears < 70) {
+        if (parsedTotalExpYears === undefined || rawYears > parsedTotalExpYears) {
+          parsedTotalExpYears = rawYears;
+          parsedTotalExpMonths = Math.round(rawYears * 12);
+        }
+      }
+    }
+  }
+
+  const effectiveMonths = parsedTotalExpMonths > 0 ? parsedTotalExpMonths : roleMonths;
+  const effectiveYears = parsedTotalExpYears !== undefined
     ? parsedTotalExpYears
     : (effectiveMonths > 0 ? parseFloat((effectiveMonths / 12).toFixed(1)) : undefined);
 
@@ -810,41 +824,31 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
           console.warn('[getCandidatesForJob fresh eval]:', freshErr);
         }
       } else if (finalScore === undefined && reqs.length > 0) {
-        // Fast in-memory deterministic fallback scoring (zero network calls, pure local JS)
+        // Authoritative in-memory centralized ATS scoring (single source of truth v6.0.0)
         try {
-          const effectiveSkills = getEffectiveSkills(c, reqs);
-          const compResult = computeComprehensiveMatchScore(
-            {
-              skills: effectiveSkills,
-              totalExperience: c.totalExperience || c.totalExperienceYears,
-              totalExperienceYears: c.totalExperienceYears,
-              education: c.education || [],
-              rawText: '',
-              summary: c.summary || c.professionalSummary || '',
-              currentTitle: c.currentTitle || '',
-              certifications: c.certifications || [],
-              experience: c.experience || [],
-              parsingMetadata: c.parsingMetadata,
-              parsingStatus: c.parsingStatus,
-            },
-            {
+          const centralResult = calculateCentralizedATSScore({
+            candidate: c,
+            job: {
+              id: targetJob?.id || jobId,
               position: jobTitle,
-              jd_text: targetJob?.jd_text || jobTitle,
-              requirements: reqs.map((r: any) => ({
-                id: r.id,
-                requirement: r.requirement,
-                category: r.category,
-                is_mandatory: r.is_mandatory,
-                weight: r.weight,
-                source_evidence: r.source_evidence,
-              })),
-            }
-          );
-          if (typeof compResult?.overallScore === 'number' && compResult.overallScore > 0) {
-            finalScore = Math.round(compResult.overallScore);
-            matchLevel = compResult.matchLevel || matchLevel;
-            decision = finalScore >= 80 ? 'SUBMIT' : (finalScore >= 55 ? 'REVIEW' : 'DO NOT SUBMIT');
-          }
+              title: jobTitle,
+              client: jobClient,
+              company: jobClient,
+              jd_text: targetJob?.jd_text || jobTitle
+            },
+            requirements: reqs.map((r: any) => ({
+              id: r.id,
+              requirement: r.requirement,
+              category: r.category,
+              is_mandatory: r.is_mandatory ?? r.mandatory,
+              weight: r.weight,
+              source_evidence: r.source_evidence || r.sourceEvidence
+            }))
+          });
+          finalScore = centralResult.atsScore;
+          matchLevel = centralResult.matchLevel;
+          decision = centralResult.recommendation;
+          compliance = `${centralResult.mandatoryCompliance.matched}/${centralResult.mandatoryCompliance.total}`;
         } catch {}
       }
 

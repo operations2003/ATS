@@ -338,14 +338,32 @@ export async function buildDecisionIntelligencePayload(
   const totalReqs = classifiedRequirements.length;
   const provenPct = totalReqs > 0 ? Math.round((provenCount / totalReqs) * 100) : 0;
 
-  // 6. Existing ATS Score of record (preserved 100% without modification)
-  const applicationScore = candidate.applications?.[0]?.match_score ? Math.round(candidate.applications[0].match_score) : null;
-  const existingAtsScore = Math.round(
-    latestEval?.atsScore ??
-    latestEval?.score ??
-    applicationScore ??
-    provenPct
-  );
+  // 6. Existing ATS Score of record (preserved 100% from centralized ATS evaluation)
+  const appForJob = candidate.applications?.find((a: any) => !targetJobId || a.job_id === targetJobId) || candidate.applications?.[0];
+  const applicationScore = appForJob?.match_score ? Math.round(appForJob.match_score) : null;
+  let existingAtsScore: number;
+  if (typeof latestEval?.atsScore === 'number') {
+    existingAtsScore = Math.round(latestEval.atsScore);
+  } else if (typeof latestEval?.score === 'number') {
+    existingAtsScore = Math.round(latestEval.score);
+  } else if (typeof applicationScore === 'number') {
+    existingAtsScore = applicationScore;
+  } else {
+    const { calculateCentralizedATSScore } = require('./centralizedATSScoringService');
+    const centralResult = calculateCentralizedATSScore({
+      candidate: candidate as any,
+      job: {
+        id: targetJobId || '',
+        position: jobTitle,
+        title: jobTitle,
+        client: jobClient,
+        company: jobClient,
+        jd_text: jobRecord?.jd_text || jobTitle
+      },
+      requirements: rawRequirements
+    });
+    existingAtsScore = centralResult.atsScore;
+  }
 
   // 7. Derive Standard Recommendation aligned with existing score & decisions
   let recommendation: 'STRONG MATCH' | 'SHORTLIST' | 'REVIEW' | 'NOT RECOMMENDED' = 'REVIEW';

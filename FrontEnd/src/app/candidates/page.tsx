@@ -487,7 +487,9 @@ export default function CandidatesPage() {
             email: c.email || 'N/A',
             phone: c.phone || 'N/A',
             location: c.location || 'Remote',
-            exp: c.total_experience || c.totalExperience || c.exp || `${Math.max(1, expList.length * 2)} yrs`,
+            exp: typeof c.totalExperienceYears === 'number' && c.totalExperienceYears > 0
+              ? `${c.totalExperienceYears} yrs`
+              : (c.totalExperience || c.total_experience || c.exp || `${Math.max(1, expList.length * 2)} yrs`),
             companyCount,
             match: typeof c.matchScore === 'number' ? c.matchScore : (c.match || 75),
             decision: c.recommendation || c.decision || 'REVIEW',

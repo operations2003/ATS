@@ -868,12 +868,47 @@ export function calculateSpecificTenure(
     }
   }
 
+  // If not found in individual role items, check candidate headline, title, or summary explicit tech tenure
+  if (specificYears === 0) {
+    const fullCandText = `${candidate.currentTitle || ''} ${candidate.summary || ''} ${candidate.rawText || ''}`.toLowerCase();
+    for (const term of targetTerms) {
+      const termRegex = new RegExp(`(\\d+(?:\\.\\d+)?)\\+?\\s*(?:years?|yrs?)(?:\\s+(?:of\\s+)?(?:experience|exp|hands-on|working))?\\s+(?:in|with|on)?\\s*${term.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}`, 'i');
+      const prefixRegex = new RegExp(`${term.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}\\s+(?:consultant|developer|engineer|specialist|lead)?\\s*(?:with\\s+)?(\\d+(?:\\.\\d+)?)\\+?\\s*(?:years?|yrs?)`, 'i');
+      
+      const m1 = fullCandText.match(termRegex);
+      const m2 = fullCandText.match(prefixRegex);
+      const matchedTenure = m1 ? parseFloat(m1[1]) : (m2 ? parseFloat(m2[1]) : null);
+      if (matchedTenure && matchedTenure > 0) {
+        specificYears = Math.max(specificYears, matchedTenure);
+        matchingRoles.push(`Profile Statement: ${parseFloat(matchedTenure.toFixed(1))}y verified with ${term}`);
+        evidenceSnippets.push(`Verified ${matchedTenure}y experience with ${term}`);
+      }
+    }
+
+    // Also if candidate current title contains the technology and candidate has verified total experience
+    const currentTitleLower = (candidate.currentTitle || '').toLowerCase();
+    const totalYrs = typeof candidate.totalExperienceYears === 'number' && candidate.totalExperienceYears > 0
+      ? candidate.totalExperienceYears
+      : (candidate.totalExperience ? parseFloat(String(candidate.totalExperience).replace(/[^0-9.]/g, '')) : 0);
+    if (specificYears === 0 && totalYrs > 0) {
+      for (const term of targetTerms) {
+        if (currentTitleLower.includes(term)) {
+          specificYears = totalYrs;
+          matchingRoles.push(`Current Title (${candidate.currentTitle}): ${totalYrs}y tenure`);
+          evidenceSnippets.push(`${candidate.currentTitle} with ${totalYrs}y professional tenure`);
+          break;
+        }
+      }
+    }
+  }
+
   return {
     specificYears: Math.round(specificYears * 10) / 10,
     matchingRoles,
     evidenceSnippets
   };
 }
+
 
 /**
  * Evaluates experience requirement (supports single thresholds like "4+ years" and ranges like "4-6 years").
@@ -1278,297 +1313,46 @@ export function calculateATSScore(
     sourceEvidence?: string | null;
   }>
 ): ATSScoringResult {
-  const reqResults: RequirementEvaluationResult[] = [];
-  const mandatoryFailures: MandatoryFailureDetail[] = [];
-  const strengths: string[] = [];
-  const gaps: string[] = [];
-  const warnings: string[] = [];
-
-  let totalWeight = 0;
-  let earnedScoreSum = 0;
-
-  let mandatoryTotal = 0;
-  let mandatoryMetCount = 0;
-
-  // Track pillar weighted components strictly based on evidence
-  const pillarPoints: Record<'tech' | 'exp' | 'edu' | 'genai' | 'other', { earned: number; total: number }> = {
-    tech: { earned: 0, total: 0 },
-    exp: { earned: 0, total: 0 },
-    edu: { earned: 0, total: 0 },
-    genai: { earned: 0, total: 0 },
-    other: { earned: 0, total: 0 },
-  };
-
-  // Cross-Domain Validation & Guard: Check for fundamental Role/Industry mismatch
-  const jobPosition = job.position || job.title || '';
-  const jobDomain = classifyJobDomain(jobPosition, job.jd_text);
-  const candDomain = classifyCandidateDomain(candidate);
-
-  const isTechnicalApplyingToSales = jobDomain === 'SALES_BUSINESS' && candDomain === 'TECHNICAL';
-  const isSalesApplyingToTechnical = jobDomain === 'TECHNICAL' && candDomain === 'SALES_BUSINESS';
-
-  let hasDomainMismatch = false;
-  let domainMismatchReason = '';
-
-  if (isTechnicalApplyingToSales) {
-    const hasSalesExp = candidate.experience?.some(ex => /\b(sale|sales|business development|account executive|bde|bdr|inside sales)\b/i.test(ex.title || ''));
-    if (!hasSalesExp) {
-      hasDomainMismatch = true;
-      domainMismatchReason = 'CRITICAL ROLE DOMAIN MISMATCH: Requisition is in Sales & Business Development, but candidate has a Software Engineering/Technical Development background with zero verified B2B sales or quota-carrying experience.';
-      mandatoryFailures.push({
-        requirement: 'Role Domain Alignment: Sales & Business Development',
-        reason: domainMismatchReason,
-        category: 'Domain Mismatch'
-      });
-      warnings.push(domainMismatchReason);
-    }
-  } else if (isSalesApplyingToTechnical) {
-    const hasTechExp = candidate.experience?.some(ex => /\b(software|developer|engineer|programmer|coder|architect)\b/i.test(ex.title || ''));
-    if (!hasTechExp) {
-      hasDomainMismatch = true;
-      domainMismatchReason = 'CRITICAL ROLE DOMAIN MISMATCH: Requisition requires Software Engineering technical expertise, but candidate has a Sales/Business Development background with zero verified software development or coding experience.';
-      mandatoryFailures.push({
-        requirement: 'Role Domain Alignment: Software Engineering',
-        reason: domainMismatchReason,
-        category: 'Domain Mismatch'
-      });
-      warnings.push(domainMismatchReason);
-    }
-  }
-
-  const effectiveReqs = (Array.isArray(requirements) && requirements.length > 0)
-    ? requirements
-    : [
-        { id: 'req-default-1', requirement: job.position || 'Professional Experience', category: 'Experience', weight: 2.0, is_mandatory: true },
-        { id: 'req-default-2', requirement: 'Core Required Competencies', category: 'Functional Skill', weight: 2.0, is_mandatory: false }
-      ];
-
-  for (const req of effectiveReqs) {
-    const reqId = req.id || `req-${Math.random().toString(36).substring(2, 7)}`;
-    const reqText = (req.requirement || '').trim();
-    const sourceEvidence = String(req.source_evidence || req.sourceEvidence || '').trim();
-    const reqCategory = (req.category || 'Technical Skill').trim();
-    const isMandatory = typeof req.is_mandatory === 'boolean'
-      ? req.is_mandatory
-      : (typeof req.isMandatory === 'boolean' ? req.isMandatory : false);
-    const weight = typeof req.weight === 'number' && req.weight > 0 ? req.weight : 1.0;
-
-    totalWeight += weight;
-    if (isMandatory) mandatoryTotal++;
-
-    const reqLower = reqText.toLowerCase();
-    const catLower = reqCategory.toLowerCase();
-
-    let evalResult: SkillMatchResult;
-
-    const srcYearsMatch = sourceEvidence ? sourceEvidence.match(/(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)/i) : null;
-    const hasYearsExplicit = /\b\d+(?:\.\d+)?\+?\s*(?:years?|yrs?)\b/i.test(reqLower) ||
-      /\b\d+\s*(?:-|to|–)\s*\d+\s*(?:years?|yrs?)\b/i.test(reqLower) ||
-      (isMandatory && Boolean(srcYearsMatch));
-    const isCategoryExperience = (catLower === 'experience' || catLower.startsWith('exp')) && !catLower.includes('skill');
-
-    // 1. Experience Requirements: ONLY if category is experience OR requirement text explicitly specifies years (e.g. "5+ years")
-    if (isCategoryExperience || hasYearsExplicit) {
-      const targetExpText = (isMandatory && sourceEvidence && srcYearsMatch) ? sourceEvidence : reqText;
-      const expRes = evaluateExperienceRequirement(candidate, targetExpText);
-      evalResult = {
-        status: expRes.status,
-        evidence: expRes.evidence,
-        source: expRes.source,
-        confidence: expRes.confidence,
-        failureReason: expRes.failureReason
-      };
-      pillarPoints.exp.earned += STATUS_SCORE_MAP[expRes.status] * weight;
-      pillarPoints.exp.total += weight;
-    }
-    // 2. Education Requirements
-    else if (catLower.includes('education') || reqLower.includes('degree') || reqLower.includes('bachelor') || reqLower.includes('master') || reqLower.includes('b.tech') || reqLower.includes('b.e')) {
-      evalResult = evaluateEducationRequirement(candidate.education || [], reqText);
-      pillarPoints.edu.earned += STATUS_SCORE_MAP[evalResult.status] * weight;
-      pillarPoints.edu.total += weight;
-    }
-    // 3. Location Requirements
-    else if (catLower.includes('location') || reqLower.includes('location') || reqLower.includes('onsite') || reqLower.includes('ncr') || reqLower.includes('bangalore') || reqLower.includes('mumbai') || reqLower.includes('hyderabad')) {
-      evalResult = evaluateLocationRequirement(candidate, reqText);
-      pillarPoints.other.earned += STATUS_SCORE_MAP[evalResult.status] * weight;
-      pillarPoints.other.total += weight;
-    }
-    // 4. Notice Period / Availability Requirements
-    else if (catLower.includes('availability') || catLower.includes('notice') || reqLower.includes('joiner') || reqLower.includes('notice period')) {
-      evalResult = evaluateNoticePeriodRequirement(candidate, reqText);
-      pillarPoints.other.earned += STATUS_SCORE_MAP[evalResult.status] * weight;
-      pillarPoints.other.total += weight;
-    }
-    // 5. Technical Skills & Tools (General, GenAI, Backend, etc.)
-    else {
-      evalResult = matchSkillRequirement(candidate, reqText, reqCategory);
-      const isGenAi = reqLower.includes('genai') || reqLower.includes('generative ai') || reqLower.includes('llm') || reqLower.includes('rag') || reqLower.includes('langgraph') || reqLower.includes('langchain') || reqLower.includes('bedrock') || reqLower.includes('vector');
-      if (isGenAi) {
-        pillarPoints.genai.earned += STATUS_SCORE_MAP[evalResult.status] * weight;
-        pillarPoints.genai.total += weight;
-      } else {
-        pillarPoints.tech.earned += STATUS_SCORE_MAP[evalResult.status] * weight;
-        pillarPoints.tech.total += weight;
-      }
-    }
-
-    // Contextual mandatory source evidence enrichment
-    if (isMandatory && sourceEvidence) {
-      if (evalResult.status === 'MATCHED') {
-        evalResult.evidence = `Verified alignment with mandatory requirement ("${sourceEvidence}"): ${evalResult.evidence}`;
-      } else {
-        evalResult.failureReason = `Candidate lacks verified context for mandatory requirement: "${sourceEvidence}".`;
-      }
-    }
-
-    const statusScore = STATUS_SCORE_MAP[evalResult.status] ?? 0.0;
-    const score = Math.round(statusScore * 100);
-    earnedScoreSum += statusScore * weight;
-
-    // Track mandatory compliance: ONLY fully MATCHED satisfies mandatory requirement
-    if (isMandatory) {
-      if (evalResult.status === 'MATCHED') {
-        mandatoryMetCount++;
-      } else {
-        mandatoryFailures.push({
-          requirement: reqText,
-          reason: evalResult.failureReason || evalResult.evidence,
-          category: reqCategory
-        });
-        warnings.push(`MANDATORY REQUIREMENT FAILED: "${reqText}" (${evalResult.failureReason || evalResult.evidence})`);
-      }
-    }
-
-    if (evalResult.status === 'MATCHED') {
-      strengths.push(`${reqText}: ${evalResult.evidence}`);
-    } else if (evalResult.status === 'PARTIAL') {
-      gaps.push(`${reqText}: Partially satisfied (${evalResult.evidence})`);
-    } else if (evalResult.status === 'NOT_MATCHED') {
-      gaps.push(`${reqText}: Not matched (${evalResult.failureReason || 'No credible evidence in CV'})`);
-    }
-
-    reqResults.push({
-      id: reqId,
-      requirement: reqText,
-      category: reqCategory,
-      mandatory: isMandatory,
-      isMandatory,
-      weight,
-      status: evalResult.status,
-      statusScore,
-      score,
-      candidateEvidence: evalResult.evidence,
-      evidence: evalResult.evidence,
-      evidenceSource: evalResult.source,
-      evidenceType: evalResult.confidence,
-      confidence: evalResult.confidence === 'EXPLICIT' ? 'High' : evalResult.confidence === 'STRONG_SEMANTIC' ? 'Medium' : 'Low',
-      failureReason: evalResult.failureReason,
-      ...(sourceEvidence ? { sourceEvidence, source_evidence: sourceEvidence } : {})
-    });
-  }
-
-  // 1. Raw evidence-based weighted score (0 - 100)
-  const rawFinalScore = totalWeight > 0 ? (earnedScoreSum / totalWeight) * 100 : 0;
-  const rawScore = Math.min(100, Math.max(0, Math.round(rawFinalScore)));
-
-  // 2. Mandatory Gating & Cross-Domain Disqualification
-  const hasMandatoryFailure = (mandatoryTotal > 0 && mandatoryFailures.length > 0) || hasDomainMismatch;
-  const mandatoryComplianceScore = mandatoryTotal > 0 ? Math.round((mandatoryMetCount / mandatoryTotal) * 100) : (hasDomainMismatch ? 0 : 100);
-
-  let overallScore = rawScore;
-  if (hasDomainMismatch) {
-    // Cross-domain mismatch: Technical applicant on Sales role (or vice-versa)
-    overallScore = Math.min(rawScore, 12);
-  } else if (mandatoryFailures.length >= 3) {
-    overallScore = Math.min(rawScore, 38);
-  } else if (mandatoryFailures.length === 2) {
-    overallScore = Math.max(35, Math.min(rawScore - 20, 58));
-  } else if (mandatoryFailures.length === 1) {
-    // 1 isolated mandatory gap: Deduct 8-10 points from raw score, NEVER clamp to 40%
-    overallScore = Math.max(45, Math.round(rawScore - 10));
-  }
-
-  // 3. Determine Final Match Tier deterministically
-  let finalMatchLevel: MatchTier = 'MINIMAL MATCH';
-  if (hasDomainMismatch || mandatoryFailures.length >= 3 || overallScore < 20) {
-    finalMatchLevel = 'MINIMAL MATCH';
-  } else if (mandatoryFailures.length === 2 || overallScore < 45) {
-    finalMatchLevel = overallScore >= 30 ? 'LOW MATCH' : 'MINIMAL MATCH';
-  } else if (mandatoryFailures.length === 1) {
-    finalMatchLevel = overallScore >= 72 ? 'STRONG MATCH' : overallScore >= 52 ? 'MODERATE MATCH' : 'LOW MATCH';
-  } else {
-    if (overallScore >= 85) finalMatchLevel = 'EXCELLENT MATCH';
-    else if (overallScore >= 70) finalMatchLevel = 'STRONG MATCH';
-    else if (overallScore >= 50) finalMatchLevel = 'MODERATE MATCH';
-    else if (overallScore >= 35) finalMatchLevel = 'LOW MATCH';
-    else finalMatchLevel = 'MINIMAL MATCH';
-  }
-
-  // 4. Calculate Pillar Scores Strictly from Evidence (NO artificial fallbacks to overallScore)
-  const computePillarPct = (p: { earned: number; total: number }): number => {
-    return p.total > 0 ? Math.round((p.earned / p.total) * 100) : 0;
-  };
-
-  const techPct = computePillarPct(pillarPoints.tech);
-  const expPct = computePillarPct(pillarPoints.exp);
-  const eduPct = computePillarPct(pillarPoints.edu);
-  const genaiPct = computePillarPct(pillarPoints.genai);
-
-  // Semantic Relevance: Contextual overlap between candidate text and distinctive job domain keywords
-  const jdKeywords = (job.position || '').split(/\s+/).filter(w => w.length > 3 && !GENERIC_STOP_WORDS.has(w.toLowerCase()));
-  const candTextLower = (candidate.rawText || '').toLowerCase();
-  let overlap = 0;
-  for (const kw of jdKeywords) {
-    const kwRegex = new RegExp(`\\b${kw.toLowerCase().replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}\\b`, 'i');
-    if (kwRegex.test(candTextLower)) overlap++;
-  }
-  const semanticRelevance = jdKeywords.length > 0 ? Math.round((overlap / jdKeywords.length) * 100) : 0;
-
-  const pillarScores: PillarScores = {
-    technicalSkills: techPct,
-    experience: expPct,
-    education: eduPct,
-    genAI: genaiPct,
-    semanticRelevance,
-    // Compatibility fields
-    mandatoryCompliance: mandatoryComplianceScore,
-    relevantExperience: expPct,
-    responsibilities: expPct,
-    semanticSimilarity: semanticRelevance,
-    domainFit: genaiPct
-  };
+  // Delegate strictly to centralized authoritative ATS scoring engine v6.0.0
+  const { calculateCentralizedATSScore } = require('./centralizedATSScoringService');
+  const result = calculateCentralizedATSScore({
+    candidate,
+    job,
+    requirements: requirements as any
+  });
 
   return {
-    evaluationId: `eval-${candidate.id}-${Date.now()}`,
-    candidateId: candidate.id,
-    jobId: job.id,
-    rawScore,
-    overallScore,
-    finalScore: overallScore,
-    matchLevel: finalMatchLevel,
-    mandatoryRequirementFailed: hasMandatoryFailure,
-    mandatoryComplianceScore,
-    mandatoryFailures,
+    evaluationId: result.evaluationId,
+    candidateId: result.candidateId,
+    jobId: result.jobId,
+    rawScore: result.rawScore,
+    overallScore: result.overallScore,
+    finalScore: result.finalScore,
+    matchLevel: result.matchLevel,
+    mandatoryRequirementFailed: result.mandatoryRequirementFailed,
+    mandatoryComplianceScore: result.mandatoryComplianceScore,
+    mandatoryFailures: result.mandatoryFailures,
     mandatoryCompliance: {
-      total: mandatoryTotal,
-      met: mandatoryMetCount,
-      failed: mandatoryFailures.length,
-      passed: !hasMandatoryFailure
+      total: result.mandatoryCompliance.total,
+      met: result.mandatoryCompliance.matched,
+      failed: result.mandatoryCompliance.failed,
+      passed: result.mandatoryCompliance.passed
     },
-    pillarScores,
-    pillars: pillarScores,
-    requirements: reqResults,
-    requirementResults: reqResults,
-    strengths: Array.from(new Set(strengths)),
-    gaps: Array.from(new Set(gaps)),
-    warnings,
-    scoringConfigVersion: '4.0.0-evidence-deterministic',
-    evaluatedAt: new Date().toISOString(),
+    pillarScores: result.pillarScores,
+    pillars: result.pillars,
+    requirements: result.requirements,
+    requirementResults: result.requirementResults,
+    strengths: result.strengths,
+    gaps: result.gaps,
+    warnings: result.warnings,
+    scoringConfigVersion: result.scoringConfigVersion,
+    evaluatedAt: result.evaluatedAt,
     debugAudit: {
-      rawWeightedScore: rawScore,
-      mandatoryCapped: hasMandatoryFailure && rawScore > 40,
-      appliedCap: 40,
-      calculatedAt: new Date().toISOString()
+      rawWeightedScore: result.rawScore,
+      mandatoryCapped: false,
+      appliedCap: 100,
+      calculatedAt: result.evaluatedAt
     }
   };
 }
+
