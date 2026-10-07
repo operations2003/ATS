@@ -14,6 +14,7 @@ import {
   attachCandidateToJobController,
   evaluateCandidateJobController
 } from '../controllers/evaluationController';
+import { getCandidateDecisionIntelligenceController } from '../controllers/decisionIntelligenceController';
 
 import { protect, optionalProtect } from '../middleware/authMiddleware';
 
@@ -44,6 +45,9 @@ router.post('/:candidateId/match-with-job', protect, matchCandidateWithJobContro
 
 // Candidate evaluation history across multiple jobs
 router.get('/:candidateId/evaluations', protect, getCandidateEvaluationHistoryController);
+
+// HireIQ Decision Intelligence explanatory layer
+router.get('/:candidateId/decision-intelligence', protect, getCandidateDecisionIntelligenceController);
 
 // Single candidate lookup, decision update & delete
 router.get('/:candidateId', protect, getCandidateById);

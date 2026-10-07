@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { useAuth } from '@/context/AuthContext';
+import HireIQDecisionIntelligence from '@/components/evaluation/HireIQDecisionIntelligence';
 
 export interface CandidateItem {
   id: string;
@@ -220,7 +221,8 @@ export default function CandidatesPage() {
 
   // Candidate Profile Slide-over Drawer States
   const [selectedCandidate, setSelectedCandidate] = useState<CandidateItem | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'experience' | 'skills' | 'resume'>('overview');
+  const [activeTab, setActiveTab] = useState<'decision' | 'overview' | 'history' | 'experience' | 'skills' | 'resume'>('decision');
+  const [decisionJobId, setDecisionJobId] = useState<string | null>(null);
   const [copiedContact, setCopiedContact] = useState(false);
   const [candidateHistory, setCandidateHistory] = useState<EvaluationHistoryItem[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
@@ -1452,8 +1454,9 @@ export default function CandidatesPage() {
                 </div>
 
                 {/* Tab Switcher */}
-                <div className="px-6 pt-4 flex items-center gap-4 border-b border-slate-100">
+                <div className="px-6 pt-4 flex items-center gap-4 border-b border-slate-100 overflow-x-auto">
                   {[
+                    { id: 'decision', label: '⚡ Decision Intelligence' },
                     { id: 'overview', label: 'Summary & Education' },
                     { id: 'history', label: `Job Evaluations (${candidateHistory.length})` },
                     { id: 'experience', label: `Work History (${selectedCandidate.experience.length})` },
@@ -1463,7 +1466,7 @@ export default function CandidatesPage() {
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id as any)}
-                      className={`pb-3 text-xs font-bold transition-colors relative cursor-pointer ${activeTab === tab.id ? 'text-brand-orange' : 'text-slate-500 hover:text-slate-800'
+                      className={`pb-3 text-xs font-bold transition-colors relative cursor-pointer whitespace-nowrap ${activeTab === tab.id ? 'text-brand-orange' : 'text-slate-500 hover:text-slate-800'
                         }`}
                     >
                       {tab.label}
@@ -1474,6 +1477,36 @@ export default function CandidatesPage() {
 
                 {/* Tab Content */}
                 <div className="p-6">
+
+                  {/* Decision Intelligence Tab */}
+                  {activeTab === 'decision' && (
+                    <div className="space-y-4">
+                      {candidateHistory.length > 1 && (
+                        <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-3 text-xs">
+                          <span className="font-bold text-slate-700">Requisition Context:</span>
+                          <select
+                            value={decisionJobId || (candidateHistory[0]?.jobId || '')}
+                            onChange={(e) => setDecisionJobId(e.target.value)}
+                            className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 cursor-pointer"
+                          >
+                            {candidateHistory.map((h, i) => (
+                              <option key={i} value={h.jobId}>
+                                {h.jobTitle || h.position} ({h.score !== null ? `${Math.round(h.score)}% ATS` : 'Pending'})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      <HireIQDecisionIntelligence
+                        candidateId={selectedCandidate.id}
+                        jobId={decisionJobId || (candidateHistory.length > 0 ? candidateHistory[0].jobId : selectedCandidate.jobId || undefined)}
+                        fallbackCandidateName={selectedCandidate.name}
+                        fallbackJobTitle={candidateHistory.length > 0 ? (candidateHistory[0].jobTitle || candidateHistory[0].position) : selectedCandidate.role}
+                        fallbackScore={candidateHistory.length > 0 && candidateHistory[0].score !== null ? Math.round(candidateHistory[0].score) : undefined}
+                        fallbackRecommendation={selectedCandidate.decision}
+                      />
+                    </div>
+                  )}
 
                   {/* Overview Tab */}
                   {activeTab === 'overview' && (
@@ -1617,12 +1650,24 @@ export default function CandidatesPage() {
                                   </div>
                                 </div>
 
-                                <Link
-                                  href={`/jobs/${item.jobId}/candidates?candidateId=${selectedCandidate.id}`}
-                                  className="px-4 py-2 bg-slate-100 hover:bg-brand-orange hover:text-white text-slate-700 text-xs font-bold rounded-xl transition-all border border-slate-200 hover:border-transparent flex-shrink-0 cursor-pointer"
-                                >
-                                  View Candidate →
-                                </Link>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  <button
+                                    onClick={() => {
+                                      setDecisionJobId(item.jobId);
+                                      setActiveTab('decision');
+                                    }}
+                                    className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
+                                    title="View HireIQ Decision Intelligence breakdown"
+                                  >
+                                    <span>⚡ Intelligence</span>
+                                  </button>
+                                  <Link
+                                    href={`/jobs/${item.jobId}/candidates?candidateId=${selectedCandidate.id}`}
+                                    className="px-3.5 py-2 bg-slate-100 hover:bg-brand-orange hover:text-white text-slate-700 text-xs font-bold rounded-xl transition-all border border-slate-200 hover:border-transparent flex-shrink-0 cursor-pointer"
+                                  >
+                                    View Candidate →
+                                  </Link>
+                                </div>
                               </div>
                             );
                           })}

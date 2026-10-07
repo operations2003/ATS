@@ -394,20 +394,62 @@ export const getAllCandidates = async (req: AuthRequest, res: Response): Promise
       ];
       const candidatesFromDb = await prisma.candidate.findMany({
         where: poolWhere,
-        include: {
-          experiences: true,
-          education: true,
-          skills: true,
-          certifications: true,
-          languages: true,
-          projects: true,
+        select: {
+          id: true,
+          job_id: true,
+          name: true,
+          email: true,
+          phone: true,
+          location: true,
+          total_experience: true,
+          current_title: true,
+          current_company: true,
+          summary: true,
+          resume_file_url: true,
+          parsing_status: true,
+          source: true,
+          created_at: true,
+          organizationId: true,
+          skills: {
+            select: { skill: true }
+          },
+          experiences: {
+            select: {
+              title: true,
+              company: true,
+              start_date: true,
+              end_date: true,
+              duration: true
+            }
+          },
+          education: {
+            select: {
+              degree: true,
+              institution: true,
+              field: true,
+              start_year: true
+            }
+          },
           evaluations: {
-            orderBy: { createdAt: 'desc' },
-            take: 1
+            orderBy: { createdAt: 'desc' as const },
+            take: 1,
+            select: {
+              id: true,
+              score: true,
+              atsScore: true,
+              decision: true,
+              matchLevel: true,
+              mandatoryCompliance: true
+            }
           },
           applications: {
-            orderBy: { updated_at: 'desc' },
-            take: 1
+            orderBy: { updated_at: 'desc' as const },
+            take: 1,
+            select: {
+              match_score: true,
+              stage: true,
+              status: true
+            }
           }
         },
         orderBy: { created_at: 'desc' }
@@ -543,23 +585,78 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
           appWhere.candidate = { organizationId: userOrgId };
         }
 
+        const candidateListSelect = {
+          id: true,
+          job_id: true,
+          name: true,
+          email: true,
+          phone: true,
+          location: true,
+          total_experience: true,
+          current_title: true,
+          current_company: true,
+          summary: true,
+          resume_file_url: true,
+          parsing_status: true,
+          source: true,
+          created_at: true,
+          organizationId: true,
+          skills: {
+            select: { skill: true }
+          },
+          experiences: {
+            select: {
+              title: true,
+              company: true,
+              start_date: true,
+              end_date: true,
+              duration: true
+            }
+          },
+          education: {
+            select: {
+              degree: true,
+              institution: true,
+              field: true,
+              start_year: true
+            }
+          },
+          evaluations: {
+            where: { jobId },
+            orderBy: { createdAt: 'desc' as const },
+            take: 1,
+            select: {
+              id: true,
+              score: true,
+              atsScore: true,
+              decision: true,
+              matchLevel: true,
+              mandatoryCompliance: true
+            }
+          },
+          applications: {
+            where: { job_id: jobId },
+            orderBy: { updated_at: 'desc' as const },
+            take: 1,
+            select: {
+              match_score: true,
+              stage: true,
+              status: true
+            }
+          }
+        };
+
         const apps = await (prisma as any).candidateApplication?.findMany({
           where: appWhere,
-          include: {
+          select: {
+            id: true,
+            job_id: true,
+            candidate_id: true,
+            match_score: true,
+            stage: true,
+            status: true,
             candidate: {
-              include: {
-                experiences: true,
-                education: true,
-                skills: true,
-                certifications: true,
-                languages: true,
-                projects: true,
-                evaluations: {
-                  where: { jobId },
-                  orderBy: { createdAt: 'desc' },
-                  take: 1
-                }
-              }
+              select: candidateListSelect
             }
           },
           orderBy: { created_at: 'desc' }
@@ -567,24 +664,7 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
 
         const directCands = await (prisma as any).candidate?.findMany({
           where: directWhere,
-          include: {
-            experiences: true,
-            education: true,
-            skills: true,
-            certifications: true,
-            languages: true,
-            projects: true,
-            evaluations: {
-              where: { jobId },
-              orderBy: { createdAt: 'desc' },
-              take: 1
-            },
-            applications: {
-              where: { job_id: jobId },
-              orderBy: { updated_at: 'desc' },
-              take: 1
-            }
-          },
+          select: candidateListSelect,
           orderBy: { created_at: 'desc' }
         });
 
@@ -680,24 +760,34 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
       const hasAiEvaluation = (c as any).evaluation?.scoringConfigVersion === '5.0.0-ai-semantic-matcher' &&
         (!evalJobTitle || evalJobTitle.toLowerCase() === jobTitle.toLowerCase());
 
-      // If not yet evaluated by AI engine, run fresh AI evaluation against job requirements
-      if ((!hasAiEvaluation || finalScore === undefined || req.query.fresh === 'true') && reqs.length > 0) {
-        const jobData = {
-          id: targetJob?.id || jobId,
-          position: jobTitle,
-          title: jobTitle,
-          client: jobClient,
-          company: jobClient,
-        };
-        const evalPayload = await evaluateCandidateAgainstRequirements(c, jobData, reqs);
-        finalScore = evalPayload.overallScore ?? evalPayload.overallMatch ?? 0;
-        matchLevel = evalPayload.matchLevel;
-        decision = evalPayload.recommendation || (finalScore >= 65 ? 'SUBMIT' : finalScore >= 50 ? 'REVIEW' : 'DO NOT SUBMIT');
-        compliance = evalPayload.mandatoryCompliance
-          ? `${evalPayload.mandatoryCompliance.met}/${evalPayload.mandatoryCompliance.total}`
-          : 'N/A';
-
-        // Ensure score matches the exact Job Candidates calculation
+      // Only run fresh AI evaluation if explicitly requested via query parameter ?fresh=true
+      if (req.query.fresh === 'true' && reqs.length > 0) {
+        try {
+          const jobData = {
+            id: targetJob?.id || jobId,
+            position: jobTitle,
+            title: jobTitle,
+            client: jobClient,
+            company: jobClient,
+          };
+          const evalPayload = await evaluateCandidateAgainstRequirements(c, jobData, reqs);
+          finalScore = evalPayload.overallScore ?? evalPayload.overallMatch ?? 0;
+          matchLevel = evalPayload.matchLevel;
+          decision = evalPayload.recommendation || (finalScore >= 65 ? 'SUBMIT' : finalScore >= 50 ? 'REVIEW' : 'DO NOT SUBMIT');
+          compliance = evalPayload.mandatoryCompliance
+            ? `${evalPayload.mandatoryCompliance.met}/${evalPayload.mandatoryCompliance.total}`
+            : 'N/A';
+          (c as any).matchScore = finalScore;
+          (c as any).atsScore = finalScore;
+          (c as any).matchLevel = matchLevel;
+          (c as any).decision = decision;
+          (c as any).recommendation = decision;
+          (c as any).mandatoryCompliance = compliance;
+        } catch (freshErr) {
+          console.warn('[getCandidatesForJob fresh eval]:', freshErr);
+        }
+      } else if (finalScore === undefined && reqs.length > 0) {
+        // Fast in-memory deterministic fallback scoring (zero network calls, pure local JS)
         try {
           const effectiveSkills = getEffectiveSkills(c, reqs);
           const compResult = computeComprehensiveMatchScore(
@@ -706,7 +796,7 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
               totalExperience: c.totalExperience || c.totalExperienceYears,
               totalExperienceYears: c.totalExperienceYears,
               education: c.education || [],
-              rawText: c.rawText || '',
+              rawText: '',
               summary: c.summary || c.professionalSummary || '',
               currentTitle: c.currentTitle || '',
               certifications: c.certifications || [],
@@ -727,99 +817,12 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
               })),
             }
           );
-          if (typeof compResult?.overallScore === 'number') {
+          if (typeof compResult?.overallScore === 'number' && compResult.overallScore > 0) {
             finalScore = Math.round(compResult.overallScore);
             matchLevel = compResult.matchLevel || matchLevel;
             decision = finalScore >= 80 ? 'SUBMIT' : (finalScore >= 55 ? 'REVIEW' : 'DO NOT SUBMIT');
           }
-        } catch (compErr) {
-          console.warn('[getCandidatesForJob] Comprehensive match error:', compErr);
-        }
-        
-        // Update in-memory candidate cache so next request is fast
-        (c as any).matchScore = finalScore;
-        (c as any).atsScore = finalScore;
-        (c as any).matchLevel = matchLevel;
-        (c as any).decision = decision;
-        (c as any).recommendation = decision;
-        (c as any).mandatoryCompliance = compliance;
-        (c as any).evaluation = {
-          ...evalPayload,
-          jobTitle,
-          scoringConfigVersion: '5.0.0-ai-semantic-matcher'
-        };
-
-        // Persist to database candidate application & evaluation
-        if (isJobUuid && c.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.id)) {
-          const stage = finalScore >= 80 ? 'SHORTLISTED' : (finalScore >= 55 ? 'REVIEW' : 'REJECTED');
-          prisma.candidateApplication.upsert({
-            where: {
-              job_id_candidate_id: {
-                job_id: jobId,
-                candidate_id: c.id
-              }
-            },
-            update: {
-              match_score: finalScore,
-              stage,
-              status: 'active'
-            },
-            create: {
-              job_id: jobId,
-              candidate_id: c.id,
-              match_score: finalScore,
-              stage,
-              status: 'active'
-            }
-          }).catch(() => null);
-
-          if (currentUserId) {
-            prisma.evaluation.findFirst({
-              where: {
-                candidateId: c.id,
-                jobId: jobId
-              },
-              orderBy: { createdAt: 'desc' }
-            }).then(async (existing) => {
-              if (existing) {
-                await prisma.evaluation.update({
-                  where: { id: existing.id },
-                  data: {
-                    score: finalScore,
-                    atsScore: finalScore,
-                    decision,
-                    matchLevel,
-                    status: 'COMPLETED',
-                    updatedAt: new Date()
-                  }
-                }).catch(() => null);
-                // Clean up any extra duplicate evaluations for this candidate and job
-                await prisma.evaluation.deleteMany({
-                  where: {
-                    candidateId: c.id,
-                    jobId: jobId,
-                    id: { not: existing.id }
-                  }
-                }).catch(() => null);
-              } else {
-                await prisma.evaluation.create({
-                  data: {
-                    candidateId: c.id,
-                    jobId: jobId,
-                    score: finalScore,
-                    atsScore: finalScore,
-                    decision,
-                    matchLevel,
-                    evaluatedBy: currentUserId,
-                    createdByUserId: currentUserId,
-                    organizationId: req.user?.organizationId || 'org-tasknera',
-                    status: 'COMPLETED'
-                  }
-                }).catch(() => null);
-              }
-            }).catch(() => null);
-          }
-        }
+        } catch {}
       }
 
       const resolvedScore = typeof finalScore === 'number' ? Math.round(finalScore) : (typeof (c as any).matchScore === 'number' ? Math.round((c as any).matchScore) : undefined);

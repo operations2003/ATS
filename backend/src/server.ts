@@ -7,6 +7,7 @@ import userRoutes from './routes/userRoutes';
 import candidateRoutes from './routes/candidateRoutes';
 import superAdminRoutes from './routes/superAdminRoutes';
 import publicRoutes from './routes/publicRoutes';
+import dashboardRoutes from './routes/dashboardRoutes';
 
 import appsumoRoutes from './routes/appsumoRoutes';
 import { handleAppSumoWebhook, handleAppSumoOAuthRedirect } from './controllers/appsumoController';
@@ -73,6 +74,7 @@ app.use('/api/jobs', jobRoutes);
 app.use('/api/candidates', candidateRoutes);
 app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/public', publicRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/v1/appsumo', appsumoRoutes);
 app.use('/api/appsumo', appsumoRoutes);
 

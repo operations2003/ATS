@@ -10,6 +10,7 @@ import MatchBadge from '@/components/evaluation/MatchBadge';
 import ScoreCard from '@/components/evaluation/ScoreCard';
 import RequirementTable from '@/components/evaluation/RequirementTable';
 import DecisionTagDropdown from '@/components/evaluation/DecisionTagDropdown';
+import HireIQDecisionIntelligence from '@/components/evaluation/HireIQDecisionIntelligence';
 import {
   computeComprehensiveMatchScore,
   ComprehensiveMatchResult,
@@ -579,7 +580,7 @@ export default function JobCandidatesPage() {
   const [sortField, setSortField] = useState<'score' | 'date' | 'name' | 'experience'>('score');
   const [sortDirection, setSortDirection] = useState<'desc' | 'asc'>('desc');
   const [selectedCandidate, setSelectedCandidate] = useState<any | null>(null);
-  const [activeModalTab, setActiveModalTab] = useState<'match' | 'profile' | 'raw'>('match');
+  const [activeModalTab, setActiveModalTab] = useState<'decision' | 'match' | 'profile' | 'raw'>('decision');
   const [showCandidateMeta, setShowCandidateMeta] = useState(false);
   const [showComplianceDropdown, setShowComplianceDropdown] = useState(false);
   const [copiedRawText, setCopiedRawText] = useState(false);
@@ -615,6 +616,30 @@ export default function JobCandidatesPage() {
   }, [selectedCandidate]);
 
   const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+
+  // Lazy fetch full candidate record (rawText, projects, certifications, etc.) when drawer is opened
+  useEffect(() => {
+    if (!selectedCandidate?.id || !jobId) return;
+    // Only fetch if rawText is missing (since candidate list endpoint omits heavy raw_text and deep relations)
+    if (selectedCandidate.rawText === undefined || selectedCandidate.rawText === '') {
+      const activeToken = token || (typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null);
+      fetch(`${backendUrl}/jobs/${jobId}/candidates/${selectedCandidate.id}`, {
+        headers: activeToken ? { Authorization: `Bearer ${activeToken}` } : {}
+      })
+        .then(res => (res.ok ? res.json() : null))
+        .then(data => {
+          if (data?.candidate) {
+            setSelectedCandidate((prev: any) => {
+              if (prev && prev.id === selectedCandidate.id) {
+                return { ...prev, ...data.candidate };
+              }
+              return prev;
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [selectedCandidate?.id, jobId, token, backendUrl]);
 
   // Helper to get effective decision tag for a candidate ('REVIEW' | 'SUBMIT' | 'REJECT')
   const getCandidateDecision = useCallback((c: any): 'REVIEW' | 'SUBMIT' | 'REJECT' => {
@@ -2147,7 +2172,7 @@ export default function JobCandidatesPage() {
                             <button
                               onClick={() => {
                                 setSelectedCandidate(c);
-                                setActiveModalTab('match');
+                                setActiveModalTab('decision');
                               }}
                               className="px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-all shadow-2xs hover:shadow-xs cursor-pointer inline-flex items-center gap-1.5"
                             >
@@ -2366,7 +2391,18 @@ export default function JobCandidatesPage() {
 
                 {/* Segmented Pill Tab Switcher */}
                 <div className="px-6 py-2.5 bg-slate-50/70 flex items-center justify-between">
-                  <div className="inline-flex p-1 bg-slate-200/70 rounded-xl border border-slate-200">
+                  <div className="inline-flex p-1 bg-slate-200/70 rounded-xl border border-slate-200 gap-1 flex-wrap">
+                    <button
+                      onClick={() => setActiveModalTab('decision')}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
+                        activeModalTab === 'decision'
+                          ? 'bg-slate-900 text-white shadow-xs'
+                          : 'text-slate-700 hover:text-slate-900 bg-white/50'
+                      }`}
+                    >
+                      <span className="w-2 h-2 rounded-full bg-brand-orange animate-pulse" />
+                      <span>Decision Intelligence</span>
+                    </button>
                     <button
                       onClick={() => setActiveModalTab('match')}
                       className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -2403,6 +2439,18 @@ export default function JobCandidatesPage() {
 
               {/* Scrollable Tab Content Body (ONLY this scrolls) */}
               <div className="flex-1 overflow-y-auto overscroll-contain min-h-0 bg-slate-50/20 p-6 space-y-6 scroll-smooth">
+                {/* Tab 0: HireIQ Decision Intelligence */}
+                {activeModalTab === 'decision' && (
+                  <HireIQDecisionIntelligence
+                    candidateId={selectedCandidate.id}
+                    jobId={jobId as string}
+                    fallbackCandidateName={selectedCandidate.name}
+                    fallbackJobTitle={job?.position}
+                    fallbackScore={Math.round(selectedCandidate.matchScore ?? selectedCandidate.atsScore ?? 0)}
+                    fallbackRecommendation={getCandidateDecision(selectedCandidate)}
+                  />
+                )}
+
                 {/* Tab 1: Match & Criteria Breakdown */}
                 {activeModalTab === 'match' && (
                   <div className="space-y-6">

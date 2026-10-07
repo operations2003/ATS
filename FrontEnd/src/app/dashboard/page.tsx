@@ -82,19 +82,7 @@ export default function DashboardPage() {
         const activeToken = token || (typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null);
         const headers: Record<string, string> = activeToken ? { Authorization: `Bearer ${activeToken}` } : {};
 
-        // 1. Fetch user's JDs from API
-        let apiJobs: any[] = [];
-        try {
-          const resJobs = await fetch(`${backendUrl}/jobs`, { headers });
-          if (resJobs.ok) {
-            const data = await resJobs.json();
-            apiJobs = Array.isArray(data.jobs) ? data.jobs : (Array.isArray(data.data) ? data.data : []);
-          }
-        } catch (e) {
-          console.warn('[Dashboard] Jobs fetch error:', e);
-        }
-
-        // 2. Fetch user's local created jobs as client-side fallback
+        // 1. Fetch user's local created jobs as client-side fallback
         let localCreated: any[] = [];
         if (typeof window !== 'undefined') {
           try {
@@ -117,217 +105,117 @@ export default function DashboardPage() {
           } catch {}
         }
 
-        // Merge API + local jobs
-        const jobMap = new Map<string, any>();
-        for (const j of apiJobs) jobMap.set(String(j.id), j);
-        for (const lj of localCreated) {
-          if (!jobMap.has(String(lj.id))) jobMap.set(String(lj.id), lj);
+        let resolvedJobs: JobItem[] = [];
+        let resolvedEvals: CandidateEvaluationItem[] = [];
+
+        // 2. Fetch lightweight dashboard summary (executes in <100ms on backend)
+        let summaryLoaded = false;
+        try {
+          const resSummary = await fetch(`${backendUrl}/dashboard/summary`, { headers });
+          if (resSummary.ok) {
+            const sumData = await resSummary.json();
+            if (sumData.success) {
+              resolvedJobs = Array.isArray(sumData.jobs) ? sumData.jobs : [];
+              resolvedEvals = Array.isArray(sumData.recentEvaluations) ? sumData.recentEvaluations : [];
+              summaryLoaded = true;
+            }
+          }
+        } catch (e) {
+          console.warn('[Dashboard] /dashboard/summary fetch error, trying parallel fallback:', e);
         }
 
-        const mergedJobs: JobItem[] = Array.from(jobMap.values()).map((j: any) => {
-          const rawStatus = (j.status || 'Active').toLowerCase();
-          const normalizedStatus = rawStatus === 'draft' ? 'Draft' : rawStatus === 'closed' ? 'Closed' : 'Active';
-          const rawMode = (j.work_mode || j.workMode || 'Remote').trim();
-          const normalizedMode = rawMode.charAt(0).toUpperCase() + rawMode.slice(1).toLowerCase();
+        // 3. Fallback: parallel lightweight fetch of /jobs and /evaluations (no serial loops)
+        if (!summaryLoaded) {
+          try {
+            const [jobsRes, evalsRes] = await Promise.allSettled([
+              fetch(`${backendUrl}/jobs`, { headers }),
+              fetch((user?.role === 'ADMIN' || user?.role === 'CLIENT_ADMIN' || user?.role === 'SUPER_ADMIN') ? `${backendUrl}/evaluations?view=all` : `${backendUrl}/evaluations`, { headers })
+            ]);
 
-          // Calculate candidate count
-          let count = typeof j.candidatesCount === 'number' ? j.candidatesCount : (typeof j.candidates === 'number' ? j.candidates : (Array.isArray(j.candidates) ? j.candidates.length : 0));
-          if (typeof window !== 'undefined') {
-            try {
-              const localCands = JSON.parse(localStorage.getItem(`tasknera_candidates_${j.id}`) || '[]');
-              if (Array.isArray(localCands) && localCands.length > count) count = localCands.length;
-            } catch {}
-          }
+            if (jobsRes.status === 'fulfilled' && jobsRes.value.ok) {
+              const jData = await jobsRes.value.json();
+              const apiJobs = Array.isArray(jData.jobs) ? jData.jobs : (Array.isArray(jData.data) ? jData.data : []);
+              resolvedJobs = apiJobs.map((j: any) => {
+                const rawStatus = (j.status || 'Active').toLowerCase();
+                const normalizedStatus = rawStatus === 'draft' ? 'Draft' : rawStatus === 'closed' ? 'Closed' : 'Active';
+                const rawMode = (j.work_mode || j.workMode || 'Remote').trim();
+                const normalizedMode = rawMode.charAt(0).toUpperCase() + rawMode.slice(1).toLowerCase();
+                const count = typeof j.candidatesCount === 'number' ? j.candidatesCount : (typeof j.candidates === 'number' ? j.candidates : (Array.isArray(j.candidates) ? j.candidates.length : 0));
+                return {
+                  id: String(j.id),
+                  title: j.position || j.title || 'Untitled Position',
+                  client: j.client || j.company || 'Direct Client',
+                  location: j.location || 'Remote',
+                  mode: ['Remote', 'Hybrid', 'Onsite'].includes(normalizedMode) ? normalizedMode : 'Remote',
+                  candidates: count,
+                  topScore: typeof j.topScore === 'number' ? j.topScore : null,
+                  status: normalizedStatus,
+                  created: j.created_at ? new Date(j.created_at).toLocaleDateString() : 'Recent'
+                };
+              });
+            }
 
-          return {
-            id: String(j.id),
-            title: j.position || j.title || 'Untitled Position',
-            client: j.client || j.company || 'Direct Client',
-            location: j.location || 'Remote',
-            mode: ['Remote', 'Hybrid', 'Onsite'].includes(normalizedMode) ? normalizedMode : 'Remote',
-            candidates: count,
-            topScore: typeof j.topScore === 'number' ? j.topScore : null,
-            status: normalizedStatus,
-            created: j.created_at ? new Date(j.created_at).toLocaleDateString() : 'Recent'
-          };
-        });
-
-        // 3. Fetch candidate evaluations and scores across user's active jobs
-        let evals: CandidateEvaluationItem[] = [];
-
-        // 3a. First check direct /evaluations API
-        try {
-          const isCompanyAdmin = user?.role === 'ADMIN' || user?.role === 'CLIENT_ADMIN' || user?.role === 'SUPER_ADMIN';
-          const evalUrl = isCompanyAdmin ? `${backendUrl}/evaluations?view=all` : `${backendUrl}/evaluations`;
-          const resEval = await fetch(evalUrl, { headers });
-          if (resEval.ok) {
-            const evalData = await resEval.json();
-            const evalList = evalData.evaluations || evalData.data || [];
-            if (Array.isArray(evalList) && evalList.length > 0) {
+            if (evalsRes.status === 'fulfilled' && evalsRes.value.ok) {
+              const eData = await evalsRes.value.json();
+              const evalList = eData.evaluations || eData.data || [];
+              const rawEvals: CandidateEvaluationItem[] = [];
               for (const e of evalList) {
                 const rawVal = e.score ?? e.atsScore ?? e.ats ?? e.match;
                 if (typeof rawVal === 'number' && rawVal > 0) {
                   const score = Math.round(rawVal);
                   const isSubmit = e.decision === 'SUBMIT' || e.decision === 'ACCEPT' || e.decision === 'REVIEW' || score >= 65;
-                  const candId = String(e.candidateId || e.id || '');
-                  const candName = String(e.candidate || e.name || '').trim().toLowerCase();
-
-                  const existingIdx = evals.findIndex(ex =>
-                    (candId && ex.id === candId) ||
-                    (candName && ex.name && ex.name.trim().toLowerCase() === candName)
-                  );
-
-                  const evalItem: CandidateEvaluationItem = {
-                    id: candId || `eval-${evals.length + 1}`,
+                  rawEvals.push({
+                    id: String(e.candidateId || e.id || `eval-${rawEvals.length + 1}`),
                     name: e.candidate || e.name || 'Candidate',
                     role: e.role || e.job || 'Applicant',
                     match: score,
                     decision: isSubmit ? 'SUBMIT' : 'DO NOT SUBMIT',
                     time: e.date || 'Recently',
                     jobId: e.jobId
-                  };
-
-                  if (existingIdx >= 0) {
-                    evals[existingIdx] = evalItem;
-                  } else {
-                    evals.push(evalItem);
-                  }
-                }
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('[Dashboard] Evaluations fetch error:', e);
-        }
-
-        // 3b. Fetch candidates for each job that has applicants to compute real ATS scores
-        for (const j of mergedJobs) {
-          if (j.candidates > 0) {
-            try {
-              let jobCands: any[] = [];
-              if (typeof window !== 'undefined') {
-                try {
-                  jobCands = JSON.parse(localStorage.getItem(`tasknera_candidates_${j.id}`) || '[]');
-                } catch {}
-              }
-
-              try {
-                const res = await fetch(`${backendUrl}/jobs/${j.id}/candidates`, { headers });
-                if (res.ok) {
-                  const data = await res.json();
-                  const apiCands = Array.isArray(data.candidates) ? data.candidates : [];
-                  if (apiCands.length > 0) {
-                    jobCands = apiCands;
-                  }
-                }
-              } catch (e) {
-                console.warn(`[Dashboard] Could not fetch candidates for job ${j.id}:`, e);
-              }
-
-              if (Array.isArray(jobCands) && jobCands.length > 0) {
-                const rawJob = jobMap.get(j.id) || {};
-                const reqs = rawJob.requirements || [];
-
-                let maxJobScore = j.topScore;
-
-                for (const c of jobCands) {
-                  let score: number | null = null;
-                  if (typeof c.matchScore === 'number' && c.matchScore > 0) {
-                    score = Math.round(c.matchScore);
-                  } else if (typeof c.atsScore === 'number' && c.atsScore > 0) {
-                    score = Math.round(c.atsScore);
-                  }
-
-                  // Only compute fallback score if candidate has no evaluated score from backend
-                  if (score === null || score === 0) {
-                    try {
-                      const effectiveSkills = getEffectiveSkills(c, reqs);
-                      const comp = computeComprehensiveMatchScore(
-                        {
-                          skills: effectiveSkills.length > 0 ? effectiveSkills : (Array.isArray(c.skills) ? c.skills : []),
-                          totalExperience: c.totalExperience || c.totalExperienceYears,
-                          totalExperienceYears: c.totalExperienceYears,
-                          education: c.education || [],
-                          rawText: c.rawText || '',
-                          summary: c.summary || c.professionalSummary || '',
-                          currentTitle: c.currentTitle || '',
-                        },
-                        {
-                          position: j.title,
-                          jd_text: rawJob.jd_text || j.title,
-                          requirements: reqs,
-                        }
-                      );
-                      if (comp && typeof comp.overallScore === 'number' && comp.overallScore > 0) {
-                        score = Math.round(comp.overallScore);
-                      }
-                    } catch (e) {}
-                  }
-
-                  if (score !== null && score > 0) {
-                    if (maxJobScore === null || score > maxJobScore) {
-                      maxJobScore = score;
-                    }
-                    const isSubmit = score >= 65 || c.decision === 'SUBMIT' || c.decision === 'ACCEPT' || c.decision === 'REVIEW';
-                    const existingIdx = evals.findIndex(e => e.id === c.id || (e.name && c.name && e.name.toLowerCase() === c.name.toLowerCase()));
-                    const evalItem: CandidateEvaluationItem = {
-                      id: c.id,
-                      name: c.name || 'Candidate',
-                      role: c.currentTitle || j.title || 'Applicant',
-                      match: score,
-                      decision: isSubmit ? 'SUBMIT' : 'DO NOT SUBMIT',
-                      time: c.uploadedAt ? new Date(c.uploadedAt).toLocaleDateString() : 'Recently',
-                      jobId: j.id,
-                    };
-
-                    if (existingIdx >= 0) {
-                      evals[existingIdx] = evalItem;
-                    } else {
-                      evals.push(evalItem);
-                    }
-                  }
-                }
-
-                j.topScore = maxJobScore;
-              }
-            } catch (err) {
-              console.warn(`[Dashboard] Error processing candidates for job ${j.id}:`, err);
-            }
-          }
-        }
-
-        // 3c. Fall back to /candidates if evals is still empty
-        if (evals.length === 0) {
-          try {
-            const resCand = await fetch(`${backendUrl}/candidates`, { headers });
-            if (resCand.ok) {
-              const candData = await resCand.json();
-              const candList = candData.candidates || candData.data || [];
-              for (const c of candList) {
-                const rawVal = c.matchScore ?? c.atsScore;
-                if (typeof rawVal === 'number' && rawVal > 0) {
-                  const matchScore = Math.round(rawVal);
-                  const isSubmit = c.decision === 'SUBMIT' || c.decision === 'ACCEPT' || matchScore >= 70;
-                  evals.push({
-                    id: c.id,
-                    name: c.name || 'Candidate',
-                    role: c.currentTitle || c.role || 'Applicant',
-                    match: matchScore,
-                    decision: isSubmit ? 'SUBMIT' : 'DO NOT SUBMIT',
-                    time: c.uploadedAt ? new Date(c.uploadedAt).toLocaleDateString() : 'Recently',
-                    jobId: c.jobId
                   });
                 }
               }
+              resolvedEvals = rawEvals;
             }
-          } catch (e) {
-            console.warn('[Dashboard] Candidates fetch error:', e);
+          } catch (fbErr) {
+            console.warn('[Dashboard] Fallback data fetch error:', fbErr);
           }
         }
 
-        // 3d. Strict deduplication (guarantee exactly 1 evaluation item per candidate)
+        // 4. Merge any client-side offline jobs if not already present
+        const jobMap = new Map<string, JobItem>();
+        for (const j of resolvedJobs) jobMap.set(String(j.id), j);
+        for (const lj of localCreated) {
+          if (!jobMap.has(String(lj.id))) {
+            const rawStatus = (lj.status || 'Active').toLowerCase();
+            const normalizedStatus = rawStatus === 'draft' ? 'Draft' : rawStatus === 'closed' ? 'Closed' : 'Active';
+            const rawMode = (lj.work_mode || lj.workMode || 'Remote').trim();
+            const normalizedMode = rawMode.charAt(0).toUpperCase() + rawMode.slice(1).toLowerCase();
+            let count = typeof lj.candidatesCount === 'number' ? lj.candidatesCount : (typeof lj.candidates === 'number' ? lj.candidates : 0);
+            if (typeof window !== 'undefined') {
+              try {
+                const localCands = JSON.parse(localStorage.getItem(`tasknera_candidates_${lj.id}`) || '[]');
+                if (Array.isArray(localCands) && localCands.length > count) count = localCands.length;
+              } catch {}
+            }
+            jobMap.set(String(lj.id), {
+              id: String(lj.id),
+              title: lj.position || lj.title || 'Untitled Position',
+              client: lj.client || lj.company || 'Direct Client',
+              location: lj.location || 'Remote',
+              mode: ['Remote', 'Hybrid', 'Onsite'].includes(normalizedMode) ? normalizedMode : 'Remote',
+              candidates: count,
+              topScore: typeof lj.topScore === 'number' ? lj.topScore : null,
+              status: normalizedStatus,
+              created: lj.created_at ? new Date(lj.created_at).toLocaleDateString() : 'Recent'
+            });
+          }
+        }
+        const mergedJobs = Array.from(jobMap.values());
+
+        // 5. Strict deduplication of evaluations (1 per candidate)
         const dedupedEvalsMap = new Map<string, CandidateEvaluationItem>();
-        for (const ev of evals) {
+        for (const ev of resolvedEvals) {
           const key = (ev.name || '').trim().toLowerCase() || ev.id;
           if (!dedupedEvalsMap.has(key)) {
             dedupedEvalsMap.set(key, ev);
@@ -342,9 +230,12 @@ export default function DashboardPage() {
 
         // Update topScore on each job from finalEvals
         for (const j of mergedJobs) {
-          const jobEvals = finalEvals.filter(ev => ev.jobId === j.id || (j.candidates > 0 && finalEvals.length === 1));
+          const jobEvals = finalEvals.filter(ev => ev.jobId === j.id);
           if (jobEvals.length > 0) {
-            j.topScore = Math.max(...jobEvals.map(ev => ev.match));
+            const maxVal = Math.max(...jobEvals.map(ev => ev.match));
+            if (j.topScore === null || maxVal > j.topScore) {
+              j.topScore = maxVal;
+            }
           }
         }
 

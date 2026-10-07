@@ -67,6 +67,7 @@ router.delete('/:jobId/requirements/:requirementId', protect, deleteRequirement)
 router.post('/:jobId/requirements/confirm', protect, confirmRequirements);
 
 import { getCandidateEvaluation, evaluateCandidateController } from '../controllers/evaluationController';
+import { getCandidateDecisionIntelligenceController } from '../controllers/decisionIntelligenceController';
 
 // Candidate CV Upload, Extraction & Status Routes
 router.post('/:jobId/candidates/upload', protect, upload.any(), uploadCandidateCVs);
@@ -74,6 +75,7 @@ router.get('/:jobId/candidates', protect, getCandidatesForJob);
 router.get('/:jobId/candidates/:candidateId', protect, getCandidateById);
 router.patch('/:jobId/candidates/:candidateId/decision', protect, updateCandidateDecision);
 router.get('/:jobId/candidates/:candidateId/evaluation', protect, getCandidateEvaluation);
+router.get('/:jobId/candidates/:candidateId/decision-intelligence', protect, getCandidateDecisionIntelligenceController);
 router.post('/:jobId/candidates/:candidateId/evaluate', protect, evaluateCandidateController);
 router.post('/:jobId/candidates/:candidateId/retry', protect, retryCandidateParsing);
 router.delete('/:jobId/candidates/:candidateId', protect, deleteCandidate);
