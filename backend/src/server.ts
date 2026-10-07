@@ -9,9 +9,6 @@ import superAdminRoutes from './routes/superAdminRoutes';
 import publicRoutes from './routes/publicRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
 
-import appsumoRoutes from './routes/appsumoRoutes';
-import { handleAppSumoWebhook, handleAppSumoOAuthRedirect } from './controllers/appsumoController';
-
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -32,13 +29,6 @@ app.use(
     }
   })
 );
-
-// AppSumo Direct Spec Endpoints (exact endpoints specified in AppSumo Partner Guide)
-app.post('/v2/webhooks', handleAppSumoWebhook);
-app.get('/v2/webhooks', (req: Request, res: Response) => {
-  res.status(200).json({ status: 'active', message: 'TaskNera AppSumo Webhook Receiver is ready' });
-});
-app.get('/v2/redirect-url', handleAppSumoOAuthRedirect);
 
 // Routes
 app.get('/', (req: Request, res: Response) => {
@@ -67,7 +57,7 @@ import {
   deleteEvaluationController
 } from './controllers/evaluationController';
 
-// Authentication, User, Job, Candidate, Evaluation, AppSumo, Public Application & Super Admin Routes
+// Authentication, User, Job, Candidate, Evaluation, Public Application & Super Admin Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/jobs', jobRoutes);
@@ -75,8 +65,6 @@ app.use('/api/candidates', candidateRoutes);
 app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/v1/appsumo', appsumoRoutes);
-app.use('/api/appsumo', appsumoRoutes);
 
 // Evaluation Endpoints (Secured by database-level ownership)
 app.get('/api/evaluations', protect, getAllEvaluations);

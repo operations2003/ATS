@@ -36,7 +36,7 @@ model User {
   assignedEvaluations Evaluation[] @relation("AssignedEvaluations")
   evaluatedEvaluations Evaluation[] @relation("EvaluatedEvaluations")
   auditLogs           AuditLog[]
-  appsumoLicenses     AppSumoLicense[]
+
 
   @@index([role], map: "idx_users_role")
   @@index([organizationId], map: "idx_users_organization_id")
@@ -315,7 +315,7 @@ model Organization {
   updatedAt           DateTime    @updatedAt @map("updated_at")
 
   auditLogs           AuditLog[]
-  appsumoLicenses     AppSumoLicense[]
+
 
   @@map("organizations")
 }
@@ -338,70 +338,5 @@ model AuditLog {
   @@index([userId], map: "idx_audit_logs_user_id")
   @@index([action], map: "idx_audit_logs_action")
   @@map("audit_logs")
-}
-
-enum AppSumoStatus {
-  ACTIVE
-  INACTIVE
-  REFUNDED
-  DEACTIVATED
-}
-
-model AppSumoLicense {
-  id                    String                @id @default(uuid()) @db.Uuid
-  licenseKey            String                @unique @map("license_key")
-  previousLicenseKey    String?               @map("previous_license_key")
-  parentLicenseKey      String?               @map("parent_license_key")
-  organizationId        String?               @map("organization_id")
-  userId                String?               @map("user_id") @db.Uuid
-  tier                  Int                   @default(1)
-  status                AppSumoStatus         @default(INACTIVE)
-  event                 String?
-  partnerPlanName       String?               @map("partner_plan_name")
-  unitQuantity          Int                   @default(1) @map("unit_quantity")
-  isTest                Boolean               @default(false) @map("is_test")
-  createdAtFromAppSumo  DateTime?             @map("created_at_from_appsumo")
-  lastEventTimestamp    DateTime?             @map("last_event_timestamp")
-  lastWebhookReceivedAt DateTime?             @map("last_webhook_received_at")
-  activatedAt           DateTime?             @map("activated_at")
-  deactivatedAt         DateTime?             @map("deactivated_at")
-  createdAt             DateTime              @default(now()) @map("created_at")
-  updatedAt             DateTime              @updatedAt @map("updated_at")
-
-  organization          Organization?         @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  user                  User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
-
-  @@index([licenseKey], map: "idx_appsumo_license_key")
-  @@index([previousLicenseKey], map: "idx_appsumo_prev_license_key")
-  @@index([organizationId], map: "idx_appsumo_org_id")
-  @@index([userId], map: "idx_appsumo_user_id")
-  @@index([status], map: "idx_appsumo_status")
-  @@map("appsumo_licenses")
-}
-
-model AppSumoLicenseEvent {
-  id                   String          @id @default(uuid()) @db.Uuid
-  licenseKey           String          @map("license_key")
-  previousLicenseKey   String?         @map("previous_license_key")
-  parentLicenseKey     String?         @map("parent_license_key")
-  event                String
-  eventTimestamp       DateTime?       @map("event_timestamp")
-  createdAtFromAppSumo DateTime?       @map("created_at_from_appsumo")
-  tier                 Int?
-  licenseStatus        String?         @map("license_status")
-  partnerPlanName      String?         @map("partner_plan_name")
-  unitQuantity         Int?            @map("unit_quantity")
-  test                 Boolean         @default(false)
-  payload              Json
-  processingStatus     String          @default("PENDING") @map("processing_status")
-  errorMessage         String?         @map("error_message")
-  processedAt          DateTime?       @map("processed_at")
-  createdAt            DateTime        @default(now()) @map("created_at")
-
-  @@index([licenseKey], map: "idx_appsumo_event_license_key")
-  @@index([event], map: "idx_appsumo_event_event")
-  @@index([processingStatus], map: "idx_appsumo_event_processing_status")
-  @@index([licenseKey, event, eventTimestamp], map: "idx_appsumo_event_idempotency")
-  @@map("appsumo_license_events")
 }
 
