@@ -622,7 +622,9 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
             }
           },
           evaluations: {
-            where: { jobId },
+            where: isJobUuid
+              ? { OR: [{ jobId }, { candidateJobId: jobId }] }
+              : { candidateJobId: jobId },
             orderBy: { createdAt: 'desc' as const },
             take: 1,
             select: {

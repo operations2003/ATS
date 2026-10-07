@@ -629,12 +629,27 @@ export default function JobCandidatesPage() {
         .then(res => (res.ok ? res.json() : null))
         .then(data => {
           if (data?.candidate) {
+            const freshScore = Math.round(data.candidate.atsScore ?? data.candidate.matchScore ?? 0);
             setSelectedCandidate((prev: any) => {
               if (prev && prev.id === selectedCandidate.id) {
-                return { ...prev, ...data.candidate };
+                return {
+                  ...prev,
+                  ...data.candidate,
+                  matchScore: freshScore > 0 ? freshScore : prev.matchScore,
+                  atsScore: freshScore > 0 ? freshScore : prev.atsScore,
+                };
               }
               return prev;
             });
+            if (freshScore > 0) {
+              setCandidates((prev) =>
+                prev.map((c) =>
+                  c.id === selectedCandidate.id
+                    ? { ...c, matchScore: freshScore, atsScore: freshScore }
+                    : c
+                )
+              );
+            }
           }
         })
         .catch(() => {});
@@ -1320,23 +1335,33 @@ export default function JobCandidatesPage() {
           },
         ];
 
-      const finalScore = matchResult.overallScore;
-      const finalLevel = matchResult.matchLevel;
+      // Authoritative ATS Score: Prioritize the official evaluated ATS score from database/backend
+      const storedScore = (c as any).atsScore ?? (c as any).matchScore ?? (c as any).evaluation?.atsScore ?? (c as any).evaluation?.score;
+      const hasStoredScore = typeof storedScore === 'number' && !isNaN(storedScore) && storedScore > 0;
+      const finalScore = hasStoredScore ? Math.round(storedScore) : matchResult.overallScore;
+
+      const finalLevel = hasStoredScore
+        ? (finalScore >= 80 ? 'STRONG MATCH' : finalScore >= 50 ? 'GOOD MATCH' : 'LOW FIT')
+        : matchResult.matchLevel;
+
       const failedCount = matchResult.breakdown?.mandatoryCompliance?.failedCount ?? 0;
       const autoDecision: 'SUBMIT' | 'REVIEW' | 'REJECT' =
         (finalScore >= 80 && failedCount === 0) ? 'SUBMIT' :
         (finalScore < 45 || failedCount >= 2) ? 'REJECT' :
         'REVIEW';
 
+      const effectiveDecision = (c as any).decision || (c as any).recommendation || autoDecision;
+
       return {
         ...c,
         matchScore: finalScore,
+        atsScore: finalScore,
         matchLevel: finalLevel,
         matchBreakdown: matchResult.breakdown,
         matchSummary: matchResult.summary,
         requirementEvals,
-        decision: (c as any).decision || autoDecision,
-        recommendation: (c as any).recommendation || (autoDecision === 'SUBMIT' ? 'ACCEPT' : autoDecision === 'REJECT' ? 'REJECT' : 'REVIEW'),
+        decision: effectiveDecision,
+        recommendation: (c as any).recommendation || (effectiveDecision === 'SUBMIT' ? 'ACCEPT' : effectiveDecision === 'REJECT' ? 'REJECT' : 'REVIEW'),
       };
     });
   }, [uniqueCandidates, job]);
@@ -2095,25 +2120,40 @@ export default function JobCandidatesPage() {
                           </div>
                         </td>
 
-                        {/* Experience & Career Gap */}
+                        {/* Experience & Career History */}
                         <td className="px-6 py-4 text-xs font-semibold text-slate-800">
                           {(() => {
                             const expInfo = getNumericExperienceDetails(c);
                             const gapInfo = getCandidateCareerGaps(c);
+                            const expList = Array.isArray(c.experience) ? c.experience : [];
+                            const companies = new Set<string>();
+                            if (c.currentCompany && !['company', 'the role', 'role', 'experience'].includes(c.currentCompany.toLowerCase())) {
+                              companies.add(c.currentCompany);
+                            }
+                            for (const ex of expList) {
+                              if (ex.company && !['company', 'the role', 'role', 'experience'].includes(ex.company.toLowerCase())) {
+                                companies.add(ex.company);
+                              }
+                            }
+                            const companyCount = Math.max(companies.size, expList.length > 0 ? expList.length : 1);
+
                             return (
                               <div className="flex flex-col items-start gap-1">
-                                <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold font-mono bg-slate-100 text-slate-900 border border-slate-200">
-                                  {expInfo.badgeText}
-                                </span>
-                                {gapInfo.hasGap ? (
-                                  <span className="inline-flex items-center gap-1 text-[10px] text-amber-900 font-extrabold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                                    ⚠️ {gapInfo.totalGapMonths}m Gap
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold font-mono bg-slate-100 text-slate-900 border border-slate-200 whitespace-nowrap">
+                                    {expInfo.badgeText}
                                   </span>
-                                ) : (
-                                  <span className="text-[11px] text-slate-400 font-medium">
-                                    Continuous history
-                                  </span>
-                                )}
+                                  {gapInfo.hasGap && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] text-amber-900 font-extrabold bg-amber-50 px-2 py-0.5 rounded border border-amber-200 whitespace-nowrap">
+                                      ⚠️ {gapInfo.totalGapMonths}m Gap
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5 flex-wrap">
+                                  <span>{companyCount} {companyCount === 1 ? 'Company' : 'Companies'}</span>
+                                  <span className="text-slate-300">•</span>
+                                  <span>{gapInfo.hasGap ? `${gapInfo.gaps.length} Gap` : 'Continuous history'}</span>
+                                </div>
                               </div>
                             );
                           })()}
