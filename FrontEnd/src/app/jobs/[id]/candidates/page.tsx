@@ -725,12 +725,24 @@ export default function JobCandidatesPage() {
 
     try {
       const authToken = token || (typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null);
-      await fetch(`${backendUrl}/jobs/${jobId}/candidates/${candidateId}`, {
+      
+      // Delete candidate from job requisition and platform
+      const res = await fetch(`${backendUrl}/jobs/${jobId}/candidates/${candidateId}`, {
         method: 'DELETE',
         headers: {
           ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
         }
-      }).catch(() => null);
+      });
+
+      // Also call /candidates/:candidateId to ensure global candidate pool is also synchronized
+      if (!res.ok) {
+        await fetch(`${backendUrl}/candidates/${candidateId}`, {
+          method: 'DELETE',
+          headers: {
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+          }
+        }).catch(() => null);
+      }
 
       setCandidates(prev => {
         const updated = prev.filter(c => c.id !== candidateId);
@@ -745,6 +757,10 @@ export default function JobCandidatesPage() {
             return cj;
           });
           localStorage.setItem('tasknera_created_jobs', JSON.stringify(updatedCreated));
+          try {
+            localStorage.removeItem(`tasknera_decision_${jobId}_${candidateId}`);
+            localStorage.removeItem(`tasknera_decision_${candidateId}`);
+          } catch {}
         }
         return updated;
       });
@@ -994,17 +1010,13 @@ export default function JobCandidatesPage() {
         });
         if (candRes.ok) {
           const candData = await candRes.json();
-          const list = candData.candidates || [];
-          if (list.length > 0) {
-            setCandidates(list);
-            if (typeof window !== 'undefined') {
-              try {
-                localStorage.setItem(`tasknera_candidates_${jobId}`, JSON.stringify(list));
-              } catch {}
-            }
-          } else {
-            const localSaved = JSON.parse(localStorage.getItem(`tasknera_candidates_${jobId}`) || '[]');
-            setCandidates(localSaved);
+          const list = Array.isArray(candData.candidates) ? candData.candidates : [];
+          setCandidates(list);
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem(`tasknera_candidates_${jobId}`, JSON.stringify(list));
+              localStorage.setItem(`tasknera_candidates_count_${jobId}`, String(list.length));
+            } catch {}
           }
         } else {
           const localSaved = JSON.parse(localStorage.getItem(`tasknera_candidates_${jobId}`) || '[]');

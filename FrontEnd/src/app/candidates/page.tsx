@@ -592,6 +592,22 @@ export default function CandidatesPage() {
       if (selectedCandidate?.id === candidateToDelete.id) {
         setSelectedCandidate(null);
       }
+
+      // Synchronize and clean up local storage caches for this candidate across jobs
+      if (typeof window !== 'undefined') {
+        try {
+          if (candidateToDelete.jobId) {
+            const jobCandKey = `tasknera_candidates_${candidateToDelete.jobId}`;
+            const existing = JSON.parse(localStorage.getItem(jobCandKey) || '[]');
+            const filtered = existing.filter((c: any) => c.id !== candidateToDelete.id);
+            localStorage.setItem(jobCandKey, JSON.stringify(filtered));
+            localStorage.setItem(`tasknera_candidates_count_${candidateToDelete.jobId}`, String(filtered.length));
+            localStorage.removeItem(`tasknera_decision_${candidateToDelete.jobId}_${candidateToDelete.id}`);
+          }
+          localStorage.removeItem(`tasknera_decision_${candidateToDelete.id}`);
+        } catch {}
+      }
+
       setCandidateToDelete(null);
     } catch (err) {
       console.error('Failed to delete candidate:', err);
