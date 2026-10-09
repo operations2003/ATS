@@ -67,6 +67,11 @@ export default function AdminPage() {
   const [jobs, setJobs] = useState<JobItem[]>([]);
   const [candidates, setCandidates] = useState<CandidateItem[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [overviewStats, setOverviewStats] = useState<{
+    totalResumesSeen: number;
+    totalShortlisted: number;
+    conversionRate: number;
+  } | null>(null);
 
   const [loadingMembers, setLoadingMembers] = useState(false);
 
@@ -98,6 +103,9 @@ export default function AdminPage() {
       });
       if (res.ok) {
         const data = await res.json();
+        if (data.overviewStats) {
+          setOverviewStats(data.overviewStats);
+        }
         if (Array.isArray(data.members)) {
           // Cascade delete purged members from backend database if found
           data.members.forEach(async (m: any) => {
@@ -399,6 +407,22 @@ export default function AdminPage() {
   }, []);
 
   const stats = atsStore.getAdminOverviewStats();
+
+  // Aggregate stats across team members and organization so client admin always sees real data
+  const teamTotalResumes = recruiters.reduce((sum, r) => sum + (r.resumesSeen || 0), 0);
+  const teamTotalShortlisted = recruiters.reduce((sum, r) => sum + (r.tlApprovedCount || 0), 0);
+
+  const effectiveTotalResumes = overviewStats?.totalResumesSeen !== undefined
+    ? Math.max(overviewStats.totalResumesSeen, teamTotalResumes)
+    : Math.max(teamTotalResumes, stats.totalResumesSeen);
+
+  const effectiveTotalShortlisted = overviewStats?.totalShortlisted !== undefined
+    ? Math.max(overviewStats.totalShortlisted, teamTotalShortlisted)
+    : Math.max(teamTotalShortlisted, stats.totalShortlisted);
+
+  const effectiveConversionRate = effectiveTotalResumes > 0
+    ? Math.round((effectiveTotalShortlisted / effectiveTotalResumes) * 100)
+    : (overviewStats?.conversionRate ?? stats.conversionRate);
 
   const existingDepartments = Array.from(
     new Set(
@@ -754,7 +778,7 @@ export default function AdminPage() {
               </span>
             </div>
             <div className="text-3xl font-black text-slate-900 tracking-tight">
-              {stats.totalResumesSeen.toLocaleString()}
+              {effectiveTotalResumes.toLocaleString()}
             </div>
             <div className="flex items-center justify-between text-xs text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100">
               <span className="text-blue-600 font-bold flex items-center gap-1">
@@ -774,10 +798,10 @@ export default function AdminPage() {
               </span>
             </div>
             <div className="text-3xl font-black text-slate-900 tracking-tight">
-              {stats.totalShortlisted}
+              {effectiveTotalShortlisted}
             </div>
             <div className="flex items-center justify-between text-xs text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100">
-              <span className="text-emerald-600 font-bold">{stats.conversionRate}% Conversion</span>
+              <span className="text-emerald-600 font-bold">{effectiveConversionRate}% Conversion</span>
               <span className="font-semibold text-slate-700">Mean Score: 88%</span>
             </div>
           </div>

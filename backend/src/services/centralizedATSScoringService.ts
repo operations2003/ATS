@@ -525,7 +525,10 @@ export function calculateCentralizedATSScore(input: CentralizedATSScoringInput):
   let recommendation: 'SUBMIT' | 'REVIEW' | 'DO NOT SUBMIT';
   let recommendationReason: string;
 
-  if (finalScore >= 75 && !mandatoryRequirementFailed) {
+  if (finalScore >= 90) {
+    recommendation = 'SUBMIT';
+    recommendationReason = 'Outstanding candidate profile demonstrating exceptional alignment across core skills, experience, and competencies.';
+  } else if (finalScore >= 75 && !mandatoryRequirementFailed) {
     recommendation = 'SUBMIT';
     recommendationReason = 'Strong overall candidate profile meeting core competencies, verified experience, and mandatory criteria.';
   } else if (finalScore >= 50 && !mandatoryRequirementFailed) {

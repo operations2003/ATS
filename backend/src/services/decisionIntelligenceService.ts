@@ -82,7 +82,7 @@ export interface DecisionIntelligencePayload {
     jobClient: string;
     evaluatedAt: string;
     atsScore: number; // Stored ATS score of record
-    recommendation: 'STRONG MATCH' | 'SHORTLIST' | 'REVIEW' | 'NOT RECOMMENDED';
+    recommendation: 'RECOMMENDED' | 'STRONG MATCH' | 'SHORTLIST' | 'REVIEW' | 'NOT RECOMMENDED';
     recommendationReason: string;
   };
   summary: {
@@ -366,10 +366,13 @@ export async function buildDecisionIntelligencePayload(
   }
 
   // 7. Derive Standard Recommendation aligned with existing score & decisions
-  let recommendation: 'STRONG MATCH' | 'SHORTLIST' | 'REVIEW' | 'NOT RECOMMENDED' = 'REVIEW';
+  let recommendation: 'RECOMMENDED' | 'STRONG MATCH' | 'SHORTLIST' | 'REVIEW' | 'NOT RECOMMENDED' = 'REVIEW';
   const existingDecision = String(latestEval?.decision || '').toUpperCase();
 
-  if (existingDecision.includes('ACCEPT') || existingDecision === 'SUBMIT') {
+  // If candidate ATS score is 90+, recommendation is ALWAYS RECOMMENDED
+  if (existingAtsScore >= 90) {
+    recommendation = 'RECOMMENDED';
+  } else if (existingDecision.includes('ACCEPT') || existingDecision === 'SUBMIT') {
     recommendation = existingAtsScore >= 80 ? 'STRONG MATCH' : 'SHORTLIST';
   } else if (existingDecision.includes('REJECT') || existingDecision.includes('DO NOT')) {
     recommendation = 'NOT RECOMMENDED';
@@ -391,7 +394,7 @@ export async function buildDecisionIntelligencePayload(
   // Mandatory failure check
   const mandatoryItems = classifiedRequirements.filter(r => r.isMandatory);
   const mandatoryFailedCount = mandatoryItems.filter(r => r.status === 'NOT_FOUND' || r.status === 'CONTRADICTED').length;
-  if (mandatoryFailedCount > 0 && recommendation === 'STRONG MATCH') {
+  if (existingAtsScore < 90 && mandatoryFailedCount > 0 && (recommendation === 'STRONG MATCH' || recommendation === 'RECOMMENDED')) {
     recommendation = 'REVIEW';
   }
 
@@ -520,7 +523,7 @@ export async function buildDecisionIntelligencePayload(
     potentialEvidence.push(`Confirmation of candidate location mobility or willingness to relocate`);
   }
 
-  const decisionImpact = recommendation === 'STRONG MATCH'
+  const decisionImpact = (recommendation === 'STRONG MATCH' || recommendation === 'RECOMMENDED')
     ? 'Candidate currently meets prime criteria. Verification of listed certifications will finalize placement.'
     : recommendation === 'SHORTLIST'
     ? 'Verification of partially proven skills or tenure will strengthen readiness for immediate interview submission.'
@@ -569,7 +572,9 @@ export async function buildDecisionIntelligencePayload(
       evaluatedAt: evalDate,
       atsScore: existingAtsScore,
       recommendation,
-      recommendationReason: audit.recommendationReason || `Candidate evaluation complete with overall match score of ${existingAtsScore}%.`
+      recommendationReason: existingAtsScore >= 90
+        ? `High-confidence match: Candidate achieves a top-tier ATS score of ${existingAtsScore}% with verified technical and domain background.`
+        : (audit.recommendationReason || `Candidate evaluation complete with overall match score of ${existingAtsScore}%.`)
     },
     summary: {
       totalRequirements: totalReqs,

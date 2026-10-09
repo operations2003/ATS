@@ -619,10 +619,17 @@ class ATSStore {
     const totalJds = this.jobs.length;
     const totalJdsUploaded = totalJds;
 
-    const totalResumesSeen = this.candidates.length;
+    const recruitersResumesSeen = this.recruiters.reduce((sum, r) => sum + (r.resumesSeen || 0), 0);
+    const recruitersShortlisted = this.recruiters.reduce((sum, r) => sum + (r.tlApprovedCount || 0), 0);
 
-    const totalScreened = this.candidates.filter(c => c.stageStatus === 'SCREENED' || c.stageStatus === 'TL_APPROVED' || c.stageStatus === 'SHORTLISTED').length;
-    const totalShortlisted = this.candidates.filter(c => c.decision === 'SUBMIT' || c.stageStatus === 'TL_APPROVED' || c.stageStatus === 'SHORTLISTED').length;
+    const totalResumesSeen = Math.max(this.candidates.length, recruitersResumesSeen);
+
+    const candidatesShortlisted = this.candidates.filter(c => c.decision === 'SUBMIT' || c.stageStatus === 'TL_APPROVED' || c.stageStatus === 'SHORTLISTED').length;
+    const totalShortlisted = Math.max(candidatesShortlisted, recruitersShortlisted);
+    const totalScreened = Math.max(
+      this.candidates.filter(c => c.stageStatus === 'SCREENED' || c.stageStatus === 'TL_APPROVED' || c.stageStatus === 'SHORTLISTED').length,
+      totalShortlisted
+    );
     const activeRecruiters = this.recruiters.length;
     const agingJdsCount = this.jobs.filter(j => (j.createdAtDaysAgo || 0) >= 25).length;
 
@@ -634,7 +641,7 @@ class ATSStore {
       totalShortlisted,
       activeRecruiters,
       agingJdsCount,
-      conversionRate: totalScreened > 0 ? Math.round((totalShortlisted / totalScreened) * 100) : (totalResumesSeen > 0 && totalShortlisted > 0 ? Math.round((totalShortlisted / totalResumesSeen) * 100) : 0),
+      conversionRate: totalResumesSeen > 0 ? Math.round((totalShortlisted / totalResumesSeen) * 100) : (totalScreened > 0 ? Math.round((totalShortlisted / totalScreened) * 100) : 0),
     };
   }
 

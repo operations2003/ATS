@@ -368,10 +368,47 @@ export const getTAMembers = async (req: AuthRequest, res: Response): Promise<voi
         };
       });
 
+    // Compute organization-wide overview stats (client admin + current and historical team data)
+    const targetOrgId = !isSuperAdmin
+      ? (req.user?.organizationId || 'org-tasknera')
+      : (filterOrgId || undefined);
+
+    const orgEvaluationWhere: any = targetOrgId ? { organizationId: targetOrgId } : {};
+    const orgCandidateWhere: any = targetOrgId ? { organizationId: targetOrgId } : {};
+
+    const [totalOrgCandidates, totalOrgEvaluations, totalOrgShortlisted] = await Promise.all([
+      prisma.candidate.count({ where: orgCandidateWhere }),
+      prisma.evaluation.count({ where: orgEvaluationWhere }),
+      prisma.evaluation.count({
+        where: {
+          ...orgEvaluationWhere,
+          OR: [
+            { decision: 'SUBMIT' },
+            { score: { gte: 70 } }
+          ]
+        }
+      })
+    ]);
+
+    const membersTotalResumes = taMembers.reduce((sum, m) => sum + (m.resumesSeen || 0), 0);
+    const membersTotalShortlisted = taMembers.reduce((sum, m) => sum + (m.tlApprovedCount || 0), 0);
+
+    const totalResumesSeen = Math.max(totalOrgCandidates, totalOrgEvaluations, membersTotalResumes);
+    const totalShortlisted = Math.max(totalOrgShortlisted, membersTotalShortlisted);
+    const conversionRate = totalResumesSeen > 0
+      ? Math.round((totalShortlisted / totalResumesSeen) * 100)
+      : 0;
+
     res.status(200).json({
       success: true,
       count: taMembers.length,
-      members: taMembers
+      members: taMembers,
+      overviewStats: {
+        totalResumesSeen,
+        totalShortlisted,
+        conversionRate,
+        activeRecruiters: taMembers.length
+      }
     });
   } catch (error: any) {
     console.error('[User Controller] Error fetching TA members:', error);
@@ -685,90 +722,47 @@ export const deleteUser = async (req: AuthRequest, res: Response): Promise<void>
     }
 
     const userId = targetUser.id;
+    const fallbackOwnerId = req.user.userId;
 
-    // Comprehensive cascade deletion executed sequentially
-    // (avoids Supabase PgBouncer transaction-mode disconnect errors)
-    const userJobs = await prisma.job.findMany({
+    // Preserve company data: reassign jobs, candidates, and evaluations to the administrator
+    // so deleting a team member never deletes the organization's resumes, candidates, or evaluations.
+    await prisma.job.updateMany({
       where: { created_by: userId },
-      select: { id: true }
-    });
-    const userJobIds = userJobs.map(j => j.id);
-
-    const userCandidates = await prisma.candidate.findMany({
-      where: {
-        OR: [
-          { created_by: userId },
-          ...(userJobIds.length > 0 ? [{ job_id: { in: userJobIds } }] : [])
-        ]
-      },
-      select: { id: true }
-    });
-    const userCandidateIds = userCandidates.map(c => c.id);
-
-    // 1. Delete child records for all candidates owned or in member's jobs
-    if (userCandidateIds.length > 0) {
-      await prisma.candidateExperience.deleteMany({ where: { candidate_id: { in: userCandidateIds } } }).catch(() => null);
-      await prisma.candidateEducation.deleteMany({ where: { candidate_id: { in: userCandidateIds } } }).catch(() => null);
-      await prisma.candidateSkill.deleteMany({ where: { candidate_id: { in: userCandidateIds } } }).catch(() => null);
-      await prisma.candidateCertification.deleteMany({ where: { candidate_id: { in: userCandidateIds } } }).catch(() => null);
-      await prisma.candidateLanguage.deleteMany({ where: { candidate_id: { in: userCandidateIds } } }).catch(() => null);
-      await prisma.candidateProject.deleteMany({ where: { candidate_id: { in: userCandidateIds } } }).catch(() => null);
-    }
-
-    // 2. Delete candidate applications
-    if (userCandidateIds.length > 0 || userJobIds.length > 0) {
-      await prisma.candidateApplication.deleteMany({
-        where: {
-          OR: [
-            ...(userCandidateIds.length > 0 ? [{ candidate_id: { in: userCandidateIds } }] : []),
-            ...(userJobIds.length > 0 ? [{ job_id: { in: userJobIds } }] : [])
-          ]
-        }
-      }).catch(() => null);
-    }
-
-    // 3. Delete evaluations associated with member, candidates, or member's jobs
-    await prisma.evaluation.deleteMany({
-      where: {
-        OR: [
-          { createdByUserId: userId },
-          { evaluatedBy: userId },
-          { assignedToUserId: userId },
-          ...(userCandidateIds.length > 0 ? [{ candidateId: { in: userCandidateIds } }] : []),
-          ...(userJobIds.length > 0 ? [{ jobId: { in: userJobIds } }] : [])
-        ]
-      }
+      data: { created_by: fallbackOwnerId }
     }).catch(() => null);
 
-    // 4. Delete job requirements
-    if (userJobIds.length > 0) {
-      await prisma.requirement.deleteMany({ where: { job_id: { in: userJobIds } } }).catch(() => null);
-    }
+    await prisma.candidate.updateMany({
+      where: { created_by: userId },
+      data: { created_by: fallbackOwnerId }
+    }).catch(() => null);
 
-    // 5. Delete candidate profiles
-    if (userCandidateIds.length > 0) {
-      await prisma.candidate.deleteMany({ where: { id: { in: userCandidateIds } } }).catch(() => null);
-    }
-    await prisma.candidate.deleteMany({ where: { created_by: userId } }).catch(() => null);
+    await prisma.evaluation.updateMany({
+      where: { createdByUserId: userId },
+      data: { createdByUserId: fallbackOwnerId }
+    }).catch(() => null);
 
-    // 6. Delete jobs
-    if (userJobIds.length > 0) {
-      await prisma.job.deleteMany({ where: { id: { in: userJobIds } } }).catch(() => null);
-    }
-    await prisma.job.deleteMany({ where: { created_by: userId } }).catch(() => null);
+    await prisma.evaluation.updateMany({
+      where: { evaluatedBy: userId },
+      data: { evaluatedBy: fallbackOwnerId }
+    }).catch(() => null);
 
-    // 7. Nullify audit log user references if any
+    await prisma.evaluation.updateMany({
+      where: { assignedToUserId: userId },
+      data: { assignedToUserId: null }
+    }).catch(() => null);
+
+    // Nullify audit log user references if any
     await (prisma as any).auditLog?.updateMany({
       where: { userId },
       data: { userId: null }
     }).catch(() => null);
 
-    // 8. Delete user account
+    // Delete member user account safely
     await prisma.user.delete({ where: { id: userId } });
 
     res.status(200).json({
       success: true,
-      message: `Member ${targetUser.name || targetUser.email} and all associated jobs, candidates, and evaluations have been permanently removed.`
+      message: `Member ${targetUser.name || targetUser.email} has been removed and company candidate data preserved.`
     });
   } catch (error: any) {
     console.error('[User Controller] Error deleting user and associated data:', error);

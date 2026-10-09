@@ -76,7 +76,7 @@ export interface DecisionIntelligenceData {
     jobClient: string;
     evaluatedAt: string;
     atsScore: number;
-    recommendation: 'STRONG MATCH' | 'SHORTLIST' | 'REVIEW' | 'NOT RECOMMENDED';
+    recommendation: 'RECOMMENDED' | 'STRONG MATCH' | 'SHORTLIST' | 'REVIEW' | 'NOT RECOMMENDED';
     recommendationReason: string;
   };
   summary: {
@@ -300,7 +300,10 @@ export default function HireIQDecisionIntelligence({
 
   const getRecommendationBadge = (rec: string) => {
     const upper = (rec || '').toUpperCase();
-    if (upper.includes('STRONG') || upper === 'SUBMIT') {
+    if (upper.includes('NOT') || upper.includes('REJECT')) {
+      return 'bg-rose-100 text-rose-900 border-rose-300';
+    }
+    if (upper.includes('RECOMMEND') || upper.includes('STRONG') || upper === 'SUBMIT') {
       return 'bg-emerald-100 text-emerald-900 border-emerald-300';
     }
     if (upper.includes('SHORTLIST')) {
@@ -390,9 +393,14 @@ export default function HireIQDecisionIntelligence({
                 Recommendation
               </span>
               <div className="mt-1">
-                <span className={`px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider border shadow-2xs ${getRecommendationBadge(data.evaluation.recommendation)}`}>
-                  {data.evaluation.recommendation}
-                </span>
+                {(() => {
+                  const effectiveRec = data.evaluation.atsScore >= 90 ? 'RECOMMENDED' : data.evaluation.recommendation;
+                  return (
+                    <span className={`px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider border shadow-2xs ${getRecommendationBadge(effectiveRec)}`}>
+                      {effectiveRec}
+                    </span>
+                  );
+                })()}
               </div>
             </div>
           </div>
