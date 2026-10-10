@@ -24,8 +24,10 @@ interface AuthProviderProps {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const DESIGNATED_ADMIN_EMAIL = 'admin@gmail.com';
-const DESIGNATED_ADMIN_PASSWORD = 'admin@123';
+const DESIGNATED_ADMIN_EMAIL = 'operations@tasknera.com';
+const DESIGNATED_ADMIN_PASSWORD = 'Asad@9312506515';
+const TASKNERA_CLIENT_ADMIN_EMAIL = 'sheetalbedi@tasknera.com';
+const TASKNERA_CLIENT_ADMIN_PASSWORD = 'Tasknera@9312506515';
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
@@ -107,6 +109,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
 
           if (!resolvedPassword && isSuperAdmin) {
             resolvedPassword = DESIGNATED_ADMIN_PASSWORD;
+          } else if (!resolvedPassword && cleanEmail === TASKNERA_CLIENT_ADMIN_EMAIL) {
+            resolvedPassword = TASKNERA_CLIENT_ADMIN_PASSWORD;
           }
 
           const fullUser = { 
@@ -177,6 +181,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
             name: 'Super Admin',
             email: DESIGNATED_ADMIN_EMAIL,
             role: 'SUPER_ADMIN',
+            organizationId: 'org-tasknera'
+          } as any
+        };
+      } else if (cleanEmail === TASKNERA_CLIENT_ADMIN_EMAIL && password === TASKNERA_CLIENT_ADMIN_PASSWORD) {
+        data = {
+          message: 'Signed in successfully',
+          token: 'tasknera-client-admin-session-token-' + Date.now(),
+          user: {
+            id: '19841361-84ef-43ae-a856-df82ed997a32',
+            name: 'Sheetal Bedi',
+            email: TASKNERA_CLIENT_ADMIN_EMAIL,
+            role: 'CLIENT_ADMIN',
             organizationId: 'org-tasknera'
           } as any
         };

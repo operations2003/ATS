@@ -1057,7 +1057,7 @@ export const sampleClientProfiles: ClientProfile[] = [
     },
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
-    createdBy: 'admin@tasknera.com',
+    createdBy: 'sheetalbedi@tasknera.com',
   },
   {
     id: 'client-2',
@@ -1080,7 +1080,7 @@ export const sampleClientProfiles: ClientProfile[] = [
     },
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
-    createdBy: 'admin@tasknera.com',
+    createdBy: 'sheetalbedi@tasknera.com',
   },
 ];
 

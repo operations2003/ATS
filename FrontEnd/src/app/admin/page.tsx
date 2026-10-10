@@ -78,7 +78,7 @@ export default function AdminPage() {
   const isPurgedMember = (email?: string, name?: string): boolean => {
     const e = String(email || '').toLowerCase().trim();
     const n = String(name || '').toLowerCase().trim();
-    if (e === 'admin@gmail.com' || e === 'admin@tasknera.com') return true;
+    if (e === 'operations@tasknera.com' || e === 'admin@gmail.com' || e === 'admin@tasknera.com' || e === 'sheetalbedi@tasknera.com') return true;
     if (e.includes('harsh') || n.includes('harsh')) return true;
     if (e.includes('aditya') || n.includes('aditya')) return true;
     return false;
@@ -109,7 +109,7 @@ export default function AdminPage() {
         if (Array.isArray(data.members)) {
           // Cascade delete purged members from backend database if found
           data.members.forEach(async (m: any) => {
-            if (isPurgedMember(m.email, m.name) && m.email?.toLowerCase().trim() !== 'admin@gmail.com' && m.email?.toLowerCase().trim() !== 'admin@tasknera.com') {
+            if (isPurgedMember(m.email, m.name) && m.email?.toLowerCase().trim() !== 'operations@tasknera.com' && m.email?.toLowerCase().trim() !== 'admin@gmail.com' && m.email?.toLowerCase().trim() !== 'admin@tasknera.com' && m.email?.toLowerCase().trim() !== 'sheetalbedi@tasknera.com') {
               try {
                 await fetch(`${backendUrl}/users/${encodeURIComponent(m.id)}?email=${encodeURIComponent(m.email)}`, {
                   method: 'DELETE',
@@ -591,8 +591,10 @@ export default function AdminPage() {
     currentRole === 'SUPER_ADMIN' ||
     currentRole === 'CLIENT_ADMIN' ||
     currentRole === 'ADMIN' ||
+    currentEmail === 'operations@tasknera.com' ||
     currentEmail === 'admin@gmail.com' ||
-    currentEmail === 'admin@tasknera.com';
+    currentEmail === 'admin@tasknera.com' ||
+    currentEmail === 'sheetalbedi@tasknera.com';
 
   // Smooth redirection for recruiters or unauthenticated visitors without showing any unauthorized login card
   useEffect(() => {

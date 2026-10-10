@@ -297,7 +297,7 @@ export const createJob = async (req: AuthRequest, res: Response): Promise<void> 
 
     // Check active jobs quota if not Super Admin
     const callerRole = req.user?.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
     const targetOrgId = req.user?.organizationId || 'org-tasknera';
 
     if (!isSuperAdmin) {
@@ -421,7 +421,7 @@ export const normalizeJobWithAiController = async (req: AuthRequest, res: Respon
     }
 
     const callerRole = req.user?.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
     const userOrgId = req.user?.organizationId || 'org-tasknera';
 
     if (!isSuperAdmin && (job.organizationId || 'org-tasknera') !== userOrgId) {
@@ -552,7 +552,7 @@ export const getAllJobs = async (req: AuthRequest, res: Response): Promise<void>
     }
 
     const callerRole = req.user.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user.email?.toLowerCase().trim() === 'admin@gmail.com';
     const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
 
     // Strictly scope by tenant organization
@@ -769,7 +769,7 @@ export const getAvailableJobsForEvaluation = async (req: AuthRequest, res: Respo
     }
 
     const callerRole = req.user.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user.email?.toLowerCase().trim() === 'admin@gmail.com';
     const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
 
     const whereClause: any = {
@@ -852,7 +852,7 @@ export const getJobById = async (req: AuthRequest, res: Response): Promise<void>
     }
 
     const callerRole = req.user?.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
     const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
     const userOrgId = req.user?.organizationId || 'org-tasknera';
 
@@ -1061,7 +1061,7 @@ export const updateJob = async (req: AuthRequest, res: Response): Promise<void> 
     }
 
     const callerRole = req.user?.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
     const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
     const userOrgId = req.user?.organizationId || 'org-tasknera';
 
@@ -1185,7 +1185,7 @@ export const deleteJob = async (req: AuthRequest, res: Response): Promise<void> 
     }
 
     const callerRole = req.user?.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
     const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
     const userOrgId = req.user?.organizationId || 'org-tasknera';
 

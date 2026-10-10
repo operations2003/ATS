@@ -66,7 +66,7 @@ async function runMigration() {
         "id", "name", "company_email", "status", "subscription_plan", "billing_cycle",
         "max_users", "max_recruiters", "max_active_jobs", "max_resumes_per_month"
       ) VALUES (
-        'org-tasknera', 'Tasknera Global', 'admin@tasknera.com', 'ACTIVE', 'ENTERPRISE', 'monthly',
+        'org-tasknera', 'Tasknera Global', 'sheetalbedi@tasknera.com', 'ACTIVE', 'ENTERPRISE', 'monthly',
         100, 50, 100, 5000
       ) ON CONFLICT ("id") DO NOTHING;
     `);

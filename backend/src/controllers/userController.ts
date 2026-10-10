@@ -17,7 +17,7 @@ export const createMember = async (req: AuthRequest, res: Response): Promise<voi
     }
 
     const callerRole = req.user.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user.email?.toLowerCase().trim() === 'admin@gmail.com';
     const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
 
     if (!isSuperAdmin && !isClientAdmin) {
@@ -152,7 +152,7 @@ export const createMember = async (req: AuthRequest, res: Response): Promise<voi
 export const getAllUsers = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const callerRole = req.user?.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
     const targetOrgId = req.query.organizationId ? String(req.query.organizationId) : req.user?.organizationId;
 
     const whereClause: any = {
@@ -210,11 +210,11 @@ export const getAllUsers = async (req: AuthRequest, res: Response): Promise<void
 export const getTAMembers = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const callerRole = req.user?.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
     const filterOrgId = req.query.organizationId ? String(req.query.organizationId) : req.user?.organizationId;
 
     const andConditions: any[] = [
-      { email: { not: 'admin@gmail.com' } },
+      { email: { notIn: ['admin@gmail.com', 'operations@tasknera.com'] } },
       { role: { notIn: ['ADMIN', 'SUPER_ADMIN', 'CLIENT_ADMIN'] } },
       { email: { not: { contains: 'harsh' } } },
       { name: { not: { contains: 'harsh' } } },
@@ -269,7 +269,7 @@ export const getTAMembers = async (req: AuthRequest, res: Response): Promise<voi
     });
 
     const taMembers = users
-      .filter(u => u.email?.toLowerCase().trim() !== 'admin@gmail.com' && u.role !== 'ADMIN')
+      .filter(u => u.email?.toLowerCase().trim() !== 'admin@gmail.com' && u.email?.toLowerCase().trim() !== 'operations@tasknera.com' && u.role !== 'ADMIN')
       .map(user => {
         const cleanRole = user.role === 'TEAM_LEADER' ? 'TEAM_LEAD' : 'RECRUITER_MEMBER';
         const cleanName = user.name || user.email.split('@')[0].replace('.', ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -520,7 +520,7 @@ export const updateMember = async (req: AuthRequest, res: Response): Promise<voi
     }
 
     const callerRole = req.user.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user.email?.toLowerCase().trim() === 'admin@gmail.com';
     const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
 
     if (!isSuperAdmin && !isClientAdmin) {
@@ -560,7 +560,7 @@ export const updateMember = async (req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
-    if (targetUser.email?.toLowerCase().trim() === 'admin@gmail.com' || (targetUser.role as string) === 'SUPER_ADMIN') {
+    if (targetUser.email?.toLowerCase().trim() === 'operations@tasknera.com' || targetUser.email?.toLowerCase().trim() === 'admin@gmail.com' || (targetUser.role as string) === 'SUPER_ADMIN') {
       if (role && role !== 'SUPER_ADMIN') {
         res.status(403).json({ error: 'Cannot demote or alter primary administrator role' });
         return;
@@ -669,7 +669,7 @@ export const deleteUser = async (req: AuthRequest, res: Response): Promise<void>
     }
 
     const callerRole = req.user.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user.email?.toLowerCase().trim() === 'admin@gmail.com';
     const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
 
     if (!isSuperAdmin && !isClientAdmin) {
@@ -711,7 +711,7 @@ export const deleteUser = async (req: AuthRequest, res: Response): Promise<void>
       return;
     }
 
-    if (targetUser.email?.toLowerCase().trim() === 'admin@gmail.com' || (targetUser.role as string) === 'SUPER_ADMIN') {
+    if (targetUser.email?.toLowerCase().trim() === 'operations@tasknera.com' || targetUser.email?.toLowerCase().trim() === 'admin@gmail.com' || (targetUser.role as string) === 'SUPER_ADMIN') {
       res.status(403).json({ error: 'Super Administrator accounts cannot be deleted' });
       return;
     }
@@ -792,7 +792,7 @@ export const toggleUserActiveController = async (req: AuthRequest, res: Response
     const { isActive } = req.body;
 
     const callerRole = req.user?.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
 
     const targetUser = await prisma.user.findUnique({ where: { id: rawId } });
     if (!targetUser) {
@@ -805,7 +805,7 @@ export const toggleUserActiveController = async (req: AuthRequest, res: Response
       return;
     }
 
-    if (targetUser.email?.toLowerCase().trim() === 'admin@gmail.com' || (targetUser.role as string) === 'SUPER_ADMIN') {
+    if (targetUser.email?.toLowerCase().trim() === 'operations@tasknera.com' || targetUser.email?.toLowerCase().trim() === 'admin@gmail.com' || (targetUser.role as string) === 'SUPER_ADMIN') {
       res.status(400).json({ error: 'Cannot deactivate Super Administrator accounts.' });
       return;
     }

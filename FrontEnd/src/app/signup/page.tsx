@@ -70,7 +70,7 @@ export default function SignUpPage() {
                 </h2>
 
                 <p className="text-slate-600 text-xs leading-relaxed max-w-sm mx-auto mb-6">
-                  Your request for <strong className="font-bold text-slate-900">{workEmail}</strong> has been routed to your organization administrator (<strong className="font-semibold text-slate-800">admin@gmail.com</strong>). You will receive an invitation email once approved.
+                  Your request for <strong className="font-bold text-slate-900">{workEmail}</strong> has been routed to your organization administrator (<strong className="font-semibold text-slate-800">operations@tasknera.com</strong>). You will receive an invitation email once approved.
                 </p>
 
                 <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 text-left text-xs text-slate-600 space-y-2 mb-6">

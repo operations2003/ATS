@@ -24,7 +24,7 @@ const Header: React.FC = () => {
   const cachedEmail = typeof window !== 'undefined' ? (localStorage.getItem('tasknera_email') || '') : '';
   const currentRole = user?.role || cachedRole || 'RECRUITER_MEMBER';
 
-  const isSuperAdmin = currentRole === 'SUPER_ADMIN' || (user?.email || cachedEmail)?.toLowerCase().trim() === 'admin@gmail.com';
+  const isSuperAdmin = currentRole === 'SUPER_ADMIN' || (user?.email || cachedEmail)?.toLowerCase().trim() === 'operations@tasknera.com' || (user?.email || cachedEmail)?.toLowerCase().trim() === 'admin@gmail.com';
   const isClientAdmin = currentRole === 'CLIENT_ADMIN' || currentRole === 'ADMIN';
   const isAdmin = isSuperAdmin || isClientAdmin;
 

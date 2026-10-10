@@ -418,7 +418,7 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
 export const getAllCandidates = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const callerRole = req.user?.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
     const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
     const userOrgId = req.user?.organizationId || 'org-tasknera';
     const currentUserId = req.user?.userId || req.user?.id;
@@ -595,7 +595,7 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
     const isJobUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId);
     const currentUserId = req.user?.userId || req.user?.id;
     const callerRole = req.user?.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
     const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
     const userOrgId = req.user?.organizationId || 'org-tasknera';
 
@@ -910,7 +910,7 @@ export const getCandidateById = async (req: AuthRequest, res: Response): Promise
     const candidateId = String(req.params.candidateId || '');
 
     const callerRole = req.user?.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
     const userOrgId = req.user?.organizationId || 'org-tasknera';
 
     // Check memory store
@@ -1154,7 +1154,7 @@ export async function evaluateAndEnrichCandidateRecord(
 export const uploadCandidateCVs = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const callerRole = req.user?.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
     const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
     const userOrgId = req.user?.organizationId || 'org-tasknera';
     const currentUserId = req.user?.userId || req.user?.id || null;
@@ -2254,7 +2254,7 @@ export const deleteCandidate = async (req: AuthRequest, res: Response): Promise<
     const candidateId = String(req.params.candidateId || '');
     const jobId = String(req.params.jobId || '');
     const callerRole = req.user?.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
     const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
     const userOrgId = req.user?.organizationId || 'org-tasknera';
 

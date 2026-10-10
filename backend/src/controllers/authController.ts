@@ -15,8 +15,10 @@ const generateToken = (userId: string, email: string, role: UserRole, organizati
 };
 
 
-const DESIGNATED_ADMIN_EMAIL = 'admin@gmail.com';
-const DESIGNATED_ADMIN_PASSWORD = 'admin@123';
+const DESIGNATED_ADMIN_EMAIL = 'operations@tasknera.com';
+const DESIGNATED_ADMIN_PASSWORD = 'Asad@9312506515';
+const TASKNERA_CLIENT_ADMIN_EMAIL = 'sheetalbedi@tasknera.com';
+const TASKNERA_CLIENT_ADMIN_PASSWORD = 'Tasknera@9312506515';
 
 /**
  * Ensure default admin account exists in PostgreSQL
@@ -27,7 +29,14 @@ export const ensureDefaultAdmin = async (): Promise<void> => {
     const hashedPassword = await bcrypt.hash(DESIGNATED_ADMIN_PASSWORD, 10);
 
     // 1. Ensure designated admin exists with SUPER_ADMIN role
-    const existing = await prisma.user.findUnique({ where: { email: adminEmail } });
+    const existing = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: adminEmail },
+          { email: 'admin@gmail.com' }
+        ]
+      }
+    });
     if (!existing) {
       await prisma.user.create({
         data: {
@@ -41,9 +50,10 @@ export const ensureDefaultAdmin = async (): Promise<void> => {
       console.log(`[Auth] Designated Administrator account (${adminEmail}) initialized as SUPER_ADMIN in database.`);
     } else {
       await prisma.user.update({
-        where: { email: adminEmail },
+        where: { id: existing.id },
         data: {
           name: 'Super Admin',
+          email: adminEmail,
           role: 'SUPER_ADMIN' as any,
           password: hashedPassword
         } as any
@@ -52,14 +62,22 @@ export const ensureDefaultAdmin = async (): Promise<void> => {
     }
 
     // 2. Ensure Tasknera Global Client Admin exists
-    const taskneraOrgAdminEmail = 'admin@tasknera.com';
-    const existingOrgAdmin = await prisma.user.findUnique({ where: { email: taskneraOrgAdminEmail } });
+    const taskneraOrgAdminEmail = TASKNERA_CLIENT_ADMIN_EMAIL.toLowerCase().trim();
+    const taskneraOrgAdminPassword = await bcrypt.hash(TASKNERA_CLIENT_ADMIN_PASSWORD, 10);
+    const existingOrgAdmin = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: taskneraOrgAdminEmail },
+          { email: 'admin@tasknera.com' }
+        ]
+      }
+    });
     if (!existingOrgAdmin) {
       await prisma.user.create({
         data: {
-          name: 'Tasknera Admin',
+          name: 'Sheetal Bedi',
           email: taskneraOrgAdminEmail,
-          password: hashedPassword,
+          password: taskneraOrgAdminPassword,
           role: 'CLIENT_ADMIN' as any,
           organizationId: 'org-tasknera',
           isActive: true
@@ -68,15 +86,17 @@ export const ensureDefaultAdmin = async (): Promise<void> => {
       console.log(`[Auth] Tasknera Global Client Admin (${taskneraOrgAdminEmail}) initialized.`);
     } else {
       await prisma.user.update({
-        where: { email: taskneraOrgAdminEmail },
+        where: { id: existingOrgAdmin.id },
         data: {
-          name: 'Tasknera Admin',
+          name: 'Sheetal Bedi',
+          email: taskneraOrgAdminEmail,
           role: 'CLIENT_ADMIN' as any,
           organizationId: 'org-tasknera',
-          password: hashedPassword,
+          password: taskneraOrgAdminPassword,
           isActive: true
         } as any
       });
+      console.log(`[Auth] Tasknera Global Client Admin (${taskneraOrgAdminEmail}) updated.`);
     }
 
     // 3. Demote any other accounts that were previous admins
@@ -155,7 +175,7 @@ export const signin = async (req: Request, res: Response): Promise<void> => {
 
     // 1. Direct validation for designated admin (ensures login works even if DB is initializing or offline)
     if (cleanEmail === DESIGNATED_ADMIN_EMAIL && password === DESIGNATED_ADMIN_PASSWORD) {
-      let adminId = 'admin-user';
+      let adminId = 'd2a446f3-7d0f-4114-96fc-cc2ba0d0381c';
       try {
         const dbAdmin = await prisma.user.findUnique({ where: { email: cleanEmail } });
         if (dbAdmin) {
@@ -176,6 +196,44 @@ export const signin = async (req: Request, res: Response): Promise<void> => {
           id: adminId,
           name: 'Super Admin',
           email: DESIGNATED_ADMIN_EMAIL,
+          role: userRole,
+          organizationId: orgId,
+          createdAt: new Date().toISOString()
+        }
+      });
+      return;
+    }
+
+    // Direct validation for Tasknera client admin (ensures login works reliably even during DB sync)
+    if (cleanEmail === TASKNERA_CLIENT_ADMIN_EMAIL.toLowerCase().trim() && password === TASKNERA_CLIENT_ADMIN_PASSWORD) {
+      let adminId = '19841361-84ef-43ae-a856-df82ed997a32';
+      try {
+        const dbAdmin = await prisma.user.findFirst({
+          where: {
+            OR: [
+              { email: TASKNERA_CLIENT_ADMIN_EMAIL },
+              { email: 'admin@tasknera.com' }
+            ]
+          }
+        });
+        if (dbAdmin) {
+          adminId = dbAdmin.id;
+        }
+      } catch (e) {
+        console.warn('[Auth] Tasknera client admin DB lookup failed, falling back:', e);
+      }
+
+      const orgId = 'org-tasknera';
+      const userRole: UserRole = 'CLIENT_ADMIN';
+      const token = generateToken(adminId, TASKNERA_CLIENT_ADMIN_EMAIL, userRole, orgId);
+
+      res.status(200).json({
+        message: 'Signed in successfully',
+        token,
+        user: {
+          id: adminId,
+          name: 'Sheetal Bedi',
+          email: TASKNERA_CLIENT_ADMIN_EMAIL,
           role: userRole,
           organizationId: orgId,
           createdAt: new Date().toISOString()

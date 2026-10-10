@@ -29,6 +29,7 @@ async function resolveAuditUserId(tx: any, userId?: string | null): Promise<stri
     const adminUser = await tx.user.findFirst({
       where: {
         OR: [
+          { email: 'operations@tasknera.com' },
           { email: 'admin@gmail.com' },
           { role: 'SUPER_ADMIN' }
         ]

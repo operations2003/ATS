@@ -62,7 +62,7 @@ export const getOrCreateJobPublicLink = async (req: AuthRequest, res: Response):
     }
 
     const callerRole = req.user?.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
     const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
     const userOrgId = req.user?.organizationId || 'org-tasknera';
     const currentUserId = req.user?.userId || req.user?.id;
@@ -191,7 +191,7 @@ export const getJobPublicLink = async (req: AuthRequest, res: Response): Promise
     }
 
     const callerRole = req.user?.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
     const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
     const userOrgId = req.user?.organizationId || 'org-tasknera';
     const currentUserId = req.user?.userId || req.user?.id;
@@ -273,7 +273,7 @@ export const toggleJobPublicLink = async (req: AuthRequest, res: Response): Prom
     }
 
     const callerRole = req.user?.role || 'MEMBER';
-    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
     const isClientAdmin = callerRole === 'CLIENT_ADMIN' || callerRole === 'ADMIN';
     const userOrgId = req.user?.organizationId || 'org-tasknera';
     const currentUserId = req.user?.userId || req.user?.id;

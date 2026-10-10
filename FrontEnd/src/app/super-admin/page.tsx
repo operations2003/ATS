@@ -74,6 +74,7 @@ export default function SuperAdminPage() {
 
   const isSuperAdmin =
     user?.role === 'SUPER_ADMIN' ||
+    user?.email?.toLowerCase().trim() === 'operations@tasknera.com' ||
     user?.email?.toLowerCase().trim() === 'admin@gmail.com';
 
   const loadData = async () => {
