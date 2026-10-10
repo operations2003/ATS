@@ -48,6 +48,15 @@ import {
   toggleJobPublicLink,
 } from '../controllers/publicCandidateController';
 
+import {
+  getJobHiringRealityController,
+  simulateJobHiringRealityController
+} from '../controllers/hiringRealityController';
+
+// Hiring Reality Engine Routes (Phase 2)
+router.post('/hiring-reality/simulate', protect, simulateJobHiringRealityController);
+router.get('/:id/hiring-reality', protect, getJobHiringRealityController);
+
 // Database routes
 router.post('/', protect, createJob);
 router.get('/', protect, getAllJobs);

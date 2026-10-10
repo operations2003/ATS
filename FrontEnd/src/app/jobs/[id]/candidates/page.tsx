@@ -19,8 +19,10 @@ import {
   extractContextConcepts,
   areSkillsEquivalent,
 } from '@/utils/requirementUtils';
-import { RequirementStatus, ConfidenceLevel } from '@/types';
 import CandidateLinkModal from '@/components/CandidateLinkModal';
+import HireIQHiringReality from '@/components/jobs/HireIQHiringReality';
+import HireIQCandidateCompareAndSubmitModal, { CandidateComparisonItem } from '@/components/evaluation/HireIQCandidateCompareAndSubmitModal';
+import { RequirementStatus, ConfidenceLevel } from '@/types';
 
 
 export interface CandidateEducation {
@@ -610,6 +612,18 @@ export default function JobCandidatesPage() {
   const [isEditingPosition, setIsEditingPosition] = useState(false);
   const [editPositionInput, setEditPositionInput] = useState('');
   const [isCandidateLinkOpen, setIsCandidateLinkOpen] = useState(false);
+  const [showRealityModal, setShowRealityModal] = useState(false);
+
+  // Candidate Selection for Comparison & Client Submission
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
+  const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
+  const [compareModalTab, setCompareModalTab] = useState<'compare' | 'submit'>('compare');
+
+  const handleToggleSelectCandidate = (candId: string) => {
+    setSelectedCandidateIds(prev =>
+      prev.includes(candId) ? prev.filter(id => id !== candId) : [...prev, candId]
+    );
+  };
 
   useEffect(() => {
     setIsMounted(true);
@@ -1394,6 +1408,7 @@ export default function JobCandidatesPage() {
         matchLevel: finalLevel,
         matchBreakdown: matchResult.breakdown,
         matchSummary: matchResult.summary,
+        matchResult,
         requirementEvals,
         decision: effectiveDecision,
         recommendation: (c as any).recommendation || (effectiveDecision === 'SUBMIT' ? 'ACCEPT' : effectiveDecision === 'REJECT' ? 'REJECT' : 'REVIEW'),
@@ -1673,6 +1688,37 @@ export default function JobCandidatesPage() {
       return sortDirection === 'desc' ? comparison : -comparison;
     });
 
+  const comparisonCandidates: CandidateComparisonItem[] = useMemo(() => {
+    return filteredCandidates
+      .filter(c => selectedCandidateIds.includes(c.id))
+      .map(c => {
+        const expInfo = getNumericExperienceDetails(c);
+        const gapInfo = getCandidateCareerGaps(c);
+        return {
+          id: c.id,
+          name: c.name || c.fileName || 'Candidate',
+          email: c.email,
+          phone: c.phone,
+          currentTitle: c.currentTitle,
+          currentCompany: c.currentCompany,
+          location: c.location,
+          totalExperienceYears: expInfo.years || 0,
+          score: c.matchScore ?? 0,
+          decisionTag: candidateDecisions[c.id],
+          matchResult: (c as any).matchResult,
+          skills: c.skills || [],
+          noticePeriod: (c as any).noticePeriod || '30 Days',
+          expectedSalary: (c as any).expectedSalary,
+          currentSalary: (c as any).currentSalary,
+          gapAnalysis: {
+            hasGap: gapInfo.hasGap,
+            totalGapMonths: gapInfo.totalGapMonths,
+            statusText: gapInfo.statusText,
+          },
+        };
+      });
+  }, [filteredCandidates, selectedCandidateIds, candidateDecisions]);
+
 
   const parsedCount = candidates.filter(c => c.parsingStatus === 'PARSED').length;
   const strongMatchCount = candidatesWithMatch.filter(c => (c.matchScore ?? 0) >= 80).length;
@@ -1848,6 +1894,15 @@ export default function JobCandidatesPage() {
               >
                 Configure Job Criteria
               </Link>
+              <button
+                type="button"
+                onClick={() => setShowRealityModal(true)}
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl border border-white/20 transition-all cursor-pointer backdrop-blur-sm shadow-xs"
+                title="Stress-test this requisition against market talent supply"
+              >
+                <span className="w-2 h-2 rounded-full bg-brand-orange animate-pulse" />
+                <span>Hiring Reality Check</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setIsCandidateLinkOpen(true)}
@@ -2111,6 +2166,21 @@ export default function JobCandidatesPage() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50/90 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                    <th className="px-4 py-3.5 w-12 text-center">
+                      <input
+                        type="checkbox"
+                        checked={filteredCandidates.length > 0 && selectedCandidateIds.length === filteredCandidates.length}
+                        onChange={() => {
+                          if (selectedCandidateIds.length === filteredCandidates.length) {
+                            setSelectedCandidateIds([]);
+                          } else {
+                            setSelectedCandidateIds(filteredCandidates.map(c => c.id));
+                          }
+                        }}
+                        className="rounded text-brand-orange focus:ring-brand-orange h-4 w-4 cursor-pointer"
+                        title="Select all candidates for comparison or submission"
+                      />
+                    </th>
                     <th className="px-6 py-3.5">Candidate Profile</th>
                     <th className="px-6 py-3.5">Experience & History</th>
                     <th className="px-6 py-3.5 hidden lg:table-cell">Current Role</th>
@@ -2125,6 +2195,16 @@ export default function JobCandidatesPage() {
                     const badge = statusBadge(c.parsingStatus);
                     return (
                       <tr key={c.id} className="hover:bg-slate-50/70 transition-colors group">
+                        {/* Selection Checkbox */}
+                        <td className="px-4 py-4 text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedCandidateIds.includes(c.id)}
+                            onChange={() => handleToggleSelectCandidate(c.id)}
+                            className="rounded text-brand-orange focus:ring-brand-orange h-4 w-4 cursor-pointer"
+                            title={`Select ${c.name || 'candidate'}`}
+                          />
+                        </td>
                         {/* Candidate Name & Avatar (No # badge) */}
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3.5">
@@ -2947,6 +3027,110 @@ export default function JobCandidatesPage() {
           onClose={() => setIsCandidateLinkOpen(false)}
           jobId={jobId}
           jobTitle={job?.position || 'Job Requisition'}
+        />
+
+        {/* HireIQ Hiring Reality Stress Test Modal */}
+        {showRealityModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 max-w-4xl w-full shadow-2xl relative max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-4 mb-6 border-b border-slate-100">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-brand-orange">
+                    Role Feasibility Stress Test
+                  </span>
+                  <h3 className="text-lg font-black text-slate-900 mt-0.5">
+                    {job?.position || 'Job Requisition'} • {job?.client || 'Hiring Organization'}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowRealityModal(false)}
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-sm font-bold cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <HireIQHiringReality jobId={jobId as string} />
+            </div>
+          </div>
+        )}
+
+        {/* Floating Selection Toolbar for Compare & Client Submission */}
+        {selectedCandidateIds.length > 0 && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-4 animate-in slide-in-from-bottom-5 duration-200">
+            <div className="flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-brand-orange text-white text-xs font-mono font-bold flex items-center justify-center">
+                {selectedCandidateIds.length}
+              </span>
+              <span className="text-xs font-bold text-slate-200">
+                Candidate{selectedCandidateIds.length === 1 ? '' : 's'} Selected
+              </span>
+            </div>
+
+            <div className="h-4 w-px bg-slate-700" />
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setCompareModalTab('compare');
+                  setIsCompareModalOpen(true);
+                }}
+                disabled={selectedCandidateIds.length < 2}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  selectedCandidateIds.length >= 2
+                    ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-xs'
+                    : 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-60'
+                }`}
+                title={selectedCandidateIds.length < 2 ? 'Select at least 2 candidates to compare' : 'Compare candidates side-by-side'}
+              >
+                <span>📊 Compare Matrix</span>
+                {selectedCandidateIds.length >= 2 && (
+                  <span className="text-[10px] bg-blue-700 px-1.5 py-0.2 rounded-full">
+                    ({selectedCandidateIds.length})
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => {
+                  setCompareModalTab('submit');
+                  setIsCompareModalOpen(true);
+                }}
+                className="px-3.5 py-1.5 bg-brand-orange hover:bg-brand-orange-hover text-white rounded-xl text-xs font-extrabold transition-all shadow-orange cursor-pointer flex items-center gap-1.5"
+              >
+                <span>📨 Client Submission</span>
+              </button>
+
+              <button
+                onClick={() => setSelectedCandidateIds([])}
+                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                title="Deselect all"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* HireIQ Candidate Compare & Client Submission Modal */}
+        <HireIQCandidateCompareAndSubmitModal
+          isOpen={isCompareModalOpen}
+          onClose={() => setIsCompareModalOpen(false)}
+          job={{
+            id: jobId as string,
+            position: job?.position || 'Job Requisition',
+            client: job?.client || 'Hiring Organization',
+            location: job?.location,
+            salary: (job as any)?.salary,
+            requirements: ((job as any)?.requirements || []).map((r: any) => ({
+              id: r.id,
+              requirement: r.requirement,
+              isMandatory: Boolean(r.is_mandatory ?? r.isMandatory),
+            })),
+          }}
+          selectedCandidates={comparisonCandidates}
+          defaultTab={compareModalTab}
         />
       </main>
 

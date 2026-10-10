@@ -7,6 +7,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { useAuth } from '@/context/AuthContext';
 import { AuthModal } from '@/components/AuthModal';
+import HireIQHiringReality from '@/components/jobs/HireIQHiringReality';
 
 interface ExtractedRequirement {
   id: string;
@@ -49,6 +50,7 @@ export default function CreateJobPage() {
   const [normalizedText, setNormalizedText] = useState('');
   const [docMetrics, setDocMetrics] = useState<DocumentMetrics | null>(null);
   const [showRawTextDrawer, setShowRawTextDrawer] = useState(false);
+  const [showHiringReality, setShowHiringReality] = useState(true);
 
   // File Upload State
   const [activeTab, setActiveTab] = useState<'file' | 'text'>('file');
@@ -605,16 +607,27 @@ export default function CreateJobPage() {
                   )}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setShowRawTextDrawer(!showRawTextDrawer)}
-                  className="text-xs text-brand-orange hover:text-brand-orange-hover font-bold underline flex items-center gap-1 cursor-pointer"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                  </svg>
-                  {showRawTextDrawer ? 'Hide Debug Drawer' : 'View Extracted Raw Text & Metrics'}
-                </button>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setShowHiringReality(prev => !prev)}
+                    className="text-xs text-brand-orange hover:text-brand-orange-hover font-bold flex items-center gap-1.5 cursor-pointer bg-brand-orange/10 px-3 py-1.5 rounded-xl border border-brand-orange/20 transition-all hover:bg-brand-orange/15 shadow-2xs"
+                  >
+                    <span>⚡</span>
+                    <span>{showHiringReality ? 'Hide Hiring Reality Stress Test' : 'Run Hiring Reality Stress Test'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowRawTextDrawer(!showRawTextDrawer)}
+                    className="text-xs text-slate-500 hover:text-slate-800 font-bold underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                    </svg>
+                    {showRawTextDrawer ? 'Hide Debug Drawer' : 'View Extracted Raw Text & Metrics'}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -675,6 +688,21 @@ export default function CreateJobPage() {
               </div>
             )}
           </div>
+
+          {/* HireIQ Hiring Reality Stress Test (Phase 2) */}
+          {(scanComplete || requirements.length > 0) && showHiringReality && (
+            <div className="animate-fadeIn">
+              <HireIQHiringReality
+                jobTitle={position || 'Position Requisition'}
+                client={client || 'Client Organization'}
+                location={location}
+                workMode={workMode}
+                salary={salary}
+                jdText={jdText || rawText}
+                requirements={requirements}
+              />
+            </div>
+          )}
 
           {/* Section 2: Extracted Job Specifications Form */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
