@@ -8,7 +8,8 @@ import {
   assignUserTeam,
   deleteUser,
   getUserQuotaController,
-  toggleUserActiveController
+  toggleUserActiveController,
+  getRecruiterPerformanceTrackerController
 } from '../controllers/userController';
 import { protect, optionalProtect, authorize } from '../middleware/authMiddleware';
 
@@ -19,6 +20,9 @@ router.get('/quota', protect, getUserQuotaController);
 
 // GET /api/users/ta-members - Live TA members data with real database metrics
 router.get('/ta-members', protect, getTAMembers);
+
+// GET /api/users/recruiter-performance - Recruiter Performance & CV Evaluation Pipeline Tracker
+router.get('/recruiter-performance', protect, getRecruiterPerformanceTrackerController);
 
 // GET /api/users - Available for user lists
 router.get('/', protect, getAllUsers);

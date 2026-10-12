@@ -8,7 +8,7 @@ import Footer from '@/components/Footer';
 import { useAuth } from '@/context/AuthContext';
 import { UserRole, OrganizationQuota } from '@/lib/api';
 import { atsStore, AuditEvent, RecruiterMetric, JobItem, CandidateItem } from '@/lib/atsStore';
-
+import RecruiterPerformancePipelineTracker from '@/components/admin/RecruiterPerformancePipelineTracker';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -973,7 +973,7 @@ export default function AdminPage() {
         {/* ── MODAL: RECRUITER ACTIVITY & TIME DRILL-DOWN ── */}
         {showRecruiterModal && selectedRecruiter && (
           <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+            <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-4xl w-full shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-2xl bg-brand-orange text-white font-black text-lg flex items-center justify-center">
@@ -1082,52 +1082,12 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* Day by Day Time Log Table */}
-                <div>
-                  <h4 className="font-black text-slate-900 uppercase text-[11px] tracking-wider mb-2">
-                    📅 Daily Time Spent Breakdown (Past 5 Days)
-                  </h4>
-                  <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50/50">
-                    <table className="w-full text-left text-xs">
-                      <thead>
-                        <tr className="border-b border-slate-200 bg-slate-100 text-[10px] font-black text-slate-500 uppercase">
-                          <th className="p-3 text-center">Day / Date</th>
-                          <th className="p-3 text-center">Total Hours</th>
-                          <th className="p-3 text-center">Resumes Evaluated</th>
-                          <th className="p-3 text-center">Candidates Shortlisted</th>
-                          <th className="p-3 text-center">JDs Uploaded</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200/80 bg-white">
-                        {(selectedRecruiter.dailyTimeLogs || [
-                          { day: 'Mon', date: 'Aug 28', hoursSpent: 6.8, resumesReviewedCount: 38, resumesTimeHours: 3.4, screeningsCount: 10, screeningTimeHours: 2.2, jdsUploadedCount: 1, jdTimeHours: 1.2 },
-                          { day: 'Tue', date: 'Aug 29', hoursSpent: 7.2, resumesReviewedCount: 42, resumesTimeHours: 3.8, screeningsCount: 12, screeningTimeHours: 2.4, jdsUploadedCount: 2, jdTimeHours: 1.0 },
-                          { day: 'Wed', date: 'Aug 30', hoursSpent: 6.5, resumesReviewedCount: 36, resumesTimeHours: 3.2, screeningsCount: 9, screeningTimeHours: 2.1, jdsUploadedCount: 1, jdTimeHours: 1.2 },
-                          { day: 'Thu', date: 'Aug 31', hoursSpent: 5.9, resumesReviewedCount: 34, resumesTimeHours: 3.0, screeningsCount: 8, screeningTimeHours: 1.9, jdsUploadedCount: 1, jdTimeHours: 1.0 },
-                          { day: 'Fri', date: 'Sep 01', hoursSpent: 6.4, resumesReviewedCount: 34, resumesTimeHours: 3.1, screeningsCount: 9, screeningTimeHours: 2.1, jdsUploadedCount: 1, jdTimeHours: 1.2 },
-                        ]).map((log, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50">
-                            <td className="p-3 font-bold text-slate-800">
-                              {log.day}, {log.date}
-                            </td>
-                            <td className="p-3 text-center font-black text-purple-700">
-                              {log.hoursSpent} hrs
-                            </td>
-                            <td className="p-3 text-center text-slate-700">
-                              <strong>{log.resumesReviewedCount} CVs</strong> <span className="text-slate-400">({log.resumesTimeHours}h)</span>
-                            </td>
-                            <td className="p-3 text-center text-slate-700">
-                              <strong className="text-emerald-700">{Math.round(log.screeningsCount * 0.6)} Shortlisted</strong> <span className="text-slate-400">({log.screeningTimeHours}h)</span>
-                            </td>
-                            <td className="p-3 text-center text-slate-700">
-                              <strong>{log.jdsUploadedCount} JDs</strong> <span className="text-slate-400">({log.jdTimeHours}h)</span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                {/* 📊 RECRUITER PERFORMANCE & CV EVALUATION PIPELINE TRACKER */}
+                <RecruiterPerformancePipelineTracker
+                  recruiter={selectedRecruiter as any}
+                  backendUrl={process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}
+                  token={typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null}
+                />
 
                 {/* Active Jobs Assigned */}
                 {jobs.filter(j => j.assignedRecruiter.toLowerCase().includes(selectedRecruiter.name.toLowerCase()) || (j.workedBy && j.workedBy.some(w => w.name.toLowerCase().includes(selectedRecruiter.name.toLowerCase())))).length > 0 && (
