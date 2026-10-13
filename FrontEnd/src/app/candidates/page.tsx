@@ -7,6 +7,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { useAuth } from '@/context/AuthContext';
 import HireIQDecisionIntelligence from '@/components/evaluation/HireIQDecisionIntelligence';
+import CandidateExecutiveSummary from '@/components/evaluation/CandidateExecutiveSummary';
 
 export interface CandidateItem {
   id: string;
@@ -221,7 +222,7 @@ export default function CandidatesPage() {
 
   // Candidate Profile Slide-over Drawer States
   const [selectedCandidate, setSelectedCandidate] = useState<CandidateItem | null>(null);
-  const [activeTab, setActiveTab] = useState<'decision' | 'overview' | 'history' | 'experience' | 'skills' | 'resume'>('decision');
+  const [activeTab, setActiveTab] = useState<'decision' | 'summary' | 'overview' | 'history' | 'experience' | 'skills' | 'resume'>('decision');
   const [decisionJobId, setDecisionJobId] = useState<string | null>(null);
   const [copiedContact, setCopiedContact] = useState(false);
   const [candidateHistory, setCandidateHistory] = useState<EvaluationHistoryItem[]>([]);
@@ -1475,6 +1476,7 @@ export default function CandidatesPage() {
                 <div className="px-6 pt-4 flex items-center gap-4 border-b border-slate-100 overflow-x-auto">
                   {[
                     { id: 'decision', label: '⚡ Decision Intelligence' },
+                    { id: 'summary', label: '📄 Executive Summary' },
                     { id: 'overview', label: 'Summary & Education' },
                     { id: 'history', label: `Job Evaluations (${candidateHistory.length})` },
                     { id: 'experience', label: `Work History (${selectedCandidate.experience.length})` },
@@ -1522,6 +1524,33 @@ export default function CandidatesPage() {
                         fallbackJobTitle={candidateHistory.length > 0 ? (candidateHistory[0].jobTitle || candidateHistory[0].position) : selectedCandidate.role}
                         fallbackScore={candidateHistory.length > 0 && candidateHistory[0].score !== null ? Math.round(candidateHistory[0].score) : undefined}
                         fallbackRecommendation={selectedCandidate.decision}
+                      />
+                    </div>
+                  )}
+
+                  {/* Executive Summary Tab */}
+                  {activeTab === 'summary' && (
+                    <div className="space-y-4">
+                      {candidateHistory.length > 1 && (
+                        <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-3 text-xs mb-4">
+                          <span className="font-bold text-slate-700">Requisition Context:</span>
+                          <select
+                            value={decisionJobId || (candidateHistory[0]?.jobId || '')}
+                            onChange={(e) => setDecisionJobId(e.target.value)}
+                            className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 cursor-pointer"
+                          >
+                            {candidateHistory.map((h, i) => (
+                              <option key={i} value={h.jobId}>
+                                {h.jobTitle || h.position} ({h.score !== null ? `${Math.round(h.score)}% ATS` : 'Pending'})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      <CandidateExecutiveSummary
+                        candidateId={selectedCandidate.id}
+                        jobId={decisionJobId || (candidateHistory.length > 0 ? candidateHistory[0].jobId : selectedCandidate.jobId || undefined)}
+                        candidateName={selectedCandidate.name}
                       />
                     </div>
                   )}

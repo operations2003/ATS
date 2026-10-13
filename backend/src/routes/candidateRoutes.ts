@@ -49,6 +49,19 @@ router.get('/:candidateId/evaluations', protect, getCandidateEvaluationHistoryCo
 // HireIQ Decision Intelligence explanatory layer
 router.get('/:candidateId/decision-intelligence', protect, getCandidateDecisionIntelligenceController);
 
+import {
+  getCandidateSummaryController,
+  generateCandidateSummaryController,
+  downloadCandidateSummaryPdfController,
+  downloadCandidateSummaryDocxController
+} from '../controllers/candidateSummaryController';
+
+// Candidate Executive Summary & Downloadable PDF / DOCX Reports
+router.get('/:candidateId/summary', protect, getCandidateSummaryController);
+router.post('/:candidateId/summary', protect, generateCandidateSummaryController);
+router.get('/:candidateId/summary/pdf', protect, downloadCandidateSummaryPdfController);
+router.get('/:candidateId/summary/docx', protect, downloadCandidateSummaryDocxController);
+
 // Single candidate lookup, decision update & delete
 router.get('/:candidateId', protect, getCandidateById);
 router.patch('/:candidateId/decision', protect, updateCandidateDecision);

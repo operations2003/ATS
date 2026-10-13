@@ -11,6 +11,7 @@ import ScoreCard from '@/components/evaluation/ScoreCard';
 import RequirementTable from '@/components/evaluation/RequirementTable';
 import DecisionTagDropdown from '@/components/evaluation/DecisionTagDropdown';
 import HireIQDecisionIntelligence from '@/components/evaluation/HireIQDecisionIntelligence';
+import CandidateExecutiveSummary from '@/components/evaluation/CandidateExecutiveSummary';
 import {
   computeComprehensiveMatchScore,
   ComprehensiveMatchResult,
@@ -596,7 +597,7 @@ export default function JobCandidatesPage() {
   const [sortField, setSortField] = useState<'score' | 'date' | 'name' | 'experience'>('score');
   const [sortDirection, setSortDirection] = useState<'desc' | 'asc'>('desc');
   const [selectedCandidate, setSelectedCandidate] = useState<any | null>(null);
-  const [activeModalTab, setActiveModalTab] = useState<'decision' | 'match' | 'profile' | 'raw'>('decision');
+  const [activeModalTab, setActiveModalTab] = useState<'decision' | 'summary' | 'match' | 'profile' | 'raw'>('decision');
   const [showCandidateMeta, setShowCandidateMeta] = useState(false);
   const [showComplianceDropdown, setShowComplianceDropdown] = useState(false);
   const [copiedRawText, setCopiedRawText] = useState(false);
@@ -2559,6 +2560,16 @@ export default function JobCandidatesPage() {
                       <span>Decision Intelligence</span>
                     </button>
                     <button
+                      onClick={() => setActiveModalTab('summary')}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                        activeModalTab === 'summary'
+                          ? 'bg-slate-900 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900 bg-white/50'
+                      }`}
+                    >
+                      <span>📄 Executive Summary</span>
+                    </button>
+                    <button
                       onClick={() => setActiveModalTab('match')}
                       className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                         activeModalTab === 'match'
@@ -2603,6 +2614,15 @@ export default function JobCandidatesPage() {
                     fallbackJobTitle={job?.position}
                     fallbackScore={Math.round(selectedCandidate.matchScore ?? selectedCandidate.atsScore ?? 0)}
                     fallbackRecommendation={getCandidateDecision(selectedCandidate)}
+                  />
+                )}
+
+                {/* Tab: Candidate Executive Summary */}
+                {activeModalTab === 'summary' && (
+                  <CandidateExecutiveSummary
+                    candidateId={selectedCandidate.id}
+                    jobId={jobId as string}
+                    candidateName={selectedCandidate.name}
                   />
                 )}
 
