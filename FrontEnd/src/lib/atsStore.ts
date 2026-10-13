@@ -123,6 +123,16 @@ export interface RecruiterMetric {
   todayHoursSpent: number;
   totalHoursThisWeek: number;
   dailyTimeLogs: DailyTimeLog[];
+  dailyPipelineLogs?: any[];
+  operationalAllocation?: {
+    reviewPct: number;
+    reviewHours: number;
+    shortlistPct: number;
+    shortlistHours: number;
+    jdPct: number;
+    jdHours: number;
+    totalHours: number;
+  };
   capacity: 'Optimal' | 'Normal' | 'Available' | 'High Load';
   lastActive: string;
   recentActivity?: string[];

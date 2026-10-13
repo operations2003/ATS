@@ -992,7 +992,7 @@ export default function AdminPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="p-3 bg-purple-50 rounded-2xl border border-purple-200">
                     <span className="text-[10px] text-purple-600 font-black uppercase block">TODAY&apos;S TIME</span>
-                    <span className="text-lg font-black text-purple-900">{selectedRecruiter.todayHoursSpent} Hours</span>
+                    <span className="text-lg font-black text-purple-900">{(selectedRecruiter.todayHoursSpent ?? 0).toFixed(1)} Hours</span>
                   </div>
                   <div className="p-3 bg-blue-50 rounded-2xl border border-blue-200">
                     <span className="text-[10px] text-blue-600 font-black uppercase block">RESUMES SEEN</span>
@@ -1004,7 +1004,11 @@ export default function AdminPage() {
                   </div>
                   <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200">
                     <span className="text-[10px] text-emerald-600 font-black uppercase block">AVG SPEED</span>
-                    <span className="text-lg font-black text-emerald-900">{selectedRecruiter.avgTimePerResume || '1.8 min'}/CV</span>
+                    <span className="text-lg font-black text-emerald-900">
+                      {selectedRecruiter.resumesSeen > 0 && selectedRecruiter.avgTimePerResume && selectedRecruiter.avgTimePerResume !== '—'
+                        ? `${selectedRecruiter.avgTimePerResume}/CV`
+                        : '—'}
+                    </span>
                   </div>
                 </div>
 
@@ -1049,37 +1053,57 @@ export default function AdminPage() {
                     </h4>
                     <span className="text-[10px] font-bold text-slate-400">Weekly Distribution</span>
                   </div>
-                  <div className="space-y-2 text-xs">
-                    <div>
-                      <div className="flex justify-between text-[11px] font-bold text-slate-700 mb-1">
-                        <span>Resume Review &amp; Scoring</span>
-                        <span className="text-blue-600">60% (~{((selectedRecruiter.totalHoursThisWeek || 30) * 0.6).toFixed(1)} hrs)</span>
-                      </div>
-                      <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
-                        <div className="h-full bg-blue-500 rounded-full" style={{ width: '60%' }} />
-                      </div>
-                    </div>
+                  {(() => {
+                    const opAlloc = (selectedRecruiter as any).operationalAllocation || {
+                      reviewPct: selectedRecruiter.resumesSeen > 0 ? 55 : 0,
+                      reviewHours: Number((selectedRecruiter.resumesSeen * 0.04).toFixed(1)),
+                      shortlistPct: selectedRecruiter.tlApprovedCount > 0 ? 25 : 0,
+                      shortlistHours: Number((selectedRecruiter.tlApprovedCount * 0.08).toFixed(1)),
+                      jdPct: selectedRecruiter.jdsUploaded > 0 ? (selectedRecruiter.resumesSeen > 0 ? 20 : 100) : 0,
+                      jdHours: Number((selectedRecruiter.jdsUploaded * 0.75).toFixed(1)),
+                      totalHours: Number(((selectedRecruiter.resumesSeen * 0.04) + (selectedRecruiter.tlApprovedCount * 0.08) + (selectedRecruiter.jdsUploaded * 0.75)).toFixed(1))
+                    };
+                    const hasTrackedTime = (opAlloc.totalHours || 0) > 0;
+                    return (
+                      <div className="space-y-2 text-xs">
+                        <div>
+                          <div className="flex justify-between text-[11px] font-bold text-slate-700 mb-1">
+                            <span>Resume Review &amp; Scoring</span>
+                            <span className="text-blue-600">
+                              {hasTrackedTime ? `${opAlloc.reviewPct}% (~${Number(opAlloc.reviewHours).toFixed(1)} hrs)` : '0% (~0.0 hrs)'}
+                            </span>
+                          </div>
+                          <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                            <div className="h-full bg-blue-500 rounded-full transition-all duration-300" style={{ width: `${opAlloc.reviewPct}%` }} />
+                          </div>
+                        </div>
 
-                    <div>
-                      <div className="flex justify-between text-[11px] font-bold text-slate-700 mb-1">
-                        <span>Candidate Shortlisting &amp; Screening</span>
-                        <span className="text-emerald-600">25% (~{((selectedRecruiter.totalHoursThisWeek || 30) * 0.25).toFixed(1)} hrs)</span>
-                      </div>
-                      <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
-                        <div className="h-full bg-emerald-500 rounded-full" style={{ width: '25%' }} />
-                      </div>
-                    </div>
+                        <div>
+                          <div className="flex justify-between text-[11px] font-bold text-slate-700 mb-1">
+                            <span>Candidate Shortlisting &amp; Screening</span>
+                            <span className="text-emerald-600">
+                              {hasTrackedTime ? `${opAlloc.shortlistPct}% (~${Number(opAlloc.shortlistHours).toFixed(1)} hrs)` : '0% (~0.0 hrs)'}
+                            </span>
+                          </div>
+                          <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                            <div className="h-full bg-emerald-500 rounded-full transition-all duration-300" style={{ width: `${opAlloc.shortlistPct}%` }} />
+                          </div>
+                        </div>
 
-                    <div>
-                      <div className="flex justify-between text-[11px] font-bold text-slate-700 mb-1">
-                        <span>JD Setup &amp; Calibration</span>
-                        <span className="text-amber-600">15% (~{((selectedRecruiter.totalHoursThisWeek || 30) * 0.15).toFixed(1)} hrs)</span>
+                        <div>
+                          <div className="flex justify-between text-[11px] font-bold text-slate-700 mb-1">
+                            <span>JD Setup &amp; Calibration</span>
+                            <span className="text-amber-600">
+                              {hasTrackedTime ? `${opAlloc.jdPct}% (~${Number(opAlloc.jdHours).toFixed(1)} hrs)` : '0% (~0.0 hrs)'}
+                            </span>
+                          </div>
+                          <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                            <div className="h-full bg-brand-orange rounded-full transition-all duration-300" style={{ width: `${opAlloc.jdPct}%` }} />
+                          </div>
+                        </div>
                       </div>
-                      <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
-                        <div className="h-full bg-brand-orange rounded-full" style={{ width: '15%' }} />
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
                 </div>
 
                 {/* 📊 RECRUITER PERFORMANCE & CV EVALUATION PIPELINE TRACKER */}
@@ -1123,14 +1147,20 @@ export default function AdminPage() {
                   <h4 className="font-black text-slate-900 uppercase text-[11px] tracking-wider mb-2">
                     Recent Operations with Time Estimates
                   </h4>
-                  <div className="space-y-2">
-                    {(selectedRecruiter.recentActivity || ['Shortlisted Michael Chen for SAP CO (94% Fit)', 'Uploaded 32 candidate resumes (Took 1.2 hrs)', 'Uploaded SAP JD (Took 45 min)']).map((act, idx) => (
-                      <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-2.5">
-                        <span className="w-2 h-2 rounded-full bg-brand-orange flex-shrink-0" />
-                        <span className="text-slate-700 font-medium">{act}</span>
-                      </div>
-                    ))}
-                  </div>
+                  {selectedRecruiter.recentActivity && selectedRecruiter.recentActivity.length > 0 ? (
+                    <div className="space-y-2">
+                      {selectedRecruiter.recentActivity.map((act, idx) => (
+                        <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-2.5">
+                          <span className="w-2 h-2 rounded-full bg-brand-orange flex-shrink-0" />
+                          <span className="text-slate-700 font-medium">{act}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-center text-slate-500">
+                      No recent recruitment operations recorded for this period.
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between pt-3 border-t border-slate-100">
