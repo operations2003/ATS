@@ -129,7 +129,33 @@ export default function CandidateExecutiveSummary({
   const [downloadingFormat, setDownloadingFormat] = useState<'pdf' | 'docx' | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>('');
 
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+  function getResolvedBackendUrl(): string {
+    let url = (process.env.NEXT_PUBLIC_API_URL || '').trim();
+
+    // If running in browser on a remote/production domain (e.g. Vercel, Netlify, custom domain)
+    // and env var is missing or contains localhost, fallback to deployed backend
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
+      if (!url || (!isLocal && url.includes('localhost'))) {
+        url = 'https://ats-d4tv.onrender.com/api';
+      }
+    }
+
+    if (!url) {
+      url = 'http://localhost:5000/api';
+    }
+
+    // Strip trailing slashes
+    url = url.replace(/\/+$/, '');
+
+    // Ensure /api is appended if omitted
+    if (!url.endsWith('/api')) {
+      url = `${url}/api`;
+    }
+
+    return url;
+  }
 
   const fetchSummary = useCallback(async (forceRegen = false) => {
     if (!candidateId) return;
@@ -147,27 +173,48 @@ export default function CandidateExecutiveSummary({
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       };
 
-      const url = `${backendUrl}/candidates/${candidateId}/summary${jobId ? `?jobId=${jobId}` : ''}`;
-      
-      let res;
-      if (forceRegen) {
-        res = await fetch(url, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ jobId, regenerate: true })
-        });
-      } else {
-        res = await fetch(url, { headers });
+      const primaryBase = getResolvedBackendUrl();
+      const query = jobId ? `?jobId=${encodeURIComponent(jobId)}` : '';
+
+      // Multi-layer endpoint candidates (Next.js same-origin proxy on Vercel -> Normalized Remote Backend -> Fallback URL)
+      const candidateUrls = [
+        `/api/candidates/${encodeURIComponent(candidateId)}/summary${query}`,
+        `${primaryBase}/candidates/${encodeURIComponent(candidateId)}/summary${query}`,
+        `https://ats-d4tv.onrender.com/api/candidates/${encodeURIComponent(candidateId)}/summary${query}`,
+        `https://ats-d4tv.onrender.com/candidates/${encodeURIComponent(candidateId)}/summary${query}`,
+      ];
+
+      let lastError: any = null;
+      let fetchedSuccessfully = false;
+
+      for (const targetUrl of candidateUrls) {
+        try {
+          let res: Response;
+          if (forceRegen) {
+            res = await fetch(targetUrl, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ jobId, regenerate: true })
+            });
+          } else {
+            res = await fetch(targetUrl, { headers });
+          }
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.summary) {
+              setSummary(data.summary);
+              fetchedSuccessfully = true;
+              break;
+            }
+          }
+        } catch (fetchErr: any) {
+          lastError = fetchErr;
+        }
       }
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.summary) {
-          setSummary(data.summary);
-        }
-      } else {
-        const errData = await res.json().catch(() => ({}));
-        setErrorMsg(errData.error || 'Failed to load executive summary');
+      if (!fetchedSuccessfully) {
+        setErrorMsg(lastError?.message || 'Unable to connect to candidate summary service. Please try again.');
       }
     } catch (err: any) {
       console.error('[Candidate Summary Error]:', err);
@@ -176,7 +223,7 @@ export default function CandidateExecutiveSummary({
       setLoading(false);
       setIsGenerating(false);
     }
-  }, [backendUrl, candidateId, jobId]);
+  }, [candidateId, jobId]);
 
   useEffect(() => {
     fetchSummary(false);
@@ -186,30 +233,67 @@ export default function CandidateExecutiveSummary({
     try {
       setDownloadingFormat(format);
       const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
-      const res = await fetch(
-        `${backendUrl}/candidates/${candidateId}/summary/${format}${jobId ? `?jobId=${jobId}` : ''}`,
-        {
-          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
-        }
-      );
+      const headers: Record<string, string> = {
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      };
 
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        const namePart = (summary?.overview?.fullName || candidateName || 'Candidate').replace(/\s+/g, '_');
-        a.download = `Candidate_Summary_${namePart}.${format}`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
-      } else {
-        alert(`Failed to download ${format.toUpperCase()} report. Please try again.`);
+      const primaryBase = getResolvedBackendUrl();
+      const query = jobId ? `?jobId=${encodeURIComponent(jobId)}` : '';
+
+      // Multi-layer fallback sequence to guarantee download on Vercel
+      const candidateUrls = [
+        // 1. Next.js same-origin API proxy (eliminates CORS & mixed content on Vercel)
+        `/api/candidates/${encodeURIComponent(candidateId)}/summary/${format}${query}`,
+        // 2. Primary configured/normalized backend URL
+        `${primaryBase}/candidates/${encodeURIComponent(candidateId)}/summary/${format}${query}`,
+        // 3. Direct Render backend with /api
+        `https://ats-d4tv.onrender.com/api/candidates/${encodeURIComponent(candidateId)}/summary/${format}${query}`,
+        // 4. Direct Render backend root mount
+        `https://ats-d4tv.onrender.com/candidates/${encodeURIComponent(candidateId)}/summary/${format}${query}`,
+      ];
+
+      let downloaded = false;
+
+      for (const targetUrl of candidateUrls) {
+        try {
+          const res = await fetch(targetUrl, { headers });
+          if (res.ok) {
+            const blob = await res.blob();
+            // Validate that we received an actual document and not an empty/error payload
+            if (blob.size > 200) {
+              const url = window.URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              const namePart = (summary?.overview?.fullName || candidateName || 'Candidate').replace(/\s+/g, '_');
+              a.download = `Candidate_Summary_${namePart}.${format}`;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              window.URL.revokeObjectURL(url);
+              downloaded = true;
+              break;
+            }
+          }
+        } catch (fetchErr) {
+          console.warn(`[Download Attempt Failed for ${targetUrl}]:`, fetchErr);
+        }
+      }
+
+      if (!downloaded) {
+        if (format === 'pdf' && typeof window !== 'undefined') {
+          // If network streaming is blocked, seamlessly trigger print to PDF
+          window.print();
+        } else {
+          alert(`Unable to stream ${format.toUpperCase()} report from backend. Please try again in a few moments.`);
+        }
       }
     } catch (err) {
       console.error(`[Download Error ${format}]:`, err);
-      alert(`Error downloading ${format.toUpperCase()} file.`);
+      if (format === 'pdf' && typeof window !== 'undefined') {
+        window.print();
+      } else {
+        alert(`Error downloading ${format.toUpperCase()} file.`);
+      }
     } finally {
       setDownloadingFormat(null);
     }

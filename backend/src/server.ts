@@ -61,7 +61,9 @@ import {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/jobs', jobRoutes);
+app.use('/jobs', jobRoutes);
 app.use('/api/candidates', candidateRoutes);
+app.use('/candidates', candidateRoutes);
 app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/dashboard', dashboardRoutes);
