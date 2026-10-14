@@ -352,3 +352,4 @@ export function buildExecutiveSummaryPdf(summary: CandidateSummaryData): Uint8Ar
 
   return stringToLatin1Bytes(out);
 }
+
