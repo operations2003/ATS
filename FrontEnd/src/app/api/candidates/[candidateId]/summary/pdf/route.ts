@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateCandidateSummaryPdfBuffer } from '@/lib/candidateSummaryPdf';
+import { buildExecutiveSummaryPdf } from '@/lib/clientPdfGenerator';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,8 +14,8 @@ function getBackendBaseUrl(): string {
 
 /**
  * POST /api/candidates/[candidateId]/summary/pdf
- * Generates identical PDFKit PDF directly on Vercel from the candidate summary state.
- * Eliminates slow backend network hops, sleeping free-tier timeouts, and avoids browser print fallback.
+ * Generates identical PDF vector document directly on Vercel from the candidate summary state.
+ * Eliminates slow backend network hops, font loading failures, and avoids browser print fallback.
  */
 export async function POST(
   req: NextRequest,
@@ -33,11 +33,11 @@ export async function POST(
       );
     }
 
-    const pdfBuffer = await generateCandidateSummaryPdfBuffer(summary);
+    const pdfBytes = buildExecutiveSummaryPdf(summary);
     const candidateName = (summary.overview.fullName || candidateId).replace(/\s+/g, '_');
     const filename = `Candidate_Summary_${candidateName}.pdf`;
 
-    return new NextResponse(new Uint8Array(pdfBuffer), {
+    return new NextResponse(Buffer.from(pdfBytes), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
@@ -83,11 +83,11 @@ export async function GET(
       if (summaryRes.ok) {
         const data = await summaryRes.json();
         if (data.summary) {
-          const pdfBuffer = await generateCandidateSummaryPdfBuffer(data.summary);
+          const pdfBytes = buildExecutiveSummaryPdf(data.summary);
           const candidateName = (data.summary.overview?.fullName || candidateId).replace(/\s+/g, '_');
           const filename = `Candidate_Summary_${candidateName}.pdf`;
 
-          return new NextResponse(new Uint8Array(pdfBuffer), {
+          return new NextResponse(Buffer.from(pdfBytes), {
             status: 200,
             headers: {
               'Content-Type': 'application/pdf',
