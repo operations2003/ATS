@@ -164,3 +164,4 @@ export async function generateCandidateSummaryPdfBuffer(summary: CandidateSummar
     }
   });
 }
+
