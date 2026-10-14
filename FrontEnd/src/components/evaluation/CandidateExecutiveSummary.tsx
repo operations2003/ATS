@@ -254,12 +254,20 @@ export default function CandidateExecutiveSummary({
 
       let downloaded = false;
 
-      for (const targetUrl of candidateUrls) {
+      // 1. Direct same-origin PDFKit generation on Vercel/Next.js using current summary state (instant, identical layout)
+      if (summary) {
         try {
-          const res = await fetch(targetUrl, { headers });
-          if (res.ok) {
-            const blob = await res.blob();
-            // Validate that we received an actual document and not an empty/error payload
+          const directRes = await fetch(`/api/candidates/${encodeURIComponent(candidateId)}/summary/${format}${query}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({ summary })
+          });
+
+          if (directRes.ok) {
+            const blob = await directRes.blob();
             if (blob.size > 200) {
               const url = window.URL.createObjectURL(blob);
               const a = document.createElement('a');
@@ -271,29 +279,46 @@ export default function CandidateExecutiveSummary({
               a.remove();
               window.URL.revokeObjectURL(url);
               downloaded = true;
-              break;
             }
           }
-        } catch (fetchErr) {
-          console.warn(`[Download Attempt Failed for ${targetUrl}]:`, fetchErr);
+        } catch (postErr) {
+          console.warn('[Direct PDFKit Post Warning]:', postErr);
+        }
+      }
+
+      // 2. Fallback to GET streaming endpoints if direct POST generation was not completed
+      if (!downloaded) {
+        for (const targetUrl of candidateUrls) {
+          try {
+            const res = await fetch(targetUrl, { headers });
+            if (res.ok) {
+              const blob = await res.blob();
+              if (blob.size > 200) {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const namePart = (summary?.overview?.fullName || candidateName || 'Candidate').replace(/\s+/g, '_');
+                a.download = `Candidate_Summary_${namePart}.${format}`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                downloaded = true;
+                break;
+              }
+            }
+          } catch (fetchErr) {
+            console.warn(`[Download Attempt Failed for ${targetUrl}]:`, fetchErr);
+          }
         }
       }
 
       if (!downloaded) {
-        if (format === 'pdf' && typeof window !== 'undefined') {
-          // If network streaming is blocked, seamlessly trigger print to PDF
-          window.print();
-        } else {
-          alert(`Unable to stream ${format.toUpperCase()} report from backend. Please try again in a few moments.`);
-        }
+        alert(`Failed to download ${format.toUpperCase()} report. Please check server connection and try again.`);
       }
     } catch (err) {
       console.error(`[Download Error ${format}]:`, err);
-      if (format === 'pdf' && typeof window !== 'undefined') {
-        window.print();
-      } else {
-        alert(`Error downloading ${format.toUpperCase()} file.`);
-      }
+      alert(`Error downloading ${format.toUpperCase()} file. Please try again.`);
     } finally {
       setDownloadingFormat(null);
     }

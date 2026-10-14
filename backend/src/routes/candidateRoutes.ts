@@ -60,7 +60,9 @@ import {
 router.get('/:candidateId/summary', protect, getCandidateSummaryController);
 router.post('/:candidateId/summary', protect, generateCandidateSummaryController);
 router.get('/:candidateId/summary/pdf', protect, downloadCandidateSummaryPdfController);
+router.post('/:candidateId/summary/pdf', protect, downloadCandidateSummaryPdfController);
 router.get('/:candidateId/summary/docx', protect, downloadCandidateSummaryDocxController);
+router.post('/:candidateId/summary/docx', protect, downloadCandidateSummaryDocxController);
 
 // Single candidate lookup, decision update & delete
 router.get('/:candidateId', protect, getCandidateById);

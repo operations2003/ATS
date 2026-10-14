@@ -135,14 +135,17 @@ export const downloadCandidateSummaryPdfController = async (req: AuthRequest, re
     const orgId = user.organizationId || 'org-tasknera';
     const isSuperAdmin = user.role === 'SUPER_ADMIN';
 
-    const summary = await generateOrGetCandidateSummary(
-      candidateId,
-      jobId,
-      orgId,
-      user.userId,
-      isSuperAdmin,
-      false
-    );
+    let summary = req.body?.summary;
+    if (!summary || !summary.overview) {
+      summary = await generateOrGetCandidateSummary(
+        candidateId,
+        jobId,
+        orgId,
+        user.userId,
+        isSuperAdmin,
+        false
+      );
+    }
 
     if (!summary) {
       res.status(404).json({
