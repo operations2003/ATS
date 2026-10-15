@@ -229,12 +229,47 @@ export function calculateCentralizedATSScore(input: CentralizedATSScoringInput):
     }
   }
 
-  const effectiveReqs = (Array.isArray(requirements) && requirements.length > 0)
+  const rawReqs = (Array.isArray(requirements) && requirements.length > 0)
     ? requirements
     : [
         { id: 'req-default-1', requirement: jobPosition, category: 'Experience', weight: 2.0, is_mandatory: true },
         { id: 'req-default-2', requirement: 'Core Required Competencies', category: 'Technical Skill', weight: 2.0, is_mandatory: false }
       ];
+
+  // Deduplicate requirements to prevent repeated requirements from inflating weights (Phase 3.3)
+  const effectiveReqs: typeof rawReqs = [];
+  const seenReqKeys = new Set<string>();
+
+  for (const r of rawReqs) {
+    const key = (r.requirement || '').trim().toLowerCase();
+    if (!key) continue;
+    if (seenReqKeys.has(key)) {
+      const existing = effectiveReqs.find(e => (e.requirement || '').trim().toLowerCase() === key);
+      if (existing) {
+        if (r.is_mandatory || (r as any).isMandatory) {
+          existing.is_mandatory = true;
+          (existing as any).isMandatory = true;
+        }
+        if (typeof r.weight === 'number' && r.weight > (existing.weight || 1.0)) {
+          existing.weight = r.weight;
+        }
+        if (Array.isArray(r.aliases) && r.aliases.length > 0) {
+          existing.aliases = Array.from(new Set([...(existing.aliases || []), ...r.aliases]));
+        }
+      }
+      continue;
+    }
+    seenReqKeys.add(key);
+    effectiveReqs.push({ ...r });
+  }
+
+  // Deduplicate and clean candidate skills
+  const normalizedCandidate: CandidateRecord = {
+    ...candidate,
+    skills: Array.isArray(candidate.skills)
+      ? Array.from(new Set(candidate.skills.map(s => (s || '').trim()).filter(Boolean)))
+      : []
+  };
 
   const reqResults: RequirementEvaluationResult[] = [];
 
@@ -292,7 +327,7 @@ export function calculateCentralizedATSScore(input: CentralizedATSScoringInput):
     // 1. Experience Requirements
     if (isCategoryExperience || hasYearsExplicit) {
       const targetExpText = (isMandatory && sourceEvidence && srcYearsMatch) ? sourceEvidence : reqText;
-      const expRes = evaluateExperienceRequirement(candidate, targetExpText);
+      const expRes = evaluateExperienceRequirement(normalizedCandidate, targetExpText);
       evalResult = {
         status: expRes.status,
         evidence: expRes.evidence,
@@ -306,35 +341,29 @@ export function calculateCentralizedATSScore(input: CentralizedATSScoringInput):
     }
     // 2. Education Requirements
     else if (catLower.includes('education') || reqLower.includes('degree') || reqLower.includes('bachelor') || reqLower.includes('master') || reqLower.includes('b.tech') || reqLower.includes('b.e')) {
-      evalResult = evaluateEducationRequirement(candidate.education || [], reqText);
+      evalResult = evaluateEducationRequirement(normalizedCandidate.education || [], reqText);
       eduWeightTotal += weight;
       eduWeightEarned += STATUS_SCORE_MAP[evalResult.status] * weight;
     }
     // 3. Location Requirements
     else if (catLower.includes('location') || reqLower.includes('location') || reqLower.includes('onsite') || reqLower.includes('ncr') || reqLower.includes('bangalore') || reqLower.includes('mumbai') || reqLower.includes('hyderabad')) {
-      evalResult = evaluateLocationRequirement(candidate, reqText);
+      evalResult = evaluateLocationRequirement(normalizedCandidate, reqText);
       skillWeightTotal += weight;
       skillWeightEarned += STATUS_SCORE_MAP[evalResult.status] * weight;
     }
     // 4. Notice Period / Availability Requirements
     else if (catLower.includes('availability') || catLower.includes('notice') || reqLower.includes('joiner') || reqLower.includes('notice period')) {
-      evalResult = evaluateNoticePeriodRequirement(candidate, reqText);
+      evalResult = evaluateNoticePeriodRequirement(normalizedCandidate, reqText);
       skillWeightTotal += weight;
       skillWeightEarned += STATUS_SCORE_MAP[evalResult.status] * weight;
     }
-    // 5. Technical Skills & Tools
+    // 5. Technical Skills & Tools (Deterministic matching with aliases & synonym expansion)
     else {
-      evalResult = matchSkillRequirement(candidate, reqText, reqCategory);
+      evalResult = matchSkillRequirement(normalizedCandidate, reqText, reqCategory, req.aliases);
 
-      // If local TypeScript check was partial or unknown, but AI Semantic Matcher found concrete verified evidence
-      if ((evalResult.status === 'NOT_MATCHED' || evalResult.status === 'UNKNOWN') && semHit && semHit.status === 'MATCHED' && semHit.candidateEvidence) {
-        evalResult = {
-          status: 'MATCHED',
-          evidence: semHit.candidateEvidence || semHit.evidence,
-          source: 'Semantic Evidence Match',
-          confidence: 'STRONG_SEMANTIC',
-          failureReason: undefined
-        };
+      // If AI semantic matcher provided verified candidate evidence and local evidence was generic, enrich evidence text
+      if (semHit && semHit.candidateEvidence && evalResult.status === 'MATCHED' && !evalResult.evidence.includes(semHit.candidateEvidence)) {
+        evalResult.evidence = `${evalResult.evidence} | Semantic quote: "${semHit.candidateEvidence}"`;
       }
 
       skillWeightTotal += weight;
@@ -413,7 +442,7 @@ export function calculateCentralizedATSScore(input: CentralizedATSScoringInput):
     coreSkillsScore = Math.round((skillWeightEarned / skillWeightTotal) * 100);
   } else {
     // If no explicit skill requirements, verify general candidate skills presence
-    const candSkills = candidate.skills || [];
+    const candSkills = normalizedCandidate.skills || [];
     coreSkillsScore = candSkills.length >= 5 ? 85 : candSkills.length > 0 ? 65 : 40;
   }
   coreSkillsScore = Math.min(100, Math.max(0, coreSkillsScore));
@@ -424,7 +453,7 @@ export function calculateCentralizedATSScore(input: CentralizedATSScoringInput):
     experienceScore = Math.round((expWeightEarned / expWeightTotal) * 100);
   } else {
     // Fallback: evaluate total professional career years vs standard baseline (3.0 yrs)
-    const careerYears = calculateProfessionalTenure(candidate);
+    const careerYears = calculateProfessionalTenure(normalizedCandidate);
     experienceScore = careerYears >= 5.0 ? 100 : Math.round((careerYears / 5.0) * 100);
   }
   experienceScore = Math.min(100, Math.max(0, experienceScore));
@@ -465,7 +494,7 @@ export function calculateCentralizedATSScore(input: CentralizedATSScoringInput):
       .filter(w => w.length > 3 && !GENERIC_STOP_WORDS.has(w));
     
     const uniqueJdKeywords = Array.from(new Set(jdKeywords));
-    const candFullText = `${candidate.currentTitle || ''} ${candidate.summary || ''} ${candidate.rawText || ''} ${(candidate.skills || []).join(' ')}`.toLowerCase();
+    const candFullText = `${normalizedCandidate.currentTitle || ''} ${normalizedCandidate.summary || ''} ${normalizedCandidate.rawText || ''} ${(normalizedCandidate.skills || []).join(' ')}`.toLowerCase();
 
     if (uniqueJdKeywords.length > 0) {
       let overlapCount = 0;

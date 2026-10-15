@@ -135,25 +135,84 @@ export interface JobSection {
 }
 
 /**
- * Perform Optical Character Recognition (OCR) fallback for scanned images
+ * Helper to extract embedded JPEG image streams from a PDF buffer (scanned PDFs)
+ */
+export const extractJpegStreamsFromPdf = (buffer: Buffer): Buffer[] => {
+  const images: Buffer[] = [];
+  if (!buffer || buffer.length < 100) return images;
+
+  const startMarker = Buffer.from([0xff, 0xd8, 0xff]);
+  const endMarker = Buffer.from([0xff, 0xd9]);
+  let startIdx = 0;
+
+  while ((startIdx = buffer.indexOf(startMarker, startIdx)) !== -1) {
+    const endIdx = buffer.indexOf(endMarker, startIdx + 3);
+    if (endIdx !== -1) {
+      const imgBuf = buffer.subarray(startIdx, endIdx + 2);
+      if (imgBuf.length > 1000) {
+        images.push(imgBuf);
+      }
+      startIdx = endIdx + 2;
+    } else {
+      break;
+    }
+  }
+  return images;
+};
+
+/**
+ * Perform Optical Character Recognition (OCR) fallback for scanned images and scanned PDFs
  */
 export const performOcrFallback = async (buffer: Buffer): Promise<string> => {
-  // Only attempt Tesseract OCR if the buffer is an image (PNG / JPEG magic bytes).
-  // Passing raw PDF binary data to Tesseract causes "Pdf reading is not supported" fatal error.
-  const isImage = buffer && buffer.length > 4 && (
-    (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) || // PNG: 0x89 'P' 'N' 'G'
-    (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) // JPEG: 0xFF 0xD8 0xFF
+  if (!buffer || buffer.length < 20) return '';
+
+  const isImage = (
+    (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) || // PNG
+    (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) // JPEG
   );
-  if (!isImage) {
+  const isPdf = buffer.length > 4 && buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46; // %PDF
+
+  let imagesToOcr: Buffer[] = [];
+  if (isImage) {
+    imagesToOcr.push(buffer);
+  } else if (isPdf) {
+    imagesToOcr = extractJpegStreamsFromPdf(buffer);
+  }
+
+  if (imagesToOcr.length === 0) {
     return '';
   }
+
   try {
-    console.log('[OCR Fallback] Initializing Tesseract OCR engine worker...');
-    const worker = await createWorker('eng');
-    const ret = await worker.recognize(buffer);
+    console.log(`[OCR Fallback] Initializing Tesseract OCR for ${imagesToOcr.length} image stream(s)...`);
+    const path = require('path');
+    const fs = require('fs');
+    const localTrainedDataDir = path.resolve(__dirname, '../../');
+    const hasLocalTrainedData = fs.existsSync(path.join(localTrainedDataDir, 'eng.traineddata'));
+
+    let worker: any;
+    if (hasLocalTrainedData) {
+      worker = await createWorker('eng', 1, { langPath: localTrainedDataDir, gzip: false });
+    } else {
+      worker = await createWorker('eng');
+    }
+
+    const ocrTexts: string[] = [];
+    for (const img of imagesToOcr) {
+      try {
+        const ret = await worker.recognize(img);
+        if (ret && ret.data && ret.data.text && ret.data.text.trim()) {
+          ocrTexts.push(ret.data.text.trim());
+        }
+      } catch (pageOcrErr) {
+        console.warn('[OCR Page Warning]:', pageOcrErr);
+      }
+    }
     await worker.terminate();
-    console.log(`[OCR Fallback] OCR completed. Extracted ${ret.data.text.length} characters.`);
-    return ret.data.text || '';
+
+    const result = ocrTexts.join('\n\n');
+    console.log(`[OCR Fallback] OCR completed. Extracted ${result.length} characters.`);
+    return result;
   } catch (err: any) {
     console.error('[OCR Fallback Error]', err.message || err);
     return '';
@@ -246,9 +305,24 @@ export const recoverTextFromPdfStreams = (buffer: Buffer): string => {
  */
 export const extractTextFromBuffer = async (
   buffer: Buffer,
-  mimeType: string,
-  filename: string
+  arg2: string,
+  arg3: string
 ): Promise<{ text: string; pageCount: number; method: string; ocrUsed: boolean }> => {
+  let mimeType = (arg2 || '').trim();
+  let filename = (arg3 || '').trim();
+
+  // Robust argument auto-detection (handles either (buf, mime, filename) or (buf, filename, mime))
+  if (arg2.includes('/') && !arg3.includes('/')) {
+    mimeType = arg2;
+    filename = arg3;
+  } else if (arg3.includes('/') && !arg2.includes('/')) {
+    mimeType = arg3;
+    filename = arg2;
+  } else if (arg2.includes('.') && !arg3.includes('.')) {
+    filename = arg2;
+    mimeType = arg3;
+  }
+
   const lowerName = filename.toLowerCase();
   let extractedText = '';
   let pageCount = 1;
@@ -261,6 +335,9 @@ export const extractTextFromBuffer = async (
     try {
       if (PDFParseClass) {
         const parser = new PDFParseClass({ data: buffer });
+        if (typeof parser.load === 'function') {
+          await parser.load();
+        }
         const result = await parser.getText();
         if (result) {
           extractedText = result.text || '';
@@ -331,7 +408,7 @@ export const extractTextFromBuffer = async (
     return { text: extractedText, pageCount, method, ocrUsed };
   }
 
-  // B. DOCX Extraction
+  // B. DOCX & Word Extraction
   if (
     mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
     mimeType === 'application/msword' ||
@@ -340,20 +417,53 @@ export const extractTextFromBuffer = async (
   ) {
     method = 'mammoth-docx';
     try {
-      const result = await mammoth.extractRawText({ buffer });
-      extractedText = result.value || '';
+      // First try Markdown conversion to preserve tables and lists
+      const mdResult = await (mammoth as any).convertToMarkdown({ buffer });
+      if (mdResult && mdResult.value && mdResult.value.trim().length > 30) {
+        extractedText = mdResult.value;
+      } else {
+        const rawResult = await mammoth.extractRawText({ buffer });
+        extractedText = rawResult.value || '';
+      }
     } catch (err: any) {
-      console.warn('DOCX parsing warning, trying stream/plain text fallback:', err.message || String(err));
-      // Fallback if file was actually a PDF with a .docx extension
+      console.warn('DOCX parsing warning, trying binary text recovery:', err.message || String(err));
+      // Binary text recovery fallback for legacy .doc (Word 97-2003 OLE) files
       try {
-        if (PDFParseClass) {
-          const parser = new PDFParseClass({ data: buffer });
-          const res = await parser.getText();
-          if (res && res.text) extractedText = res.text;
+        const rawUtf8 = buffer.toString('utf-8');
+        const cleanPrintable = rawUtf8.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ' ');
+        const words = cleanPrintable.match(/[A-Za-z0-9@+.,\-/\s]{4,}/g) || [];
+        const recoveredUtf8 = words.map(w => w.trim()).filter(w => w.length > 3).join('\n');
+        if (recoveredUtf8.length > 40) {
+          extractedText = recoveredUtf8;
+          method = 'doc-binary-utf8';
         }
       } catch {}
+
+      if (!extractedText || extractedText.length < 40) {
+        try {
+          const rawUtf16 = buffer.toString('utf16le');
+          const cleanPrintable16 = rawUtf16.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ' ');
+          const words16 = cleanPrintable16.match(/[A-Za-z0-9@+.,\-/\s]{4,}/g) || [];
+          const recoveredUtf16 = words16.map(w => w.trim()).filter(w => w.length > 3).join('\n');
+          if (recoveredUtf16.length > 40) {
+            extractedText = recoveredUtf16;
+            method = 'doc-binary-utf16';
+          }
+        } catch {}
+      }
+
       if (!extractedText) {
-        extractedText = recoverTextFromPdfStreams(buffer);
+        // Fallback if file was actually a PDF with a .docx extension
+        try {
+          if (PDFParseClass) {
+            const parser = new PDFParseClass({ data: buffer });
+            const res = await parser.getText();
+            if (res && res.text) extractedText = res.text;
+          }
+        } catch {}
+        if (!extractedText) {
+          extractedText = recoverTextFromPdfStreams(buffer);
+        }
       }
     }
     return { text: extractedText, pageCount: 1, method, ocrUsed: false };
@@ -379,6 +489,10 @@ export const cleanAndNormalizeText = (rawText: string): string => {
     .replace(/\/Creator\s*\([^)]*\)/gi, '')
     .replace(/\/Title\s*\([^)]*\)/gi, '')
     .replace(/obj[\s\S]*?endobj/gi, '')
+    // Remove pdf-parse page artifact lines: e.g. "-- 1 of 2 --"
+    .replace(/--\s*\d+\s+of\s+\d+\s*--/gi, '')
+    // Remove control characters except standard whitespace (\n, \t, \r)
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ')
     // Normalize zero-width and invisible unicode characters to regular spaces
     .replace(/[\u200B\u200C\u200D\uFEFF\u00A0]/g, ' ')
     // Normalize corrupted rupee / currency symbols

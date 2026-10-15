@@ -343,7 +343,8 @@ export interface SkillMatchResult {
 export function matchSkillRequirement(
   candidate: CandidateRecord,
   requirementText: string,
-  category: string
+  category: string,
+  aliases?: string[]
 ): SkillMatchResult {
   const rawText = candidate.rawText || '';
   const candSkills = candidate.skills || [];
@@ -448,6 +449,14 @@ export function matchSkillRequirement(
         if (new RegExp(`\\b${canEscaped}\\b`, 'i').test(pLower)) {
           partSearchTerms.add(canonical);
           for (const s of synSet) partSearchTerms.add(s);
+        }
+      }
+
+      if (Array.isArray(aliases)) {
+        for (const a of aliases) {
+          if (a && a.trim()) {
+            partSearchTerms.add(a.trim().toLowerCase());
+          }
         }
       }
 
@@ -571,6 +580,14 @@ export function matchSkillRequirement(
     if (new RegExp(`\\b${canEscaped}\\b`, 'i').test(reqLower)) {
       addSearchTerm(canonical);
       for (const syn of synSet) addSearchTerm(syn);
+    }
+  }
+
+  if (Array.isArray(aliases)) {
+    for (const a of aliases) {
+      if (a && a.trim()) {
+        addSearchTerm(a);
+      }
     }
   }
 

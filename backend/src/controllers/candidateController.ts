@@ -838,7 +838,7 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
         } catch (freshErr) {
           console.warn('[getCandidatesForJob fresh eval]:', freshErr);
         }
-      } else if (finalScore === undefined && reqs.length > 0) {
+      } else if (finalScore === undefined && reqs.length > 0 && c.parsingStatus !== 'FAILED') {
         // Authoritative in-memory centralized ATS scoring (single source of truth v6.0.0)
         try {
           const centralResult = calculateCentralizedATSScore({
@@ -857,22 +857,30 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
               category: r.category,
               is_mandatory: r.is_mandatory ?? r.mandatory,
               weight: r.weight,
-              source_evidence: r.source_evidence || r.sourceEvidence
+              source_evidence: r.source_evidence || r.sourceEvidence,
+              aliases: r.aliases
             }))
           });
           finalScore = centralResult.atsScore;
           matchLevel = centralResult.matchLevel;
           decision = centralResult.recommendation;
           compliance = `${centralResult.mandatoryCompliance.matched}/${centralResult.mandatoryCompliance.total}`;
+          (c as any).matchScore = finalScore;
+          (c as any).atsScore = finalScore;
+          (c as any).matchLevel = matchLevel;
+          (c as any).decision = decision;
+          (c as any).recommendation = decision;
+          (c as any).mandatoryCompliance = compliance;
         } catch {}
       }
 
-      const resolvedScore = typeof finalScore === 'number' ? Math.round(finalScore) : (typeof (c as any).matchScore === 'number' ? Math.round((c as any).matchScore) : undefined);
-      const effectiveDecision = decision || (c as any).decision || (c as any).recommendation;
-      const resolvedDecision = effectiveDecision
+      const isFailed = c.parsingStatus === 'FAILED';
+      const resolvedScore = !isFailed && typeof finalScore === 'number' ? Math.round(finalScore) : (!isFailed && typeof (c as any).matchScore === 'number' ? Math.round((c as any).matchScore) : undefined);
+      const effectiveDecision = isFailed ? 'FAILED' : (decision || (c as any).decision || (c as any).recommendation);
+      const resolvedDecision = isFailed ? 'REJECT' : (effectiveDecision
         ? (effectiveDecision === 'DO NOT SUBMIT' ? 'REJECT' : (effectiveDecision === 'ACCEPT' ? 'SUBMIT' : effectiveDecision))
-        : (resolvedScore !== undefined ? (resolvedScore >= 75 ? 'SUBMIT' : (resolvedScore >= 50 ? 'REVIEW' : 'REJECT')) : 'REVIEW');
-      const resolvedLevel = matchLevel || (c as any).matchLevel || (resolvedScore !== undefined ? (resolvedScore >= 75 ? 'STRONG MATCH' : (resolvedScore >= 50 ? 'MODERATE MATCH' : 'LOW FIT')) : undefined);
+        : (resolvedScore !== undefined ? (resolvedScore >= 75 ? 'SUBMIT' : (resolvedScore >= 50 ? 'REVIEW' : 'REJECT')) : 'REVIEW'));
+      const resolvedLevel = isFailed ? 'NOT EVALUATED' : (matchLevel || (c as any).matchLevel || (resolvedScore !== undefined ? (resolvedScore >= 75 ? 'STRONG MATCH' : (resolvedScore >= 50 ? 'MODERATE MATCH' : 'LOW FIT')) : undefined));
 
       return {
         ...c,
@@ -881,7 +889,7 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
         matchLevel: resolvedLevel,
         decision: resolvedDecision,
         recommendation: resolvedDecision,
-        mandatoryCompliance: compliance || (c as any).mandatoryCompliance || 'N/A'
+        mandatoryCompliance: isFailed ? 'N/A' : (compliance || (c as any).mandatoryCompliance || 'N/A')
       };
     }));
 
@@ -978,6 +986,7 @@ export async function evaluateAndEnrichCandidateRecord(
   defaultUserId: string | null
 ): Promise<CandidateRecord> {
   if (!jobId || jobId === 'pool') return candidateRecord;
+  if (candidateRecord.parsingStatus === 'FAILED') return candidateRecord;
 
   try {
     let targetJob: any = await getJobFromStoreOrDb(jobId);

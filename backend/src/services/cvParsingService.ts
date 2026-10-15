@@ -116,19 +116,22 @@ export function validateCvTextQuality(rawText: string): { isValid: boolean; reas
     return { isValid: false, reason: 'Extracted text is empty or document is unreadable.' };
   }
 
-  const text = rawText.trim();
-  if (text.length < 40) {
-    return { isValid: false, reason: 'Extracted text length is too short (< 40 characters) to be a valid CV.' };
+  const text = rawText
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ')
+    .trim();
+
+  if (text.length < 30) {
+    return { isValid: false, reason: 'Extracted text length is too short (< 30 characters) to be a valid CV.' };
   }
 
-  // Reject raw PDF binary headers or postscript dumps
-  if (text.startsWith('%PDF-') || /^[%\x00-\x1f]/.test(text)) {
+  // Reject raw PDF binary headers or postscript dumps if no text was decoded
+  if (text.startsWith('%PDF-') && !text.includes('\n')) {
     return { isValid: false, reason: 'Extracted text contains unparsed raw PDF binary header data.' };
   }
 
-  // A valid CV needs at least some word content (e.g. at least 5 recognizable words)
+  // A valid CV needs at least some word content (at least 4 recognizable words)
   const words = text.split(/\s+/).filter(w => /^[a-zA-Z]{2,}/.test(w));
-  if (words.length < 5) {
+  if (words.length < 4) {
     return { isValid: false, reason: 'Extracted text contains insufficient recognizable words to constitute a valid CV.' };
   }
 
@@ -148,21 +151,25 @@ export function validateCvTextQuality(rawText: string): { isValid: boolean; reas
     }
   }
 
-  const codePatterns = [
-    /import\s+React/i,
-    /from\s+['"]react['"]/i,
-    /export\s+default\s+function/i,
-    /function\s+\w+\s*\(.*?\)\s*\{/,
-    /const\s+\w+\s*=\s*\(\)\s*=>/,
-  ];
-  for (const pattern of codePatterns) {
-    if (pattern.test(text)) {
-      return { isValid: false, reason: 'Extracted text appears to be application source code.' };
+  // Only reject as source code if the document lacks CV sections AND matches code patterns
+  const hasCvKeywords = /(?:experience|education|skills|summary|profile|projects|contact|curriculum|resume|employment|work\s+history|qualification)/i.test(text);
+  if (!hasCvKeywords) {
+    const codePatterns = [
+      /import\s+React/i,
+      /from\s+['"]react['"]/i,
+      /export\s+default\s+function/i,
+      /function\s+\w+\s*\(.*?\)\s*\{/,
+      /const\s+\w+\s*=\s*\(\)\s*=>/,
+    ];
+    for (const pattern of codePatterns) {
+      if (pattern.test(text)) {
+        return { isValid: false, reason: 'Extracted text appears to be application source code.' };
+      }
     }
   }
 
   const unprintableCount = (text.match(/[\x00-\x08\x0E-\x1F\x7F-\x9F]/g) || []).length;
-  if (unprintableCount > text.length * 0.15) {
+  if (unprintableCount > text.length * 0.25) {
     return { isValid: false, reason: 'Extracted text contains excessive unprintable binary characters.' };
   }
 
@@ -233,18 +240,29 @@ export function extractCandidateName(lines: string[], cleanText: string, fileNam
     'date of birth', 'nationality', 'languages', 'projects', 'declaration', 'career'
   ];
 
-  for (let i = 0; i < Math.min(lines.length, 10); i++) {
+  for (let i = 0; i < Math.min(lines.length, 12); i++) {
     let line = lines[i].trim();
     line = line.replace(/^(?:name|full\s*name|candidate\s*name)\s*[:\-–]\s*/i, '').trim();
 
-    if (!line || line.length < 2 || line.length > 50) continue;
-    if (line.includes('@') || /\d/.test(line) || line.includes('/') || line.includes('|') || line.includes(':')) continue;
+    if (!line || line.length < 2) continue;
 
-    const lower = line.toLowerCase();
+    // If line has delimiters like '|', '•', '–', take the first segment
+    let candidateSegment = line;
+    if (line.includes('|') || line.includes('•') || line.includes('·') || line.includes('–')) {
+      const parts = line.split(/[|•·–]/).map(p => p.trim()).filter(Boolean);
+      if (parts.length > 0) {
+        candidateSegment = parts[0];
+      }
+    }
+
+    if (candidateSegment.length < 2 || candidateSegment.length > 50) continue;
+    if (candidateSegment.includes('@') || /\d/.test(candidateSegment) || candidateSegment.includes('/') || candidateSegment.includes(':')) continue;
+
+    const lower = candidateSegment.toLowerCase();
     const hasInvalidKeyword = invalidNameKeywords.some(kw => new RegExp(`\\b${kw}\\b`, 'i').test(lower));
     if (hasInvalidKeyword) continue;
 
-    const words = line.split(/\s+/).filter(Boolean);
+    const words = candidateSegment.split(/\s+/).filter(Boolean);
     if (words.length >= 1 && words.length <= 4) {
       const allAlpha = words.every(w => /^[a-zA-Z'.-]+$/.test(w));
       if (allAlpha) {
@@ -401,8 +419,18 @@ export function parseDateToYearMonth(str: string): { year: number; month: number
     }
   }
 
-  // Format: "04/2021", "4/2021", "04-2021", "04.2021"
-  const slashMatch = trimmed.match(/(\d{1,2})\s*[\/\.-]\s*(\d{2,4})/);
+  // Format: "2021-01-01", "2021/04", "2021-04" (ISO / Year-first)
+  const yearFirstMatch = trimmed.match(/\b(\d{4})\s*[\/\.-]\s*(\d{1,2})(?:\s*[\/\.-]\s*\d{1,2})?\b/);
+  if (yearFirstMatch) {
+    const year = parseInt(yearFirstMatch[1], 10);
+    const month = Math.max(0, Math.min(11, parseInt(yearFirstMatch[2], 10) - 1));
+    if (year >= 1970 && year <= 2035) {
+      return { year, month };
+    }
+  }
+
+  // Format: "04/2021", "4/2021", "04-2021", "04.2021" (Month-first)
+  const slashMatch = trimmed.match(/\b(\d{1,2})\s*[\/\.-]\s*(\d{2,4})\b/);
   if (slashMatch) {
     const month = Math.max(0, Math.min(11, parseInt(slashMatch[1], 10) - 1));
     let year = parseInt(slashMatch[2], 10);
@@ -410,14 +438,6 @@ export function parseDateToYearMonth(str: string): { year: number; month: number
     if (year >= 1970 && year <= 2035) {
       return { year, month };
     }
-  }
-
-  // Format: "2021/04", "2021-04"
-  const yearFirstMatch = trimmed.match(/(\d{4})\s*[\/\.-]\s*(\d{1,2})/);
-  if (yearFirstMatch) {
-    const year = parseInt(yearFirstMatch[1], 10);
-    const month = Math.max(0, Math.min(11, parseInt(yearFirstMatch[2], 10) - 1));
-    return { year, month };
   }
 
   // Format: "2021"
@@ -450,6 +470,75 @@ export function formatNumericExperience(totalMonths: number): string {
     return `${years} yrs`;
   }
   return `${years} yrs (${Math.floor(totalMonths / 12)}y ${remainderMonths}m)`;
+}
+
+/**
+ * Calculates non-overlapping professional employment tenure in months.
+ * Strictly avoids double-counting overlapping employment intervals.
+ * Excludes internships, student/academic projects, or education from professional employment tenure per business rules.
+ */
+export function calculateNonOverlappingExperienceMonths(experiences: CandidateExperience[]): { totalMonths: number; formatted: string; evidence: string } {
+  const intervals: [number, number][] = [];
+  let validRolesCount = 0;
+
+  for (const exp of experiences) {
+    const titleLower = (exp.title || '').toLowerCase();
+    const companyLower = (exp.company || '').toLowerCase();
+    const isInternship = /\b(?:intern|internship|trainee|apprentice)\b/i.test(titleLower) || /\binternship\b/i.test(companyLower);
+    const isAcademic = /\b(?:student|academic|capstone|thesis|coursework)\b/i.test(titleLower);
+
+    if (isInternship || isAcademic) {
+      continue;
+    }
+
+    let start = exp.startDate ? parseDateToYearMonth(exp.startDate) : null;
+    let end = exp.endDate ? parseDateToYearMonth(exp.endDate) : (exp.startDate ? parseDateToYearMonth('Present') : null);
+
+    if (!start && exp.duration) {
+      const parsedRange = extractDateRange(exp.duration);
+      if (parsedRange.startDate) {
+        start = parseDateToYearMonth(parsedRange.startDate);
+        end = parseDateToYearMonth(parsedRange.endDate || 'Present');
+      }
+    }
+
+    if (start && end) {
+      const startMonthIndex = start.year * 12 + start.month;
+      const endMonthIndex = end.year * 12 + end.month;
+      if (endMonthIndex >= startMonthIndex) {
+        intervals.push([startMonthIndex, endMonthIndex]);
+        validRolesCount++;
+      }
+    }
+  }
+
+  if (intervals.length === 0) {
+    return { totalMonths: 0, formatted: '0 yrs', evidence: 'No dated professional employment history identified' };
+  }
+
+  // Sort intervals chronologically by start date
+  intervals.sort((a, b) => a[0] - b[0]);
+
+  // Merge overlapping or contiguous intervals
+  const merged: [number, number][] = [];
+  for (const [start, end] of intervals) {
+    if (!merged.length || merged[merged.length - 1][1] < start) {
+      merged.push([start, end]);
+    } else {
+      merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], end);
+    }
+  }
+
+  let totalMonths = 0;
+  for (const [start, end] of merged) {
+    totalMonths += (end - start + 1);
+  }
+
+  const formatted = formatNumericExperience(totalMonths);
+  const years = parseFloat((totalMonths / 12).toFixed(1));
+  const evidence = `Calculated from ${validRolesCount} non-overlapping professional role(s): ${totalMonths} months (~${years} yrs)`;
+
+  return { totalMonths, formatted, evidence };
 }
 
 /**
@@ -915,6 +1004,52 @@ function parseProjectsSection(projText: string, fullText: string): CandidateProj
   return projects;
 }
 
+export const SKILL_CANONICAL_MAP: Record<string, string> = {
+  'react.js': 'React',
+  'reactjs': 'React',
+  'next.js': 'Next.js',
+  'nextjs': 'Next.js',
+  'node.js': 'Node.js',
+  'nodejs': 'Node.js',
+  'express.js': 'Express',
+  'expressjs': 'Express',
+  'postgresql': 'PostgreSQL',
+  'postgres': 'PostgreSQL',
+  'mongodb': 'MongoDB',
+  'mongo': 'MongoDB',
+  'amazon web services': 'AWS',
+  'google cloud platform': 'GCP',
+  'google cloud': 'GCP',
+  'microsoft azure': 'Azure',
+  'k8s': 'Kubernetes',
+  'tailwind css': 'Tailwind CSS',
+  'tailwindcss': 'Tailwind CSS',
+  'redux toolkit': 'Redux Toolkit',
+  'rtk': 'Redux Toolkit',
+  'html5': 'HTML5',
+  'html': 'HTML5',
+  'css3': 'CSS3',
+  'css': 'CSS3',
+  'restful apis': 'REST API',
+  'rest apis': 'REST API',
+  'rest api': 'REST API',
+  'rest': 'REST API',
+  'ci/cd': 'CI/CD',
+  'cicd': 'CI/CD',
+  'continuous integration': 'CI/CD',
+  'github actions': 'GitHub Actions',
+  's/4hana': 'SAP S/4HANA',
+  'sap s/4hana': 'SAP S/4HANA',
+  'sap s4hana': 'SAP S/4HANA',
+  'lightning web components': 'LWC',
+};
+
+export function normalizeSkillName(skill: string): string {
+  const clean = skill.trim();
+  const lower = clean.toLowerCase();
+  return SKILL_CANONICAL_MAP[lower] || clean;
+}
+
 /**
  * Robust Skills Extractor from Technical Skills Section & Full Text
  */
@@ -929,7 +1064,7 @@ export function parseSkillsFromText(cleanText: string, skillsSectionText?: strin
       for (const token of tokens) {
         const pureSkill = token.replace(/\s*\([^)]*\)/g, '').trim();
         if (pureSkill.length >= 1 && !/^(skills|technical\s+skills|core\s+competencies)$/i.test(pureSkill)) {
-          skillSet.add(pureSkill);
+          skillSet.add(normalizeSkillName(pureSkill));
         }
       }
     }
@@ -958,11 +1093,11 @@ export function parseSkillsFromText(cleanText: string, skillsSectionText?: strin
     const escaped = skill.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&');
     const regex = new RegExp(`(?:^|[^a-zA-Z0-9_])${escaped}(?:[^a-zA-Z0-9_]|$)`, 'i');
     if (regex.test(cleanText)) {
-      skillSet.add(skill);
+      skillSet.add(normalizeSkillName(skill));
     }
   }
 
-  // Deduplicate case-insensitively and normalize (e.g. keep "React" if "React.js" is present, or keep both clean)
+  // Deduplicate case-insensitively and normalize canonical names
   const result: string[] = [];
   const seen = new Set<string>();
   for (const s of skillSet) {
@@ -1277,66 +1412,29 @@ export function extractStructuredCandidateFromText(
     }
   }
 
-  // Pass D: Calculate from parsed work experience entries
+  // Pass D: Calculate non-overlapping experience from parsed professional work history entries
   if (experience.length > 0) {
-    let sumMonths = 0;
-    let earliestStartYear = 9999;
-    let latestEndYear = 0;
-
-    for (const exp of experience) {
-      // 1. Calculate from explicit start and end dates
-      if (exp.startDate) {
-        const m = calculateExperienceMonths(exp.startDate, exp.endDate);
-        if (m > 0) sumMonths += m;
-
-        const sY = parseDateToYearMonth(exp.startDate)?.year;
-        const eY = exp.endDate && /present|current|now|ongoing/i.test(exp.endDate)
-          ? new Date().getFullYear()
-          : parseDateToYearMonth(exp.endDate || '')?.year;
-        if (sY && sY >= 1980 && sY <= new Date().getFullYear()) {
-          earliestStartYear = Math.min(earliestStartYear, sY);
-        }
-        if (eY && eY >= 1980) {
-          latestEndYear = Math.max(latestEndYear, eY);
-        }
-      }
-      // 2. Parse from duration string if start date is missing
-      else if (exp.duration) {
-        const dMatch = exp.duration.match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs?)/i);
-        if (dMatch) sumMonths += Math.round(parseFloat(dMatch[1]) * 12);
-        else {
-          const moMatch = exp.duration.match(/(\d+)\s*(?:months?|mos?)/i);
-          if (moMatch) sumMonths += parseInt(moMatch[1], 10);
-        }
-      }
-    }
-
-    // If sumMonths was calculated from explicit role dates/durations, use that directly.
-    // Year span calculation is ONLY a fallback when individual role dates lacked month granularity.
-    let calculatedMonths = sumMonths;
-    if (calculatedMonths === 0 && earliestStartYear < 9999 && latestEndYear >= earliestStartYear) {
-      calculatedMonths = latestEndYear === earliestStartYear ? 6 : Math.max(6, (latestEndYear - earliestStartYear) * 12);
-    }
-
-    if (calculatedMonths > 0) {
-      totalExperienceMonths = calculatedMonths;
-      totalExperienceYears = parseFloat((calculatedMonths / 12).toFixed(1));
-      totalExperience = formatNumericExperience(calculatedMonths);
-      sourceEvidence['totalExperience'] = `Calculated from work history (${experience.length} roles): ${calculatedMonths} months (~${totalExperienceYears} yrs)`;
+    const nonOverlap = calculateNonOverlappingExperienceMonths(experience);
+    if (nonOverlap.totalMonths > 0) {
+      totalExperienceMonths = nonOverlap.totalMonths;
+      totalExperienceYears = parseFloat((nonOverlap.totalMonths / 12).toFixed(1));
+      totalExperience = nonOverlap.formatted;
+      sourceEvidence['totalExperience'] = nonOverlap.evidence;
     }
   }
 
   // Pass E: Fallback if candidate has work experience items but dates were unformatted
   if (!totalExperience && experience.length > 0) {
-    const estimatedMonths = experience.length * 24; // estimate ~2 yrs per documented position
-    totalExperienceMonths = estimatedMonths;
-    totalExperienceYears = parseFloat((estimatedMonths / 12).toFixed(1));
-    totalExperience = formatNumericExperience(estimatedMonths);
-    sourceEvidence['totalExperience'] = `Estimated from ${experience.length} position(s): ~${totalExperienceYears} yrs`;
+    totalExperience = 'Documented';
+    totalExperienceMonths = 0;
+    totalExperienceYears = 0;
+    sourceEvidence['totalExperience'] = `${experience.length} documented position(s) with unformatted dates`;
   }
 
   if (!totalExperience) {
     totalExperience = '0 yrs';
+    totalExperienceMonths = 0;
+    totalExperienceYears = 0;
   }
 
   // 9. Location Extraction
