@@ -123,8 +123,10 @@ const getPythonServiceUrls = (): string[] => {
   const remote = (process.env.REMOTE_DOCUMENT_PROCESSOR_URL || '').trim().replace(/\/+$/, '');
   const isProd = process.env.NODE_ENV === 'production';
   const local = 'http://127.0.0.1:8000';
+  const defaultRender = 'https://ats-d4tv.onrender.com';
   const urls: string[] = [];
-  if (configured) urls.push(configured);
+  if (configured && !configured.includes('ats-document-processor.onrender.com')) urls.push(configured);
+  if (!urls.includes(defaultRender)) urls.push(defaultRender);
   if (remote && !urls.includes(remote)) urls.push(remote);
   if (!isProd && !urls.includes(local)) urls.push(local);
   return urls;

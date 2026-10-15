@@ -644,7 +644,17 @@ export default function JobCandidatesPage() {
     }
   }, [selectedCandidate]);
 
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+  const getResolvedBackendUrl = useCallback((): string => {
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
+      if (!isLocal) {
+        return '/api';
+      }
+    }
+    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+  }, []);
+  const backendUrl = getResolvedBackendUrl();
 
   // Lazy fetch full candidate record (rawText, projects, certifications, etc.) when drawer is opened
   useEffect(() => {
@@ -1539,16 +1549,31 @@ export default function JobCandidatesPage() {
           setUploadQueue(prev =>
             prev.map(q => {
               const matchedCandidate = result.candidates?.find(
-                (c: CandidateRecord) => (c.fileName && c.fileName.toLowerCase() === q.name.toLowerCase())
+                (c: CandidateRecord) => (c.fileName && c.fileName.toLowerCase() === q.name.toLowerCase()) ||
+                                        (c.name && q.name.toLowerCase().includes(c.name.toLowerCase().split(' ')[0]))
               );
               if (matchedCandidate) {
                 const isDup = matchedCandidate.isDuplicate || matchedCandidate.parsingStatus === 'DUPLICATE';
+                const isFailed = matchedCandidate.parsingStatus === 'FAILED';
                 return {
                   ...q,
-                  status: isDup ? 'DUPLICATE' : matchedCandidate.parsingStatus,
+                  status: isDup ? 'DUPLICATE' : (isFailed ? 'FAILED' : 'PARSED'),
                   progress: 100,
                   error: isDup ? (matchedCandidate.errorMessage || 'This CV is already uploaded to this JD.') : matchedCandidate.errorMessage,
                   candidateId: matchedCandidate.id,
+                };
+              }
+              // Direct fallback for single-item chunk
+              if (chunk.length === 1 && result.candidates?.length === 1 && chunk[0].id === q.id) {
+                const singleCand = result.candidates[0];
+                const isDup = singleCand.isDuplicate || singleCand.parsingStatus === 'DUPLICATE';
+                const isFailed = singleCand.parsingStatus === 'FAILED';
+                return {
+                  ...q,
+                  status: isDup ? 'DUPLICATE' : (isFailed ? 'FAILED' : 'PARSED'),
+                  progress: 100,
+                  error: isDup ? (singleCand.errorMessage || 'This CV is already uploaded to this JD.') : singleCand.errorMessage,
+                  candidateId: singleCand.id,
                 };
               }
               return q;
@@ -1558,13 +1583,22 @@ export default function JobCandidatesPage() {
           if (result.candidates && result.candidates.length > 0) {
             setCandidates(prevCandidates => {
               const map = new Map<string, CandidateRecord>();
+              // 1. Put incoming successful candidates
               for (const c of result.candidates) {
                 const key = (c.fileName || c.id || `${c.name}_${c.email}`).toLowerCase();
                 map.set(key, c);
               }
+              // 2. Add previous candidates, removing any stale FAILED records superseded by new upload
               for (const c of prevCandidates) {
                 const key = (c.fileName || c.id || `${c.name}_${c.email}`).toLowerCase();
-                if (!map.has(key)) map.set(key, c);
+                const superseded = result.candidates.some((nc: CandidateRecord) => {
+                  const nameMatch = nc.name && c.name && (nc.name.toLowerCase() === c.name.toLowerCase() || c.name.toLowerCase().includes(nc.name.toLowerCase()) || nc.name.toLowerCase().includes(c.name.toLowerCase()));
+                  const fileMatch = nc.fileName && c.fileName && nc.fileName.toLowerCase() === c.fileName.toLowerCase();
+                  return (nameMatch || fileMatch) && c.parsingStatus === 'FAILED';
+                });
+                if (!map.has(key) && !superseded) {
+                  map.set(key, c);
+                }
               }
               const updatedList = Array.from(map.values());
 

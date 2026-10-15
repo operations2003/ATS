@@ -88,7 +88,11 @@ export const isPythonDocumentProcessorAvailable = async (): Promise<boolean> => 
 };
 
 export const getPythonServiceConfig = () => {
-  const rawUrl = process.env.DOCUMENT_PROCESSOR_URL;
+  let rawUrl = (process.env.DOCUMENT_PROCESSOR_URL || '').trim();
+  // If DOCUMENT_PROCESSOR_URL is missing or points to the suspended Render service, fallback to active engine
+  if (!rawUrl || rawUrl.includes('ats-document-processor.onrender.com')) {
+    rawUrl = 'https://ats-d4tv.onrender.com';
+  }
   if (rawUrl) {
     try {
       const parsed = new URL(rawUrl.trim());
