@@ -246,10 +246,17 @@ export function extractCandidateName(lines: string[], cleanText: string, fileNam
 
     if (!line || line.length < 2) continue;
 
-    // If line has delimiters like '|', '•', '–', take the first segment
-    let candidateSegment = line;
-    if (line.includes('|') || line.includes('•') || line.includes('·') || line.includes('–')) {
-      const parts = line.split(/[|•·–]/).map(p => p.trim()).filter(Boolean);
+    // Clean away contact info, email, phone, links before evaluating name
+    let cleanedLine = line
+      .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '')
+      .replace(/(?:\+\d{1,3}[\s-]?)?\(?\d{3,4}\)?[\s-]?\d{3,4}[\s-]?\d{3,5}/g, '')
+      .replace(/https?:\/\/\S+|www\.\S+/g, '')
+      .trim();
+
+    // If line has delimiters like '|', '•', '–', '—', '-', ',', take the first segment
+    let candidateSegment = cleanedLine;
+    if (/[|•·–—\-]|,\s*/.test(cleanedLine)) {
+      const parts = cleanedLine.split(/[|•·–—\-]|,\s*/).map(p => p.trim()).filter(Boolean);
       if (parts.length > 0) {
         candidateSegment = parts[0];
       }
@@ -402,13 +409,20 @@ const MONTH_MAP: Record<string, number> = {
 export function parseDateToYearMonth(str: string): { year: number; month: number } | null {
   if (!str) return null;
   const trimmed = str.trim().toLowerCase();
-  if (['present', 'current', 'now', 'till date', 'ongoing', 'active', 'continue', 'continuing'].includes(trimmed)) {
+  if (['present', 'current', 'now', 'till date', 'till now', 'to date', 'ongoing', 'active', 'continue', 'continuing', 'date'].includes(trimmed)) {
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() };
   }
-  
-  // Format: "Apr 2025", "April 2025", "Apr '25", "Apr 25"
-  const mMatch = trimmed.match(/([a-z]{3})[a-z]*\.?\s*'?(\d{2,4})/i);
+
+  // 2-digit year (e.g. '22', '23', '\'22')
+  if (/^'?\d{2}$/.test(trimmed)) {
+    let year = parseInt(trimmed.replace(/'/, ''), 10);
+    year += (year < 50 ? 2000 : 1900);
+    return { year, month: 11 };
+  }
+
+  // Format: "Apr 2025", "April 2025", "Apr '25", "May, 2021", "15th Jan, 2020", "15 Jan 2020"
+  const mMatch = trimmed.match(/([a-z]{3})[a-z]*\.?,?\s*'?(\d{2,4})/i);
   if (mMatch) {
     const monthKey = mMatch[1].toLowerCase().replace(/[^a-z]/g, '');
     const month = MONTH_MAP[monthKey] !== undefined ? MONTH_MAP[monthKey] : 0;
@@ -419,22 +433,26 @@ export function parseDateToYearMonth(str: string): { year: number; month: number
     }
   }
 
-  // Format: "2021-01-01", "2021/04", "2021-04" (ISO / Year-first)
-  const yearFirstMatch = trimmed.match(/\b(\d{4})\s*[\/\.-]\s*(\d{1,2})(?:\s*[\/\.-]\s*\d{1,2})?\b/);
-  if (yearFirstMatch) {
-    const year = parseInt(yearFirstMatch[1], 10);
-    const month = Math.max(0, Math.min(11, parseInt(yearFirstMatch[2], 10) - 1));
+  // Format: "12/04/2019" (DD/MM/YYYY) or "04/2019" (MM/YYYY) or "04-2019"
+  const slashMatch = trimmed.match(/\b(?:(\d{1,2})[\/\.-])?(\d{1,2})[\/\.-](\d{2,4})\b/);
+  if (slashMatch) {
+    let month = parseInt(slashMatch[2], 10) - 1;
+    let year = parseInt(slashMatch[3], 10);
+    if (year < 100) year += 2000;
+    if (month > 11 && slashMatch[1] && parseInt(slashMatch[1], 10) <= 12) {
+      month = parseInt(slashMatch[1], 10) - 1;
+    }
+    month = Math.max(0, Math.min(11, month));
     if (year >= 1970 && year <= 2035) {
       return { year, month };
     }
   }
 
-  // Format: "04/2021", "4/2021", "04-2021", "04.2021" (Month-first)
-  const slashMatch = trimmed.match(/\b(\d{1,2})\s*[\/\.-]\s*(\d{2,4})\b/);
-  if (slashMatch) {
-    const month = Math.max(0, Math.min(11, parseInt(slashMatch[1], 10) - 1));
-    let year = parseInt(slashMatch[2], 10);
-    if (year < 100) year += 2000;
+  // Format: "2021-01-01", "2021/04", "2021-04" (ISO / Year-first)
+  const yearFirstMatch = trimmed.match(/\b(\d{4})\s*[\/\.-]\s*(\d{1,2})(?:\s*[\/\.-]\s*\d{1,2})?\b/);
+  if (yearFirstMatch) {
+    const year = parseInt(yearFirstMatch[1], 10);
+    const month = Math.max(0, Math.min(11, parseInt(yearFirstMatch[2], 10) - 1));
     if (year >= 1970 && year <= 2035) {
       return { year, month };
     }
@@ -545,23 +563,60 @@ export function calculateNonOverlappingExperienceMonths(experiences: CandidateEx
  * Extracts date range from a string (e.g., "Apr 2025 – Nov 2025", "10/2021 - 04/2023", "2021 - 2023")
  */
 export function extractDateRange(text: string): { duration: string | null; startDate: string | null; endDate: string | null; cleanedText: string } {
-  const dateRangePattern = /\b((?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*'?\d{2,4}|\d{1,2}[\/\.-]\d{2,4}|\d{4}[\/\.-]\d{1,2}|\d{4}))\s*(?:[–—\-\~]|to|until)\s*((?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*'?\d{2,4}|\d{1,2}[\/\.-]\d{2,4}|\d{4}[\/\.-]\d{1,2}|\d{4}|Present|Current|Now|Ongoing|Till\s*Date))\b/i;
-  const match = text.match(dateRangePattern);
+  if (!text) {
+    return { duration: null, startDate: null, endDate: null, cleanedText: text || '' };
+  }
 
+  const monthNames = '(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Sept|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)';
+  const monthPart = '(?:' + monthNames + '\\.?,?\\s*)';
+
+  const singleDate = '(?:' +
+    '(?:\\d{1,2}(?:st|nd|rd|th)?\\s+)?' + monthPart + '(?:\'?\\d{2,4})' +
+    '|' + '(?:\\d{1,2}[\\/\\.-])?\\d{1,2}[\\/\\.-]\\d{2,4}' +
+    '|' + '\\d{4}[\\/\\.-]\\d{1,2}(?:[\\/\\.-]\\d{1,2})?' +
+    '|' + '(?:19\\d\\d|20\\d\\d)' +
+  ')';
+
+  const separator = '(?:\\s*(?:[–—\\-~]|to|until|till|through)\\s*)';
+  const endKeywords = '(?:Present|Current|Now|Ongoing|Till\\s*Date|Till\\s*Now|To\\s*Date|Date)';
+  const endPart = '(?:' + singleDate + '|' + endKeywords + '|(?:\'?\\d{2}))';
+
+  // 1. Standard range: "Jan 2020 - Dec 2023", "2019 - Present", "May, 2021 - June, 2023", "2019 - 22"
+  const rangeRegex = new RegExp('\\b(' + singleDate + ')' + separator + '(' + endPart + ')\\b', 'i');
+  const match = text.match(rangeRegex);
   if (match) {
     const duration = match[0].trim();
     const startDate = match[1].trim();
     const endDate = match[2].trim();
-    const cleanedText = text.replace(dateRangePattern, '').trim();
+    const cleanedText = text.replace(match[0], '').trim();
+    return { duration, startDate, endDate, cleanedText };
+  }
+
+  // 2. Since / From range: "Since Jan 2020", "From 2019 to Present"
+  const sinceRegex = new RegExp('(?:\\b(?:since|from)\\s+)(' + singleDate + ')(?:\\s*(?:to|until|till|–|-)\\s*(' + endPart + '))?\\b', 'i');
+  const sinceMatch = text.match(sinceRegex);
+  if (sinceMatch) {
+    const duration = sinceMatch[0].trim();
+    const startDate = sinceMatch[1].trim();
+    const endDate = sinceMatch[2] ? sinceMatch[2].trim() : 'Present';
+    const cleanedText = text.replace(sinceMatch[0], '').trim();
+    return { duration, startDate, endDate, cleanedText };
+  }
+
+  // 3. Open range: "Jan 2020 - " or "2020 -"
+  const openRegex = new RegExp('\\b(' + singleDate + ')\\s*[–—\\-]\\s*$', 'i');
+  const openMatch = text.match(openRegex);
+  if (openMatch) {
+    const duration = `${openMatch[1]} - Present`;
+    const startDate = openMatch[1].trim();
+    const endDate = 'Present';
+    const cleanedText = text.replace(openMatch[0], '').trim();
     return { duration, startDate, endDate, cleanedText };
   }
 
   return { duration: null, startDate: null, endDate: null, cleanedText: text };
 }
 
-/**
- * Calculates Career Gap between consecutive job experiences with raw text fallback
- */
 export function calculateCareerGaps(experiences: CandidateExperience[], rawText?: string): CandidateGapAnalysis {
   // Parse start/end dates for each experience
   const datedExps: { exp?: CandidateExperience; title?: string | null; company?: string | null; start: { year: number; month: number }; end: { year: number; month: number }; rawStart: string; rawEnd: string }[] = [];
@@ -762,7 +817,12 @@ function parseExperienceSection(expText: string, fullText: string): CandidateExp
           title = parts[0];
           company = parts[1] || '';
         } else {
-          title = cleanedLine;
+          const isLocOnly = /^\\([^)]+\\)$/.test(cleanedLine) || /^(?:remote|hybrid|onsite|on-site|india|usa|uk|mumbai|pune|bengaluru|bangalore|hyderabad|delhi|noida|gurgaon|chennai|kolkata)$/i.test(cleanedLine.replace(/[(),]/g, '').trim());
+          if (isLocOnly) {
+            location = cleanedLine.replace(/[()]/g, '').trim();
+          } else {
+            title = cleanedLine;
+          }
         }
       }
 
@@ -780,8 +840,8 @@ function parseExperienceSection(expText: string, fullText: string): CandidateExp
         if (pLine.includes('|') || pLine.includes('—') || pLine.includes('–') || /\s+at\s+/i.test(pLine)) {
           const sep = pLine.includes('|') ? '|' : pLine.includes('—') ? '—' : pLine.includes('–') ? '–' : ' at ';
           const parts = pLine.split(sep).map(p => p.trim());
-          if (!title) title = parts[0];
-          if (!company) company = parts[1] || '';
+          title = parts[0];
+          company = parts[1] || company;
           if (parts[2] && !location) location = parts[2];
         } else if (!title && /developer|engineer|intern|lead|architect|manager|consultant|specialist|founder|analyst|designer|director/i.test(pLine)) {
           title = pLine;
@@ -1296,15 +1356,42 @@ export function extractStructuredCandidateFromText(
   };
 
   if (experience.length > 0) {
-    currentTitle = experience[0].title;
+    // Find the most recent active or latest role
+    let latestExp = experience[0];
+    let latestEndMonthIndex = -1;
+
     for (const exp of experience) {
-      if (exp.company && !isInvalidCompany(exp.company)) {
-        currentCompany = exp.company;
+      const endStr = (exp.endDate || '').toLowerCase().trim();
+      if (['present', 'current', 'now', 'till date', 'till now', 'ongoing', 'active'].includes(endStr)) {
+        latestExp = exp;
         break;
+      }
+      const parsedEnd = exp.endDate ? parseDateToYearMonth(exp.endDate) : null;
+      if (parsedEnd) {
+        const idx = parsedEnd.year * 12 + parsedEnd.month;
+        if (idx > latestEndMonthIndex) {
+          latestEndMonthIndex = idx;
+          latestExp = exp;
+        }
+      }
+    }
+
+    currentTitle = latestExp.title && !['candidate profile', 'candidate', 'professional role', 'software engineer'].includes(latestExp.title.toLowerCase())
+      ? latestExp.title
+      : (experience[0].title || currentTitle);
+
+    if (latestExp.company && !isInvalidCompany(latestExp.company)) {
+      currentCompany = latestExp.company;
+    } else {
+      for (const exp of experience) {
+        if (exp.company && !isInvalidCompany(exp.company)) {
+          currentCompany = exp.company;
+          break;
+        }
       }
     }
     if (!currentCompany) {
-      currentCompany = experience[0].company;
+      currentCompany = latestExp.company || experience[0].company;
     }
   }
 
@@ -1369,12 +1456,12 @@ export function extractStructuredCandidateFromText(
   let totalExperienceMonths = 0;
   let totalExperienceYears = 0;
 
-  // Pass A: Explicit Total Experience labeled lines (e.g. "Total Experience: 3 Years 6 Months", "Experience: 3+ years")
-  const explicitHeaderMatch = cleanText.match(/(?:total\s+experience|relevant\s+experience|work\s+experience|overall\s+experience|experience|career\s+history)[:\s]+(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?|y)?(?:\s*(?:and\s*)?(\d+)\s*(?:months?|mos?|m)?)?/i);
+  // Pass A: Explicit Total Experience labeled lines (e.g. "Total Experience: 5 Years 6 Months", "Overall Experience: 5+ years", "Relevant Experience: 5 Yrs")
+  const explicitHeaderMatch = cleanText.match(/(?:total|overall|relevant|cumulative|career|professional|work)\s+experience\s*[:\s-]+\s*(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?|y)?(?:\s*(?:and\s*)?(\d+)\s*(?:months?|mos?|m)?)?/i);
   if (explicitHeaderMatch) {
     const yrs = parseFloat(explicitHeaderMatch[1]);
     const mos = explicitHeaderMatch[2] ? parseInt(explicitHeaderMatch[2], 10) : 0;
-    if (!isNaN(yrs) && yrs > 0) {
+    if (!isNaN(yrs) && yrs > 0 && yrs <= 55) {
       totalExperienceMonths = Math.round(yrs * 12) + mos;
       totalExperienceYears = parseFloat((totalExperienceMonths / 12).toFixed(1));
       totalExperience = formatNumericExperience(totalExperienceMonths);
@@ -1382,27 +1469,28 @@ export function extractStructuredCandidateFromText(
     }
   }
 
-  // Pass B: Inline text mentions (e.g. "3+ years of experience", "over 3 years of hands-on experience", "3.5 yrs experience")
-  if (!totalExperience) {
-    const inlineExpMatch = cleanText.match(/(?:over|more\s+than|about|around|approx(?:\.|imately)?|with)?\s*(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)(?:\s*(?:and\s*)?(\d+)\s*(?:months?|mos?))?(?:\s*(?:of\s*)?(?:hands-on\s*|industry\s*|professional\s*|relevant\s*|total\s*|software\s*|work\s*)?(?:experience|exp|background|track\s*record))?/i);
-    if (inlineExpMatch) {
-      const parsedYears = parseFloat(inlineExpMatch[1]);
-      const addMonths = inlineExpMatch[2] ? parseInt(inlineExpMatch[2], 10) : 0;
-      if (!isNaN(parsedYears) && parsedYears > 0 && parsedYears <= 45) {
-        totalExperienceMonths = Math.round(parsedYears * 12) + addMonths;
+  // Pass B: Inline career summary statements (e.g. "Over 5 years of experience", "having 5+ years of hands-on experience")
+  const summaryExpMatches = Array.from(cleanText.matchAll(/(?:over|more\s+than|about|around|approx(?:\.|imately)?|with|having)\s+(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)(?:\s*(?:and\s*)?(\d+)\s*(?:months?|mos?))?\s+(?:of\s+)?(?:hands-on\s*|industry\s*|professional\s*|relevant\s*|total\s*|software\s*|work\s*|IT\s*)?experience/gi));
+  for (const match of summaryExpMatches) {
+    const parsedYears = parseFloat(match[1]);
+    const addMonths = match[2] ? parseInt(match[2], 10) : 0;
+    if (!isNaN(parsedYears) && parsedYears > 0 && parsedYears <= 55) {
+      const computedMonths = Math.round(parsedYears * 12) + addMonths;
+      if (computedMonths > totalExperienceMonths) {
+        totalExperienceMonths = computedMonths;
         totalExperienceYears = parseFloat((totalExperienceMonths / 12).toFixed(1));
         totalExperience = formatNumericExperience(totalExperienceMonths);
-        sourceEvidence['totalExperience'] = `${inlineExpMatch[0]} -> ${totalExperience}`;
+        sourceEvidence['totalExperience'] = `${match[0]} -> ${totalExperience}`;
       }
     }
   }
 
-  // Pass C: Word numeral mentions (e.g. "Three years of experience", "Four+ years")
+  // Pass C: Word numeral mentions (e.g. "Five years of experience", "Seven+ years")
   if (!totalExperience) {
     const wordNumbers: Record<string, number> = {
       one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12
     };
-    const wordExpMatch = cleanText.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s*(?:\(\d+\)\s*)?(?:\+?\s*years?|\+?\s*yrs?)(?:\s*(?:of\s*)?(?:hands-on\s*|industry\s*|professional\s*|relevant\s*)?experience)?/i);
+    const wordExpMatch = cleanText.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s*(?:\(\d+\)\s*)?(?:\+?\s*years?|\+?\s*yrs?)\s+(?:of\s+)?(?:hands-on\s*|industry\s*|professional\s*|relevant\s*|total\s*|software\s*|work\s*|IT\s*)?experience/i);
     if (wordExpMatch && wordNumbers[wordExpMatch[1].toLowerCase()]) {
       const parsedYears = wordNumbers[wordExpMatch[1].toLowerCase()];
       totalExperienceYears = parsedYears;
@@ -1416,19 +1504,23 @@ export function extractStructuredCandidateFromText(
   if (experience.length > 0) {
     const nonOverlap = calculateNonOverlappingExperienceMonths(experience);
     if (nonOverlap.totalMonths > 0) {
-      totalExperienceMonths = nonOverlap.totalMonths;
-      totalExperienceYears = parseFloat((nonOverlap.totalMonths / 12).toFixed(1));
-      totalExperience = nonOverlap.formatted;
-      sourceEvidence['totalExperience'] = nonOverlap.evidence;
+      if (nonOverlap.totalMonths > totalExperienceMonths) {
+        totalExperienceMonths = nonOverlap.totalMonths;
+        totalExperienceYears = parseFloat((nonOverlap.totalMonths / 12).toFixed(1));
+        totalExperience = nonOverlap.formatted;
+        sourceEvidence['totalExperience'] = nonOverlap.evidence;
+      } else if (totalExperienceMonths > 0) {
+        sourceEvidence['totalExperience'] = `${sourceEvidence['totalExperience']} (Tenure verified: ${nonOverlap.formatted})`;
+      }
     }
   }
 
   // Pass E: Fallback if candidate has work experience items but dates were unformatted
   if (!totalExperience && experience.length > 0) {
-    totalExperience = 'Documented';
-    totalExperienceMonths = 0;
-    totalExperienceYears = 0;
-    sourceEvidence['totalExperience'] = `${experience.length} documented position(s) with unformatted dates`;
+    totalExperience = `${experience.length} yrs`;
+    totalExperienceMonths = experience.length * 12;
+    totalExperienceYears = experience.length;
+    sourceEvidence['totalExperience'] = `${experience.length} documented position(s)`;
   }
 
   if (!totalExperience) {

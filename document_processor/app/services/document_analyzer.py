@@ -40,17 +40,23 @@ def extract_phone(text: str) -> Optional[str]:
 def extract_candidate_name(text: str, filename: str = "") -> str:
     lines = [l.strip() for l in text.split('\n') if l.strip()]
     
-    # 1. Inspect top 5 lines for a clean 2-4 word capitalized name
-    for line in lines[:5]:
-        cleaned_line = re.sub(r'[^\w\s]', '', line).strip()
-        words = cleaned_line.split()
-        if 2 <= len(words) <= 4:
-            # Check if line does not contain keywords like resume, cv, engineer, email, etc.
-            lower_line = line.lower()
-            if not any(k in lower_line for k in ['resume', 'curriculum', 'vitae', 'email', 'phone', 'page', 'http', 'developer', 'engineer', 'architect', 'profile', 'summary']):
-                # Check capitalization
-                if all(w[0].isupper() for w in words if w):
-                    return " ".join(words)
+    # 1. Inspect top 8 lines for a clean 2-4 word capitalized name
+    for line in lines[:8]:
+        no_contacts = re.sub(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}', '', line)
+        no_contacts = re.sub(r'(?:\+\d{1,3}[\s-]?)?(?:\(?\d{2,4}\)?[\s-]?)?\d{3,5}[\s-]?\d{3,5}', '', no_contacts)
+        no_contacts = re.sub(r'https?://\S+|www\.\S+', '', no_contacts)
+        no_contacts = re.sub(r'^(?:name|full\s*name|candidate\s*name)\s*[:\-–]\s*', '', no_contacts, flags=re.I).strip()
+        
+        segments = re.split(r'[|•·–—\-,]', no_contacts)
+        for seg in segments:
+            seg_clean = re.sub(r'[^\w\s]', '', seg).strip()
+            words = seg_clean.split()
+            if 2 <= len(words) <= 4:
+                lower_seg = seg_clean.lower()
+                invalid_words = ['resume', 'curriculum', 'vitae', 'email', 'phone', 'page', 'http', 'developer', 'engineer', 'architect', 'profile', 'summary', 'experience', 'skills', 'education', 'contact', 'address', 'declaration', 'career']
+                if not any(k in lower_seg for k in invalid_words):
+                    if all(w[0].isupper() for w in words if w and w.isalpha()):
+                        return " ".join(words)
     
     # 2. Heuristic fallback: Extract from filename (e.g. CV_Rahul_Sharma.pdf -> Rahul Sharma)
     if filename:
@@ -94,19 +100,53 @@ def extract_skills(text: str) -> List[str]:
     return sorted(list(matched_skills))
 
 def extract_years_of_experience(text: str) -> Optional[str]:
-    # Match patterns like "5+ years", "4-6 years of experience", "8 years exp"
-    match = re.search(r'(\d+(?:\.\d+)?(?:\s*-\s*\d+)?)\+?\s*(?:years?|yrs?)(?:\s+(?:of\s+)?experience)?', text, re.IGNORECASE)
-    if match:
-        return f"{match.group(1)} years".replace(" ", "")
-    
-    # Check date range spans (e.g. 2018 - 2024 -> 6 years)
-    years = [int(y) for y in re.findall(r'\b(19\d\d|20\d\d)\b', text)]
-    if len(years) >= 2:
-        valid_years = [y for y in years if 1980 <= y <= 2030]
-        if valid_years:
-            span = max(valid_years) - min(valid_years)
-            if 0 < span <= 35:
-                return f"{span} years"
+    # 1. Explicit Total/Overall Experience labels (e.g., "Total Experience: 5.5 Years", "Overall Experience: 5+ Yrs")
+    explicit_pattern = r'(?:total|overall|relevant|cumulative|career|professional|work)\s+experience\s*[:\s-]+\s*(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?|y)?(?:\s*(?:and\s*)?(\d+)\s*(?:months?|mos?|m)?)?'
+    explicit_match = re.search(explicit_pattern, text, re.IGNORECASE)
+    if explicit_match:
+        yrs = float(explicit_match.group(1))
+        mos = int(explicit_match.group(2)) if explicit_match.group(2) else 0
+        total = yrs + (mos / 12.0)
+        if 0.5 <= total <= 50:
+            return f"{round(total, 1)} years"
+
+    # 2. Inline career summary mentions (e.g. "Over 5 years of experience", "having 5+ years of IT experience")
+    summary_pattern = r'(?:over|more\s+than|about|around|approx(?:\.|imately)?|with|having)\s+(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)(?:\s*(?:and\s*)?(\d+)\s*(?:months?|mos?))?\s+(?:of\s+)?(?:hands-on\s*|industry\s*|professional\s*|relevant\s*|total\s*|software\s*|work\s*|IT\s*)?experience'
+    summary_matches = re.findall(summary_pattern, text, re.IGNORECASE)
+    if summary_matches:
+        max_exp = 0.0
+        for m in summary_matches:
+            y = float(m[0])
+            mo = int(m[1]) if len(m) > 1 and m[1] else 0
+            val = y + (mo / 12.0)
+            if 0.5 <= val <= 50 and val > max_exp:
+                max_exp = val
+        if max_exp > 0:
+            return f"{round(max_exp, 1)} years"
+
+    # 3. Work history date range span in experience section
+    date_ranges = re.findall(r'\b(20\d\d|19\d\d)\s*(?:[–—\-\~]|to)\s*(20\d\d|19\d\d|Present|Current|Now)\b', text, re.IGNORECASE)
+    if date_ranges:
+        intervals = []
+        now_year = 2026
+        for start_str, end_str in date_ranges:
+            s_yr = int(start_str)
+            e_yr = now_year if re.match(r'^(?:present|current|now)$', end_str, re.I) else int(end_str)
+            if 1985 <= s_yr <= now_year and s_yr <= e_yr <= now_year + 1:
+                intervals.append((s_yr, e_yr))
+        if intervals:
+            intervals.sort(key=lambda x: x[0])
+            merged = [intervals[0]]
+            for current in intervals[1:]:
+                prev_start, prev_end = merged[-1]
+                if current[0] <= prev_end:
+                    merged[-1] = (prev_start, max(prev_end, current[1]))
+                else:
+                    merged.append(current)
+            total_span = sum(end - start for start, end in merged)
+            if 0 < total_span <= 45:
+                return f"{total_span} years"
+
     return None
 
 def extract_education(text: str) -> List[Dict[str, Any]]:

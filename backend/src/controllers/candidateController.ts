@@ -10,6 +10,7 @@ import {
   CandidateParsedProfile,
   validateCvTextQuality,
   calculateCareerGaps,
+  calculateNonOverlappingExperienceMonths,
   formatNumericExperience
 } from '../services/cvParsingService';
 import { evaluateCandidateAgainstRequirements } from '../services/evaluationService';
@@ -295,14 +296,14 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
   // Calculate exact experience months from verified role entries
   let roleMonths = 0;
   if (experience.length > 0) {
-    for (const exp of experience) {
-      if (exp.duration) {
-        const moMatch = exp.duration.match(/(\d+)\s*(?:months?|mos?)/i);
-        const yrMatch = exp.duration.match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs?)/i);
-        if (moMatch) roleMonths += parseInt(moMatch[1], 10);
-        else if (yrMatch) roleMonths += Math.round(parseFloat(yrMatch[1]) * 12);
-      }
-    }
+    const nonOverlap = calculateNonOverlappingExperienceMonths(experience.map((e: any) => ({
+      title: e.title || '',
+      company: e.company || '',
+      startDate: e.start_date || e.startDate,
+      endDate: e.end_date || e.endDate,
+      duration: e.duration || ''
+    })));
+    roleMonths = nonOverlap.totalMonths;
   }
 
   // Parse explicit totalExp from candidate record (e.g. "10.8 yrs (10y 10m)", "6.5 yrs", "10 yrs")
@@ -334,15 +335,14 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
     }
   }
 
-  const effectiveMonths = parsedTotalExpMonths > 0 ? parsedTotalExpMonths : roleMonths;
+  const effectiveMonths = Math.max(parsedTotalExpMonths, roleMonths);
   const effectiveYears = parsedTotalExpYears !== undefined
-    ? parsedTotalExpYears
+    ? Math.max(parsedTotalExpYears, effectiveMonths > 0 ? parseFloat((effectiveMonths / 12).toFixed(1)) : 0)
     : (effectiveMonths > 0 ? parseFloat((effectiveMonths / 12).toFixed(1)) : undefined);
 
-  const finalExpString = effectiveYears !== undefined
+  const finalExpString = effectiveYears !== undefined && effectiveYears > 0
     ? `${effectiveYears} yrs`
     : (effectiveMonths > 0 ? formatNumericExperience(effectiveMonths) : (totalExp || (experience.length ? `${experience.length} yrs` : '0 yrs')));
-
   return {
     id: c.id,
     jobId: associatedJobId,
@@ -1670,8 +1670,23 @@ export const uploadCandidateCVs = async (req: AuthRequest, res: Response): Promi
           structuredProfile.technologies = mergedSkills;
         }
         if (pythonResult.yearsOfExperience) {
-          structuredProfile.totalExperience = String(pythonResult.yearsOfExperience);
-          structuredProfile.relevantExperience = String(pythonResult.yearsOfExperience);
+          const pyYearsMatch = String(pythonResult.yearsOfExperience).match(/(\d+(?:\.\d+)?)/);
+          const spYearsMatch = String(structuredProfile.totalExperience || '').match(/(\d+(?:\.\d+)?)/);
+          const pyYears = pyYearsMatch ? parseFloat(pyYearsMatch[1]) : 0;
+          const spYears = spYearsMatch ? parseFloat(spYearsMatch[1]) : 0;
+
+          if (pyYears > 0 && spYears > 0) {
+            const bestYears = Math.max(pyYears, spYears);
+            structuredProfile.totalExperience = `${bestYears} yrs`;
+            structuredProfile.relevantExperience = `${bestYears} yrs`;
+            structuredProfile.totalExperienceYears = bestYears;
+            structuredProfile.totalExperienceMonths = Math.round(bestYears * 12);
+          } else if (pyYears > 0) {
+            structuredProfile.totalExperience = `${pyYears} yrs`;
+            structuredProfile.relevantExperience = `${pyYears} yrs`;
+            structuredProfile.totalExperienceYears = pyYears;
+            structuredProfile.totalExperienceMonths = Math.round(pyYears * 12);
+          }
         }
         if (pythonResult.currentTitle) {
           structuredProfile.currentTitle = pythonResult.currentTitle;

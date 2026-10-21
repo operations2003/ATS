@@ -632,9 +632,24 @@ export const applyPublicCandidate = async (req: Request, res: Response): Promise
       structuredProfile.skills = Array.from(new Set([...pythonResult.skills, ...structuredProfile.skills]));
       structuredProfile.technologies = structuredProfile.skills;
     }
-    if (pythonResult.yearsOfExperience && (!structuredProfile.totalExperience || structuredProfile.totalExperience === '0 yrs')) {
-      structuredProfile.totalExperience = String(pythonResult.yearsOfExperience);
-      structuredProfile.relevantExperience = String(pythonResult.yearsOfExperience);
+    if (pythonResult.yearsOfExperience) {
+      const pyYearsMatch = String(pythonResult.yearsOfExperience).match(/(\d+(?:\.\d+)?)/);
+      const spYearsMatch = String(structuredProfile.totalExperience || '').match(/(\d+(?:\.\d+)?)/);
+      const pyYears = pyYearsMatch ? parseFloat(pyYearsMatch[1]) : 0;
+      const spYears = spYearsMatch ? parseFloat(spYearsMatch[1]) : 0;
+
+      if (pyYears > 0 && spYears > 0) {
+        const bestYears = Math.max(pyYears, spYears);
+        structuredProfile.totalExperience = `${bestYears} yrs`;
+        structuredProfile.relevantExperience = `${bestYears} yrs`;
+        structuredProfile.totalExperienceYears = bestYears;
+        structuredProfile.totalExperienceMonths = Math.round(bestYears * 12);
+      } else if (pyYears > 0 && (!structuredProfile.totalExperience || structuredProfile.totalExperience === '0 yrs')) {
+        structuredProfile.totalExperience = `${pyYears} yrs`;
+        structuredProfile.relevantExperience = `${pyYears} yrs`;
+        structuredProfile.totalExperienceYears = pyYears;
+        structuredProfile.totalExperienceMonths = Math.round(pyYears * 12);
+      }
     }
 
     const candidateId = `cand-pub-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
