@@ -26,7 +26,8 @@ async function findUserJob(jobIdParam: string | string[] | undefined, userId: st
   }
 
   const job = await prisma.job.findUnique({
-    where: { id: jobId }
+    where: { id: jobId },
+    include: { user: { select: { role: true, email: true } } }
   });
 
   if (!job) {
@@ -41,9 +42,13 @@ async function findUserJob(jobIdParam: string | string[] | undefined, userId: st
     return { error: 'Forbidden: You do not have access to requisitions of another organization.', status: 403, jobId };
   }
 
-  // Enforce RBAC: Non-admin recruiters only have access to requirements of JDs they created
+  // Enforce RBAC: Non-admin recruiters have access to requirements of JDs they created OR JDs uploaded by Admin/Super Admin for their organization
   if (!isSuperAdmin && !isClientAdmin && job.created_by !== userId) {
-    return { error: 'Forbidden: You only have access to requirements for your own job requisitions.', status: 403, jobId };
+    const creatorRole = (job as any).user?.role;
+    const isJobAdminCreated = creatorRole === 'SUPER_ADMIN' || creatorRole === 'CLIENT_ADMIN' || creatorRole === 'ADMIN' || (job as any).user?.email === 'operations@tasknera.com' || (job as any).user?.email === 'admin@gmail.com';
+    if (!isJobAdminCreated) {
+      return { error: 'Forbidden: You only have access to requirements for your own job requisitions.', status: 403, jobId };
+    }
   }
 
   return { job, jobId };

@@ -5,6 +5,7 @@ import {
   createOrganizationWithAdmin,
   updateOrganizationLimits,
   updateOrganizationSubscription,
+  updateOrganizationJdPermission,
   toggleOrganizationStatus,
   resetClientAdminPassword,
   getAllOrganizationsWithStats
@@ -47,6 +48,7 @@ export const createOrganization = async (req: AuthRequest, res: Response): Promi
       maxRecruiters,
       maxActiveJobs,
       maxResumesPerMonth,
+      allowJdUpload,
       adminName,
       adminEmail,
       adminPassword
@@ -80,6 +82,7 @@ export const createOrganization = async (req: AuthRequest, res: Response): Promi
       maxRecruiters: maxRecruiters ? Number(maxRecruiters) : 5,
       maxActiveJobs: maxActiveJobs ? Number(maxActiveJobs) : 20,
       maxResumesPerMonth: maxResumesPerMonth ? Number(maxResumesPerMonth) : 500,
+      allowJdUpload: allowJdUpload !== undefined ? Boolean(allowJdUpload) : true,
       adminName: adminName || `${name.trim()} Admin`,
       adminEmail,
       adminPassword,
@@ -268,5 +271,36 @@ export const getAuditLogs = async (req: AuthRequest, res: Response): Promise<voi
   } catch (error: any) {
     console.error('[SuperAdmin Controller] Error fetching audit logs:', error);
     res.status(500).json({ error: error.message || 'Failed to fetch audit logs' });
+  }
+};
+
+/**
+ * Super Admin: Update JD Upload Permission for a client organization
+ * PATCH /api/super-admin/organizations/:id/jd-permission
+ */
+export const updateJdPermission = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const organizationId = String(req.params.id);
+    const { allowJdUpload } = req.body;
+
+    if (allowJdUpload === undefined || typeof allowJdUpload !== 'boolean') {
+      res.status(400).json({ error: 'Field "allowJdUpload" (boolean) is required.' });
+      return;
+    }
+
+    const updatedOrg = await updateOrganizationJdPermission(
+      organizationId,
+      allowJdUpload,
+      req.user?.userId
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `JD Upload Permission for "${updatedOrg.name}" has been ${allowJdUpload ? 'ENABLED' : 'DISABLED'}.`,
+      organization: updatedOrg
+    });
+  } catch (error: any) {
+    console.error('[SuperAdmin Controller] Error updating JD permission:', error);
+    res.status(400).json({ error: error.message || 'Failed to update JD upload permission' });
   }
 };

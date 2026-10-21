@@ -10,7 +10,7 @@ import {
   getAvailableJobsForEvaluation,
   normalizeJobWithAiController
 } from '../controllers/jobController';
-import { protect, optionalProtect, authorize } from '../middleware/authMiddleware';
+import { protect, optionalProtect, authorize, checkJdUploadPermission } from '../middleware/authMiddleware';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -20,7 +20,7 @@ const upload = multer({
 const router = Router();
 
 // Document parsing route (stateless document text extraction & analysis)
-router.post('/parse', protect, upload.single('file'), parseJobDescriptionController);
+router.post('/parse', protect, checkJdUploadPermission, upload.single('file'), parseJobDescriptionController);
 
 import {
   getRequirements,
@@ -58,7 +58,7 @@ router.post('/hiring-reality/simulate', protect, simulateJobHiringRealityControl
 router.get('/:id/hiring-reality', protect, getJobHiringRealityController);
 
 // Database routes
-router.post('/', protect, createJob);
+router.post('/', protect, checkJdUploadPermission, createJob);
 router.get('/', protect, getAllJobs);
 router.get('/:id', protect, getJobById);
 router.post('/:id/public-link', protect, getOrCreateJobPublicLink);

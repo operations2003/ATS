@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { useAuth } from '@/context/AuthContext';
@@ -33,11 +33,24 @@ interface DocumentMetrics {
 
 export default function CreateJobPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, isAuthenticated, token } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
 
+  const orgParam = searchParams.get('organizationId') || searchParams.get('orgId') || '';
+  const clientParam = searchParams.get('client') || searchParams.get('clientName') || '';
+
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN' || user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+  const canUploadJd = isSuperAdmin || user?.allowJdUpload !== false;
+
   // Form State
-  const [client, setClient] = useState('');
+  const [client, setClient] = useState(clientParam || '');
+
+  React.useEffect(() => {
+    if (clientParam && !client) {
+      setClient(clientParam);
+    }
+  }, [clientParam]);
   const [position, setPosition] = useState('');
   const [location, setLocation] = useState('');
   const [workMode, setWorkMode] = useState<'Remote' | 'Hybrid' | 'Onsite'>('Hybrid');
@@ -299,6 +312,7 @@ export default function CreateJobPage() {
           ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
         },
         body: JSON.stringify({
+          organizationId: (isSuperAdmin && orgParam) ? orgParam : undefined,
           client: client.trim(),
           position: position.trim(),
           location: location.trim() || undefined,
@@ -417,6 +431,17 @@ export default function CreateJobPage() {
             </div>
           </div>
 
+
+          {/* Super Admin Client Context Banner */}
+          {isSuperAdmin && (orgParam || clientParam) && (
+            <div className="mb-4 px-4 py-2.5 rounded-xl bg-violet-50 border border-violet-200 flex items-center justify-between text-xs text-violet-800 font-medium">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-violet-600 animate-pulse"></span>
+                <span>Uploading JD on behalf of client: <strong>{clientParam || orgParam}</strong></span>
+              </div>
+              <span className="text-[11px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded font-mono">Org ID: {orgParam}</span>
+            </div>
+          )}
 
           {/* Workflow Stepper */}
           <div className="grid grid-cols-3 gap-2 sm:gap-4 mt-6">

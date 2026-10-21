@@ -59,6 +59,7 @@ export interface CreateOrganizationInput {
   maxRecruiters?: number;
   maxActiveJobs?: number;
   maxResumesPerMonth?: number;
+  allowJdUpload?: boolean;
   adminName: string;
   adminEmail: string;
   adminPassword: string;
@@ -186,6 +187,7 @@ export async function getOrganizationQuota(organizationId: string) {
  */
 export async function createOrganizationWithAdmin(input: CreateOrganizationInput) {
   const cleanAdminEmail = input.adminEmail.toLowerCase().trim();
+  const allowJdUpload = input.allowJdUpload !== undefined ? Boolean(input.allowJdUpload) : true;
 
   // Pre-validate uniqueness of admin email
   const existingUser = await prisma.user.findUnique({
@@ -211,6 +213,7 @@ export async function createOrganizationWithAdmin(input: CreateOrganizationInput
         maxRecruiters: Number(input.maxRecruiters) || 5,
         maxActiveJobs: Number(input.maxActiveJobs) || 20,
         maxResumesPerMonth: Number(input.maxResumesPerMonth) || 500,
+        allowJdUpload: allowJdUpload,
         status: 'ACTIVE'
       }
     });
@@ -226,6 +229,7 @@ export async function createOrganizationWithAdmin(input: CreateOrganizationInput
         password: hashedPassword,
         role: 'CLIENT_ADMIN',
         organizationId: org.id,
+        allowJdUpload: allowJdUpload,
         isActive: true
       },
       select: {
@@ -234,6 +238,7 @@ export async function createOrganizationWithAdmin(input: CreateOrganizationInput
         email: true,
         role: true,
         organizationId: true,
+        allowJdUpload: true,
         createdAt: true
       }
     });
@@ -251,7 +256,8 @@ export async function createOrganizationWithAdmin(input: CreateOrganizationInput
           organizationName: org.name,
           clientAdminEmail: clientAdmin.email,
           maxUsers: org.maxUsers,
-          subscriptionPlan: org.subscriptionPlan
+          subscriptionPlan: org.subscriptionPlan,
+          allowJdUpload: allowJdUpload
         }
       }
     });
@@ -441,6 +447,53 @@ export async function resetClientAdminPassword(
 }
 
 /**
+ * Super Admin: Update JD Upload Permission for organization and its members
+ */
+export async function updateOrganizationJdPermission(
+  organizationId: string,
+  allowJdUpload: boolean,
+  superAdminUserId?: string
+) {
+  return await prisma.$transaction(async (tx) => {
+    const existingOrg = await tx.organization.findUnique({
+      where: { id: organizationId }
+    });
+    if (!existingOrg) {
+      throw new Error(`Organization "${organizationId}" not found`);
+    }
+
+    const updatedOrg = await tx.organization.update({
+      where: { id: organizationId },
+      data: { allowJdUpload }
+    });
+
+    // Synchronize permission across all user accounts in this tenant organization
+    await tx.user.updateMany({
+      where: { organizationId },
+      data: { allowJdUpload }
+    });
+
+    const auditUserId = await resolveAuditUserId(tx, superAdminUserId);
+    await tx.auditLog.create({
+      data: {
+        organizationId,
+        userId: auditUserId,
+        action: 'UPDATE_JD_UPLOAD_PERMISSION',
+        targetType: 'Organization',
+        targetId: organizationId,
+        details: {
+          organizationName: existingOrg.name,
+          previousAllowJdUpload: (existingOrg as any).allowJdUpload ?? true,
+          newAllowJdUpload: allowJdUpload
+        }
+      }
+    });
+
+    return updatedOrg;
+  });
+}
+
+/**
  * Super Admin: List all client organizations with dynamic usage statistics
  */
 export async function getAllOrganizationsWithStats() {
@@ -491,12 +544,14 @@ export async function getAllOrganizationsWithStats() {
           name: true,
           email: true,
           role: true,
+          allowJdUpload: true,
           createdAt: true
         }
       });
 
       return {
         ...org,
+        allowJdUpload: (org as any).allowJdUpload ?? true,
         currentUsers: totalUsers,
         availableUserSlots: Math.max(0, org.maxUsers - totalUsers),
         currentRecruiters: recruiterCount,

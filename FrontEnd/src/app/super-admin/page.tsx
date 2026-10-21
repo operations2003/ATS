@@ -24,7 +24,14 @@ export default function SuperAdminPage() {
   const [showLimitsModal, setShowLimitsModal] = useState(false);
   const [showSubModal, setShowSubModal] = useState(false);
   const [showResetPwdModal, setShowResetPwdModal] = useState(false);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedOrg, setSelectedOrg] = useState<ClientOrganization | null>(null);
+
+  // Client Details & JD Management
+  const [clientJobs, setClientJobs] = useState<any[]>([]);
+  const [loadingClientJobs, setLoadingClientJobs] = useState(false);
+  const [togglingPermission, setTogglingPermission] = useState(false);
+  const [detailsError, setDetailsError] = useState('');
 
   // Success credential alert after creating
   const [createdAdminCreds, setCreatedAdminCreds] = useState<{ orgName: string; email: string; password: string } | null>(null);
@@ -44,6 +51,7 @@ export default function SuperAdminPage() {
   const [newSubPlan, setNewSubPlan] = useState('STARTER');
   const [newBillingCycle, setNewBillingCycle] = useState('monthly');
   const [newSubExpiry, setNewSubExpiry] = useState('');
+  const [newAllowJdUpload, setNewAllowJdUpload] = useState(true);
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState('');
 
@@ -139,6 +147,7 @@ export default function SuperAdminPage() {
             adminName: newAdminName.trim(),
             adminEmail: newAdminEmail.trim(),
             adminPassword: newAdminPassword,
+            allowJdUpload: newAllowJdUpload,
             maxUsers: Number(newMaxUsers),
             maxRecruiters: Number(newMaxRecruiters),
             maxActiveJobs: Number(newMaxActiveJobs),
@@ -165,6 +174,7 @@ export default function SuperAdminPage() {
       setNewAdminName('');
       setNewAdminEmail('');
       setNewAdminPassword('');
+      setNewAllowJdUpload(true);
       setShowCreateModal(false);
       await loadData();
     } catch (err: any) {
@@ -291,6 +301,51 @@ export default function SuperAdminPage() {
     }
   };
 
+  const openClientDetailsModal = async (org: ClientOrganization) => {
+    setSelectedOrg(org);
+    setShowDetailsModal(true);
+    setDetailsError('');
+    setLoadingClientJobs(true);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
+      const res = await fetchApi<{ jobs: any[] }>(
+        `/jobs?organizationId=${org.id}`,
+        {},
+        token
+      );
+      setClientJobs(res?.jobs || []);
+    } catch (err: any) {
+      console.warn('Failed to load client jobs:', err);
+      setClientJobs([]);
+    } finally {
+      setLoadingClientJobs(false);
+    }
+  };
+
+  const handleToggleJdPermission = async (org: ClientOrganization) => {
+    const nextVal = org.allowJdUpload === false ? true : false;
+    setTogglingPermission(true);
+    setDetailsError('');
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
+      await fetchApi(
+        `/super-admin/organizations/${org.id}/jd-permission`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ allowJdUpload: nextVal })
+        },
+        token
+      );
+      const updatedOrg = { ...org, allowJdUpload: nextVal };
+      setSelectedOrg(updatedOrg);
+      setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o, allowJdUpload: nextVal } : o));
+    } catch (err: any) {
+      setDetailsError(err.message || 'Failed to update JD upload permission');
+    } finally {
+      setTogglingPermission(false);
+    }
+  };
+
   const openLimitsModal = (org: ClientOrganization) => {
     setSelectedOrg(org);
     setEditMaxUsers(org.maxUsers);
@@ -352,7 +407,7 @@ export default function SuperAdminPage() {
             </a>
           </div>
         </main>
-        <Footer />
+      <Footer />
       </div>
     );
   }
@@ -623,17 +678,42 @@ export default function SuperAdminPage() {
                             </div>
                           </td>
 
-                          <td className="px-5 py-4">
-                            <div className="font-medium text-slate-900">
-                              {org.clientAdmin?.name || 'Admin'}
+                          <td className="px-5 py-4 cursor-pointer group" onClick={() => openClientDetailsModal(org)}>
+                            <div className="font-medium text-slate-900 group-hover:text-violet-700 transition flex items-center gap-1.5">
+                              <span>{org.clientAdmin?.name || 'Admin'}</span>
+                              <span className="text-[10px] text-violet-500 opacity-0 group-hover:opacity-100 transition">Details →</span>
                             </div>
                             <div className="text-[11px] text-slate-500 font-mono">
                               {org.clientAdmin?.email || org.companyEmail || 'No email set'}
+                            </div>
+                            <div className="mt-1">
+                              <span
+                                className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                                  org.allowJdUpload !== false
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                                }`}
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full ${org.allowJdUpload !== false ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
+                                JD Upload: {org.allowJdUpload !== false ? 'Yes' : 'No (Super Admin Only)'}
+                              </span>
                             </div>
                           </td>
 
                           <td className="px-5 py-4 text-right">
                             <div className="inline-flex items-center gap-1.5">
+                              {/* Manage JDs & Details */}
+                              <button
+                                onClick={() => openClientDetailsModal(org)}
+                                className="px-2.5 py-1.5 text-violet-700 bg-violet-50 hover:bg-violet-100 font-semibold rounded-lg border border-violet-200 transition-colors cursor-pointer flex items-center gap-1"
+                                title="Open Client Admin Details & Job Description Management"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                <span>Manage JDs</span>
+                              </button>
+
                               {/* Edit Limits */}
                               <button
                                 onClick={() => openLimitsModal(org)}
@@ -860,6 +940,72 @@ export default function SuperAdminPage() {
                       onChange={(e) => setNewAdminPassword(e.target.value)}
                       className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono focus:bg-white focus:ring-2 focus:ring-violet-500"
                     />
+                  </div>
+                </div>
+
+                {/* JD Upload Permission Field */}
+                <div className="mt-4 pt-3 border-t border-slate-100">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-slate-900">
+                      JD Upload Permission *
+                    </label>
+                    <span className="text-[10px] text-violet-700 bg-violet-50 font-semibold px-2 py-0.5 rounded">
+                      Super Admin Controlled
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mb-2.5">
+                    Select whether this Client Admin is permitted to create and upload Job Descriptions (JDs) or if only the Super Admin can do so.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label
+                      className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                        newAllowJdUpload
+                          ? 'bg-violet-50/80 border-violet-400 ring-1 ring-violet-400'
+                          : 'bg-white border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="newJdUploadPermission"
+                        checked={newAllowJdUpload === true}
+                        onChange={() => setNewAllowJdUpload(true)}
+                        className="mt-0.5 text-violet-600 focus:ring-violet-500 cursor-pointer"
+                      />
+                      <div>
+                        <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                          <span>Yes</span>
+                          <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800">Allowed</span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                          Client Admin can create and upload Job Descriptions (JDs).
+                        </p>
+                      </div>
+                    </label>
+
+                    <label
+                      className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                        !newAllowJdUpload
+                          ? 'bg-amber-50/80 border-amber-400 ring-1 ring-amber-400'
+                          : 'bg-white border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="newJdUploadPermission"
+                        checked={newAllowJdUpload === false}
+                        onChange={() => setNewAllowJdUpload(false)}
+                        className="mt-0.5 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                      />
+                      <div>
+                        <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                          <span>No</span>
+                          <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">Super Admin Only</span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                          Only the Super Admin can create and upload JDs for that client. The Client Admin must not be able to upload or create JDs.
+                        </p>
+                      </div>
+                    </label>
                   </div>
                 </div>
               </div>
@@ -1247,6 +1393,230 @@ export default function SuperAdminPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+        {/* Client Admin Details & Job Description Management Modal */}
+      {showDetailsModal && selectedOrg && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-4xl w-full p-6 sm:p-8 shadow-2xl border border-slate-100 my-8">
+            {/* Header */}
+            <div className="flex items-start justify-between pb-5 border-b border-slate-100">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-violet-600"></span>
+                  <span className="text-xs font-bold text-violet-700 uppercase tracking-wider">Client Admin Details</span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                    selectedOrg.status === 'ACTIVE'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-amber-100 text-amber-800'
+                  }`}>
+                    {selectedOrg.status}
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 uppercase">
+                    {selectedOrg.subscriptionPlan} Plan
+                  </span>
+                </div>
+                <h3 className="text-2xl font-extrabold text-slate-900 mt-1">
+                  {selectedOrg.name}
+                </h3>
+                <p className="text-xs text-slate-500 font-mono mt-0.5">
+                  Client ID: {selectedOrg.id}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowDetailsModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-2 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Error banner if any */}
+            {detailsError && (
+              <div className="mt-4 p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700">
+                {detailsError}
+              </div>
+            )}
+
+            {/* Client & Admin Information Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
+              <div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-200/80">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Client Admin Account</span>
+                <div className="text-sm font-bold text-slate-900">{selectedOrg.clientAdmin?.name || 'Administrator'}</div>
+                <div className="text-xs text-slate-600 font-mono mt-0.5 truncate">{selectedOrg.clientAdmin?.email || selectedOrg.companyEmail || 'No email set'}</div>
+                <div className="text-[10px] text-slate-400 mt-2">Member since {new Date(selectedOrg.createdAt).toLocaleDateString()}</div>
+              </div>
+
+              <div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-200/80">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Company Contact</span>
+                <div className="text-xs text-slate-700"><strong className="text-slate-900">Phone:</strong> {selectedOrg.contactPhone || 'Not set'}</div>
+                <div className="text-xs text-slate-700 mt-1"><strong className="text-slate-900">Address:</strong> {selectedOrg.address || 'Not set'}</div>
+                <div className="text-xs text-slate-700 mt-1"><strong className="text-slate-900">Billing:</strong> {selectedOrg.billingCycle}</div>
+              </div>
+
+              <div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-200/80">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Requisition Quotas</span>
+                <div className="text-xs text-slate-700 font-semibold">Active Jobs: {selectedOrg.currentActiveJobs} / {selectedOrg.maxActiveJobs}</div>
+                <div className="text-xs text-slate-700 font-semibold mt-1">Users: {selectedOrg.currentUsers} / {selectedOrg.maxUsers}</div>
+                <div className="text-xs text-slate-700 font-semibold mt-1">Recruiters: {selectedOrg.currentRecruiters} / {selectedOrg.maxRecruiters}</div>
+              </div>
+            </div>
+
+            {/* DEDICATED SECTION: Job Description Management */}
+            <div className="mt-6 pt-6 border-t border-slate-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-base font-extrabold text-slate-900">
+                      Job Description Management
+                    </h4>
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
+                        selectedOrg.allowJdUpload !== false
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          : 'bg-amber-50 text-amber-800 border-amber-200'
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${selectedOrg.allowJdUpload !== false ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}></span>
+                      Permission: {selectedOrg.allowJdUpload !== false ? 'Enabled (Client Can Upload)' : 'Disabled (Super Admin Only)'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {selectedOrg.allowJdUpload !== false
+                      ? 'The Client Admin has permission to create and upload Job Descriptions. The Super Admin also retains full upload capability.'
+                      : 'JD Upload is restricted. Only the Super Admin can create and upload Job Descriptions for this client. The Client Admin cannot upload JDs.'}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {/* Permission Toggle Button */}
+                  <button
+                    onClick={() => handleToggleJdPermission(selectedOrg)}
+                    disabled={togglingPermission}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                      selectedOrg.allowJdUpload !== false
+                        ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                        : 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                    }`}
+                    title="Change JD Upload Permission"
+                  >
+                    {togglingPermission
+                      ? 'Updating...'
+                      : selectedOrg.allowJdUpload !== false
+                      ? 'Restrict: Set to Super Admin Only'
+                      : 'Allow: Enable Client Upload'}
+                  </button>
+
+                  {/* Super Admin Upload Action */}
+                  <a
+                    href={`/jobs/create?organizationId=${encodeURIComponent(selectedOrg.id)}&clientName=${encodeURIComponent(selectedOrg.name)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs font-bold shadow-sm transition cursor-pointer"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span>Upload JD for this Client</span>
+                  </a>
+                </div>
+              </div>
+
+              {/* JDs List for this Client */}
+              <div className="bg-slate-50/80 rounded-2xl border border-slate-200 overflow-hidden">
+                <div className="px-4 py-3 border-b border-slate-200/80 bg-slate-100/60 flex items-center justify-between">
+                  <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Client Requisitions & JDs ({clientJobs.length})
+                  </div>
+                  <button
+                    onClick={() => openClientDetailsModal(selectedOrg)}
+                    className="text-[11px] text-violet-700 hover:text-violet-900 font-semibold cursor-pointer"
+                  >
+                    Refresh List
+                  </button>
+                </div>
+
+                {loadingClientJobs ? (
+                  <div className="p-8 text-center text-xs text-slate-400">
+                    Loading client job requisitions...
+                  </div>
+                ) : clientJobs.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <div className="w-10 h-10 rounded-full bg-slate-200/60 text-slate-400 flex items-center justify-center mx-auto mb-2">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <div className="text-sm font-bold text-slate-800">No Job Descriptions uploaded for this client yet</div>
+                    <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                      Use the <strong>"Upload JD for this Client"</strong> button above to upload and evaluate candidate resumes deterministically for {selectedOrg.name}.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-200/60 max-h-72 overflow-y-auto">
+                    {clientJobs.map((job) => (
+                      <div key={job.id} className="p-4 hover:bg-white transition flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-900 text-xs sm:text-sm">{job.position || job.title}</span>
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${
+                              job.status === 'active' || job.status === 'Active'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-slate-100 text-slate-700'
+                            }`}>
+                              {job.status}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1">
+                            <span>{job.location || 'Remote / Unspecified'}</span>
+                            <span>•</span>
+                            <span>{job.work_mode || job.mode || 'Hybrid'}</span>
+                            <span>•</span>
+                            <span>{job.requirements?.length ?? 0} evaluated criteria</span>
+                            <span>•</span>
+                            <span>Created {job.created_at || job.created ? new Date(job.created_at || job.created).toLocaleDateString() : 'Recently'}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <a
+                            href={`/jobs/${job.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition"
+                          >
+                            View Job
+                          </a>
+                          <a
+                            href={`/jobs/${job.id}/candidates`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-violet-50 border border-violet-200 text-violet-700 hover:bg-violet-100 transition"
+                          >
+                            Candidate Pool
+                          </a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="pt-6 mt-6 border-t border-slate-100 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setShowDetailsModal(false)}
+                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl text-xs transition cursor-pointer"
+              >
+                Close Details
+              </button>
+            </div>
           </div>
         </div>
       )}

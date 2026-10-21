@@ -14,6 +14,7 @@ export interface User {
   createdAt?: string;
   updatedAt?: string;
   password?: string;
+  allowJdUpload?: boolean;
 }
 
 export interface OrganizationQuota {
@@ -60,12 +61,14 @@ export interface ClientOrganization {
   availableJobSlots: number;
   totalCandidates: number;
   totalEvaluations: number;
+  allowJdUpload?: boolean;
   clientAdmin?: {
     id: string;
     name: string;
     email: string;
     role: string;
     createdAt: string;
+    allowJdUpload?: boolean;
   } | null;
 }
 

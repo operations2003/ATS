@@ -271,6 +271,19 @@ export const signin = async (req: Request, res: Response): Promise<void> => {
     }
     const token = generateToken(user.id, user.email, userRole, orgId);
 
+    let userAllowJdUpload = userRole === 'SUPER_ADMIN' ? true : (user.allowJdUpload !== false);
+    if (userRole !== 'SUPER_ADMIN' && orgId && orgId !== 'org-tasknera') {
+      try {
+        const org = await prisma.organization.findUnique({
+          where: { id: orgId },
+          select: { allowJdUpload: true }
+        });
+        if (org && org.allowJdUpload === false) {
+          userAllowJdUpload = false;
+        }
+      } catch {}
+    }
+
     res.status(200).json({
       message: 'Signed in successfully',
       token,
@@ -281,6 +294,7 @@ export const signin = async (req: Request, res: Response): Promise<void> => {
         role: userRole,
         teamId: user.teamId,
         organizationId: orgId,
+        allowJdUpload: userAllowJdUpload,
         createdAt: user.createdAt
       }
     });
@@ -340,6 +354,7 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
           role: true,
           teamId: true,
           organizationId: true,
+          allowJdUpload: true,
           createdAt: true,
           updatedAt: true
         }
@@ -356,6 +371,7 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
           role: true,
           teamId: true,
           organizationId: true,
+          allowJdUpload: true,
           createdAt: true,
           updatedAt: true
         }
@@ -378,8 +394,23 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
       return;
     }
 
-    if (user.email?.toLowerCase().trim() === DESIGNATED_ADMIN_EMAIL) {
+    if (user.email?.toLowerCase().trim() === DESIGNATED_ADMIN_EMAIL || user.role === 'SUPER_ADMIN') {
       user.role = 'SUPER_ADMIN';
+      user.allowJdUpload = true;
+    } else {
+      let isAllowed = user.allowJdUpload !== false;
+      if (user.organizationId && user.organizationId !== 'org-tasknera') {
+        try {
+          const org = await prisma.organization.findUnique({
+            where: { id: user.organizationId },
+            select: { allowJdUpload: true }
+          });
+          if (org && org.allowJdUpload === false) {
+            isAllowed = false;
+          }
+        } catch {}
+      }
+      user.allowJdUpload = isAllowed;
     }
 
     res.status(200).json({ user });

@@ -7,6 +7,7 @@ import {
   updateSubscription,
   toggleStatus,
   resetAdminPassword,
+  updateJdPermission,
   getPlatformStats,
   getAuditLogs
 } from '../controllers/superAdminController';
@@ -23,6 +24,7 @@ router.patch('/organizations/:id/limits', updateLimits);
 router.patch('/organizations/:id/subscription', updateSubscription);
 router.post('/organizations/:id/toggle-status', toggleStatus);
 router.post('/organizations/:id/reset-admin-password', resetAdminPassword);
+router.patch('/organizations/:id/jd-permission', updateJdPermission);
 router.get('/stats', getPlatformStats);
 router.get('/audit-logs', getAuditLogs);
 

@@ -186,6 +186,8 @@ function WorkedByMembers({ workers = [], isCompact = false }: { workers: JobWork
 
 export default function JobsPage() {
   const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN' || user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+  const canUploadJd = isSuperAdmin || user?.allowJdUpload !== false;
   const [allJobs, setAllJobs] = useState<JobItem[]>([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'All' | 'Active' | 'Draft' | 'Closed'>('All');
@@ -536,15 +538,24 @@ export default function JobsPage() {
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Active Jobs & JDs</h1>
             <p className="text-sm text-slate-500 mt-1">Manage positions, monitor assigned TA teams, review job criteria, and run automated candidate matching</p>
           </div>
-          <Link
-            href="/jobs/create"
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-brand-orange hover:bg-brand-orange-hover text-white text-sm font-bold shadow-orange transition-all duration-200 active:scale-95"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-            </svg>
-            Upload New JD
-          </Link>
+          {canUploadJd ? (
+            <Link
+              href="/jobs/create"
+              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-brand-orange hover:bg-brand-orange-hover text-white text-sm font-bold shadow-orange transition-all duration-200 active:scale-95"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+              </svg>
+              Upload New JD
+            </Link>
+          ) : (
+            <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 text-xs font-semibold">
+              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m0 0v2m0-2h2m-2 0H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>JD Upload Managed by Super Admin</span>
+            </div>
+          )}
         </div>
 
         {/* Stats Summary Cards */}

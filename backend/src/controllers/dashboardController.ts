@@ -33,7 +33,15 @@ export const getDashboardSummaryController = async (
     if (!isSuperAdmin) {
       jobWhere.organizationId = userOrgId;
       if (!isClientAdmin) {
-        jobWhere.created_by = currentUserId;
+        jobWhere.AND = [
+          ...(jobWhere.AND || []),
+          {
+            OR: [
+              { created_by: currentUserId },
+              { user: { role: { in: ['SUPER_ADMIN', 'CLIENT_ADMIN', 'ADMIN'] } } }
+            ]
+          }
+        ];
       }
     } else if (req.query.organizationId) {
       jobWhere.organizationId = String(req.query.organizationId);
@@ -61,7 +69,8 @@ export const getDashboardSummaryController = async (
               { evaluatedBy: currentUserId },
               { createdByUserId: currentUserId },
               { candidate: { created_by: currentUserId } },
-              { job: { created_by: currentUserId } }
+              { job: { created_by: currentUserId } },
+              { job: { user: { role: { in: ['SUPER_ADMIN', 'CLIENT_ADMIN', 'ADMIN'] } } } }
             ]
           }
         ];

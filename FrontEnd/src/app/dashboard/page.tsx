@@ -66,6 +66,8 @@ function getEffectiveSkills(candidate: any, jobReqs?: any[]): string[] {
 
 export default function DashboardPage() {
   const { user, token } = useAuth();
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN' || user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+  const canUploadJd = isSuperAdmin || user?.allowJdUpload !== false;
   const [jobs, setJobs] = useState<JobItem[]>([]);
   const [recentEvaluations, setRecentEvaluations] = useState<CandidateEvaluationItem[]>([]);
   const [jobSearch, setJobSearch] = useState('');
@@ -366,17 +368,26 @@ export default function DashboardPage() {
             <p className="text-sm text-slate-500 mt-1">Real-time candidate intelligence, active jobs, and deterministic ATS pipeline</p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <Link
-              href="/jobs/create"
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+          {canUploadJd ? (
+            <div className="flex items-center gap-3">
+              <Link
+                href="/jobs/create"
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                </svg>
+                <span>Upload JD</span>
+              </Link>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 text-xs font-semibold">
+              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m0 0v2m0-2h2m-2 0H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span>Upload JD</span>
-            </Link>
-          </div>
+              <span>JD Upload Managed by Super Admin</span>
+            </div>
+          )}
         </div>
 
         {/* KPI cards */}

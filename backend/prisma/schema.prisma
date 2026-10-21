@@ -28,6 +28,7 @@ model User {
   team                String?      @default("General")
   customRole          String?      @map("custom_role")
   organizationId      String?      @default("org-tasknera") @map("organization_id")
+  allowJdUpload       Boolean      @default(true) @map("allow_jd_upload")
   createdAt           DateTime     @default(now()) @map("created_at")
   updatedAt           DateTime     @updatedAt @map("updated_at")
   jobs                Job[]
@@ -310,6 +311,7 @@ model Organization {
   maxRecruiters       Int         @default(5) @map("max_recruiters")
   maxActiveJobs       Int         @default(20) @map("max_active_jobs")
   maxResumesPerMonth  Int         @default(500) @map("max_resumes_per_month")
+  allowJdUpload       Boolean     @default(true) @map("allow_jd_upload")
 
   createdAt           DateTime    @default(now()) @map("created_at")
   updatedAt           DateTime    @updatedAt @map("updated_at")

@@ -602,7 +602,7 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
     // Verify job belongs to user's organization
     let checkJob: any = null;
     if (isJobUuid) {
-      checkJob = await prisma.job.findUnique({ where: { id: jobId }, select: { created_by: true, organizationId: true } });
+      checkJob = await prisma.job.findUnique({ where: { id: jobId }, select: { created_by: true, organizationId: true, user: { select: { role: true, email: true } } } });
     } else {
       checkJob = GLOBAL_JOB_STORE.get(jobId);
     }
@@ -615,7 +615,9 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
       }
       if (!isSuperAdmin && !isClientAdmin) {
         const jobOwner = checkJob.created_by || checkJob.createdBy;
-        if (jobOwner && jobOwner !== currentUserId) {
+        const creatorRole = checkJob.user?.role;
+        const isCreatedByAdmin = creatorRole === 'SUPER_ADMIN' || creatorRole === 'CLIENT_ADMIN' || creatorRole === 'ADMIN' || checkJob.user?.email === 'operations@tasknera.com' || checkJob.user?.email === 'admin@gmail.com';
+        if (jobOwner && jobOwner !== currentUserId && !isCreatedByAdmin) {
           res.status(403).json({ error: 'Forbidden: Access restricted to the requisition owner.' });
           return;
         }

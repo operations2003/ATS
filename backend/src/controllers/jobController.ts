@@ -16,6 +16,16 @@ export const GLOBAL_JOB_STORE = new Map<string, any>();
 // @access  Private (Authenticated Recruiter)
 export const parseJobDescriptionController = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const callerRole = req.user?.role || 'MEMBER';
+    const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
+    if (!isSuperAdmin && req.user?.allowJdUpload === false) {
+      res.status(403).json({
+        error: 'JD Upload Permission is disabled for your client account. Only the Super Admin is authorized to upload and manage Job Descriptions for this organization.',
+        code: 'JD_UPLOAD_PERMISSION_DENIED'
+      });
+      return;
+    }
+
     let rawText = '';
     let fileName = 'pasted_text.txt';
     let mimeType = 'text/plain';
@@ -295,12 +305,33 @@ export const createJob = async (req: AuthRequest, res: Response): Promise<void> 
       created_at: new Date()
     }));
 
-    // Check active jobs quota if not Super Admin
+    // Check active jobs quota and JD upload permission
     const callerRole = req.user?.role || 'MEMBER';
     const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
-    const targetOrgId = req.user?.organizationId || 'org-tasknera';
+    const targetOrgId = (isSuperAdmin && (req.body.organizationId || req.body.clientId))
+      ? String(req.body.organizationId || req.body.clientId).trim()
+      : (req.user?.organizationId || 'org-tasknera');
 
     if (!isSuperAdmin) {
+      if (req.user?.allowJdUpload === false) {
+        res.status(403).json({
+          error: 'JD Upload Permission is disabled for your client account. Only the Super Admin is authorized to upload and manage Job Descriptions for this organization.',
+          code: 'JD_UPLOAD_PERMISSION_DENIED'
+        });
+        return;
+      }
+
+      try {
+        const orgCheck = await prisma.organization.findUnique({ where: { id: targetOrgId }, select: { allowJdUpload: true } });
+        if (orgCheck && orgCheck.allowJdUpload === false) {
+          res.status(403).json({
+            error: 'JD Upload Permission is disabled for your client account. Only the Super Admin is authorized to upload and manage Job Descriptions for this organization.',
+            code: 'JD_UPLOAD_PERMISSION_DENIED'
+          });
+          return;
+        }
+      } catch (e) {}
+
       try {
         const org = await prisma.organization.findUnique({ where: { id: targetOrgId } });
         if (org && org.maxActiveJobs) {
@@ -562,9 +593,17 @@ export const getAllJobs = async (req: AuthRequest, res: Response): Promise<void>
       whereClause.organizationId = String(req.query.organizationId);
     }
 
-    // Recruiters only see jobs they created; Client Admins see all jobs in their organization
+    // Recruiters see jobs they created, plus JDs uploaded for their organization by Super Admin or Client Admin
     if (!isSuperAdmin && !isClientAdmin) {
-      whereClause.created_by = req.user.userId;
+      whereClause.AND = [
+        ...(whereClause.AND || []),
+        {
+          OR: [
+            { created_by: req.user.userId },
+            { user: { role: { in: ['SUPER_ADMIN', 'CLIENT_ADMIN', 'ADMIN'] } } }
+          ]
+        }
+      ];
     }
 
     whereClause.NOT = [
@@ -779,9 +818,17 @@ export const getAvailableJobsForEvaluation = async (req: AuthRequest, res: Respo
     if (!isSuperAdmin) {
       whereClause.organizationId = req.user.organizationId || 'org-tasknera';
     }
-    // Recruiters only see their own created jobs for matching
+    // Recruiters see their own created jobs, plus JDs uploaded for their organization by Super Admin or Client Admin
     if (!isSuperAdmin && !isClientAdmin) {
-      whereClause.created_by = req.user.userId;
+      whereClause.AND = [
+        ...(whereClause.AND || []),
+        {
+          OR: [
+            { created_by: req.user.userId },
+            { user: { role: { in: ['SUPER_ADMIN', 'CLIENT_ADMIN', 'ADMIN'] } } }
+          ]
+        }
+      ];
     }
 
     let dbJobs: any[] = [];
@@ -923,8 +970,12 @@ export const getJobById = async (req: AuthRequest, res: Response): Promise<void>
             return;
           }
           if (!isClientAdmin && job.created_by !== req.user?.userId) {
-            res.status(403).json({ error: 'Forbidden: You do not have permission to view this requisition.' });
-            return;
+            const creatorRole = job.user?.role;
+            const isCreatedByAdmin = creatorRole === 'SUPER_ADMIN' || creatorRole === 'CLIENT_ADMIN' || creatorRole === 'ADMIN' || job.user?.email === 'operations@tasknera.com' || job.user?.email === 'admin@gmail.com';
+            if (!isCreatedByAdmin) {
+              res.status(403).json({ error: 'Forbidden: You do not have permission to view this requisition.' });
+              return;
+            }
           }
         }
 

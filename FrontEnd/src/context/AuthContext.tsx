@@ -45,6 +45,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
         localStorage.removeItem('tasknera_name');
         localStorage.removeItem('tasknera_user_id');
         localStorage.removeItem('tasknera_current_password');
+    localStorage.removeItem('tasknera_allow_jd_upload');
       }
     }
 
@@ -61,6 +62,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
     const cachedRole = (localStorage.getItem('tasknera_role') as UserRole) || 'MEMBER';
     const cachedName = localStorage.getItem('tasknera_name') || '';
     const cachedUserId = localStorage.getItem('tasknera_user_id') || 'cached';
+    const cachedAllowJdUpload = localStorage.getItem('tasknera_allow_jd_upload') !== 'false';
 
     if (cachedEmail) {
       const cleanEmail = cachedEmail.toLowerCase().trim();
@@ -73,6 +75,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
         email: cleanEmail,
         name: isSuper ? 'Super Admin' : (cachedName || cleanEmail.split('@')[0]),
         role: initialRole,
+        allowJdUpload: isSuper ? true : cachedAllowJdUpload,
       });
     }
 
@@ -113,10 +116,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
             resolvedPassword = TASKNERA_CLIENT_ADMIN_PASSWORD;
           }
 
+          const allowJd = isSuperAdmin ? true : (data.user.allowJdUpload !== false);
+          localStorage.setItem('tasknera_allow_jd_upload', String(allowJd));
           const fullUser = { 
             ...data.user, 
             name: isSuperAdmin ? 'Super Admin' : (data.user.name || data.user.email.split('@')[0]),
             role: userRole,
+            allowJdUpload: allowJd,
             password: resolvedPassword
           };
           setUser(fullUser);
@@ -229,11 +235,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
     if (resolvedUserId) localStorage.setItem('tasknera_user_id', resolvedUserId);
 
     setToken(data.token);
+    const allowJd = isSuperAdmin ? true : (data.user?.allowJdUpload !== false);
+    localStorage.setItem('tasknera_allow_jd_upload', String(allowJd));
     const signedUser = {
       ...data.user,
       id: resolvedUserId,
       name: resolvedName,
       role: userRole,
+      allowJdUpload: allowJd,
       password: password
     };
     atsStore.clearAll();

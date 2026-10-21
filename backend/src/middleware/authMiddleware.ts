@@ -11,7 +11,16 @@ export interface AuthRequest extends Request {
     email: string;
     role?: UserRole;
     organizationId?: string;
+    allowJdUpload?: boolean;
   };
+}
+
+interface JwtDecoded {
+  userId: string;
+  email: string;
+  role?: UserRole;
+  organizationId?: string;
+  allowJdUpload?: boolean;
 }
 
 export const protect = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
@@ -26,7 +35,7 @@ export const protect = async (req: AuthRequest, res: Response, next: NextFunctio
 
   try {
     const secret = process.env.JWT_SECRET || 'ats_tasknera_super_secret_jwt_key_2026';
-    const decoded = jwt.verify(token, secret) as { userId: string; email: string; role?: UserRole; organizationId?: string };
+    const decoded = jwt.verify(token, secret) as JwtDecoded;
 
     const cleanEmail = decoded.email ? decoded.email.toLowerCase().trim() : '';
     const isSuperAdminEmail = cleanEmail === 'operations@tasknera.com' || cleanEmail === 'admin@gmail.com';
@@ -48,7 +57,8 @@ export const protect = async (req: AuthRequest, res: Response, next: NextFunctio
           name: true,
           role: true,
           isActive: true,
-          organizationId: true
+          organizationId: true,
+          allowJdUpload: true
         }
       });
     } catch (dbErr) {
@@ -65,6 +75,7 @@ export const protect = async (req: AuthRequest, res: Response, next: NextFunctio
       decoded.email = dbUser.email;
       decoded.role = isSuperAdminEmail ? 'SUPER_ADMIN' : (dbUser.role as UserRole);
       decoded.organizationId = dbUser.organizationId || 'org-tasknera';
+      decoded.allowJdUpload = isSuperAdminEmail ? true : (dbUser.allowJdUpload ?? true);
 
       if (dbUser.isActive === false && decoded.role !== 'SUPER_ADMIN') {
         res.status(403).json({
@@ -75,6 +86,7 @@ export const protect = async (req: AuthRequest, res: Response, next: NextFunctio
     } else if (isSuperAdminEmail) {
       decoded.role = 'SUPER_ADMIN';
       decoded.organizationId = decoded.organizationId || 'org-tasknera';
+      decoded.allowJdUpload = true;
     }
 
     req.user = decoded;
@@ -86,10 +98,14 @@ export const protect = async (req: AuthRequest, res: Response, next: NextFunctio
         try {
           const org = await prisma.organization.findUnique({
             where: { id: orgId },
-            select: { status: true, subscriptionExpiry: true }
+            select: { status: true, subscriptionExpiry: true, allowJdUpload: true }
           });
 
           if (org) {
+            if (org.allowJdUpload === false) {
+              decoded.allowJdUpload = false;
+              if (req.user) req.user.allowJdUpload = false;
+            }
             if (org.status === 'SUSPENDED') {
               res.status(403).json({
                 error: 'Your organization account has been suspended. Please contact your platform administrator.'
@@ -122,7 +138,7 @@ export const optionalProtect = async (req: AuthRequest, res: Response, next: Nex
     const token = authHeader.split(' ')[1];
     try {
       const secret = process.env.JWT_SECRET || 'ats_tasknera_super_secret_jwt_key_2026';
-      const decoded = jwt.verify(token, secret) as { userId: string; email: string; role?: UserRole; organizationId?: string };
+      const decoded = jwt.verify(token, secret) as JwtDecoded;
       const cleanEmail = decoded.email ? decoded.email.toLowerCase().trim() : '';
       const isSuperAdminEmail = cleanEmail === 'operations@tasknera.com' || cleanEmail === 'admin@gmail.com';
       const isUuid = decoded.userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(decoded.userId);
@@ -135,7 +151,7 @@ export const optionalProtect = async (req: AuthRequest, res: Response, next: Nex
               ...(cleanEmail ? [{ email: cleanEmail }] : [])
             ]
           },
-          select: { id: true, email: true, role: true, organizationId: true, isActive: true }
+          select: { id: true, email: true, role: true, organizationId: true, isActive: true, allowJdUpload: true }
         });
 
         if (dbUser) {
@@ -143,9 +159,11 @@ export const optionalProtect = async (req: AuthRequest, res: Response, next: Nex
           decoded.email = dbUser.email;
           decoded.role = isSuperAdminEmail ? 'SUPER_ADMIN' : (dbUser.role as UserRole);
           decoded.organizationId = dbUser.organizationId || 'org-tasknera';
+          decoded.allowJdUpload = isSuperAdminEmail ? true : (dbUser.allowJdUpload ?? true);
         } else if (isSuperAdminEmail) {
           decoded.role = 'SUPER_ADMIN';
           decoded.organizationId = decoded.organizationId || 'org-tasknera';
+          decoded.allowJdUpload = true;
         }
       } catch {}
 
@@ -197,3 +215,49 @@ export const authorize = (...allowedRoles: UserRole[]) => {
   };
 };
 
+/**
+ * Middleware: Verify that authenticated user has permission to create or upload JDs.
+ * - SUPER_ADMIN is always permitted.
+ * - For Client Admin & Recruiters: both organization.allowJdUpload and user.allowJdUpload must not be false.
+ */
+export const checkJdUploadPermission = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  if (!req.user) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+
+  const cleanEmail = req.user.email ? req.user.email.toLowerCase().trim() : '';
+  const isSuperAdmin = req.user.role === 'SUPER_ADMIN' || cleanEmail === 'operations@tasknera.com' || cleanEmail === 'admin@gmail.com';
+
+  if (isSuperAdmin) {
+    next();
+    return;
+  }
+
+  let allowed = req.user.allowJdUpload !== false;
+
+  const orgId = req.user.organizationId;
+  if (allowed && orgId && orgId !== 'org-tasknera') {
+    try {
+      const org = await prisma.organization.findUnique({
+        where: { id: orgId },
+        select: { allowJdUpload: true }
+      });
+      if (org && org.allowJdUpload === false) {
+        allowed = false;
+      }
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  if (!allowed) {
+    res.status(403).json({
+      error: 'JD Upload Permission is disabled for your client account. Only the Super Admin is authorized to upload and manage Job Descriptions for this organization.',
+      code: 'JD_UPLOAD_PERMISSION_DENIED'
+    });
+    return;
+  }
+
+  next();
+};

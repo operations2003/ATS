@@ -138,6 +138,8 @@ async function getJobAndRequirements(jobId: string, fallbackPosition?: string, f
       jd_text: storeJob.jd_text || undefined,
       created_by: storeJob.created_by,
       organizationId: storeJob.organizationId,
+      creatorRole: storeJob.user?.role,
+      creatorEmail: storeJob.user?.email,
     };
     if (storeJob.requirements && storeJob.requirements.length > 0) {
       requirements = storeJob.requirements;
@@ -151,7 +153,7 @@ async function getJobAndRequirements(jobId: string, fallbackPosition?: string, f
       try {
         const dbJob = await prisma.job.findUnique({
           where: { id: jobId },
-          include: { requirements: true }
+          include: { requirements: true, user: true }
         });
 
         if (dbJob) {
@@ -164,6 +166,8 @@ async function getJobAndRequirements(jobId: string, fallbackPosition?: string, f
             jd_text: dbJob.jd_text || undefined,
             created_by: dbJob.created_by,
             organizationId: dbJob.organizationId,
+            creatorRole: dbJob.user?.role,
+            creatorEmail: dbJob.user?.email,
           };
           if (dbJob.requirements && dbJob.requirements.length > 0) {
             requirements = dbJob.requirements;
@@ -229,6 +233,7 @@ export const getCandidateEvaluation = async (req: AuthRequest, res: Response): P
       job: {
         include: {
           requirements: true,
+          user: true,
         }
       },
       creator: true
@@ -268,12 +273,15 @@ export const getCandidateEvaluation = async (req: AuthRequest, res: Response): P
 
       // Security Check 2: Ownership verification for regular recruiters (ADMIN / CLIENT_ADMIN can see all org evaluations)
       const isCompanyAdmin = user.role === 'ADMIN' || user.role === 'CLIENT_ADMIN';
+      const creatorRole = evalRecord.job?.user?.role;
+      const isJobAdminCreated = creatorRole === 'SUPER_ADMIN' || creatorRole === 'CLIENT_ADMIN' || creatorRole === 'ADMIN' || evalRecord.job?.user?.email === 'operations@tasknera.com' || evalRecord.job?.user?.email === 'admin@gmail.com';
       const isOwner =
         evalRecord.evaluatedBy === user.userId ||
         evalRecord.createdByUserId === user.userId ||
         evalRecord.assignedToUserId === user.userId ||
         evalRecord.job?.created_by === user.userId ||
-        evalRecord.candidate?.created_by === user.userId;
+        evalRecord.candidate?.created_by === user.userId ||
+        isJobAdminCreated;
 
       if (!isSuperAdmin && !isCompanyAdmin && !isOwner) {
         res.status(403).json({ error: 'Forbidden: Access restricted to evaluation owner.' });
@@ -428,8 +436,11 @@ export const getCandidateEvaluation = async (req: AuthRequest, res: Response): P
 
     // If job belongs to someone else in recruiter mode
     if (!isSuperAdminFallback && !isCompanyAdminFallback && jobData.created_by && jobData.created_by !== user.userId) {
-      res.status(403).json({ error: 'Forbidden: Access restricted to job owner.' });
-      return;
+      const isJobAdminCreated = jobData.creatorRole === 'SUPER_ADMIN' || jobData.creatorRole === 'CLIENT_ADMIN' || jobData.creatorRole === 'ADMIN' || jobData.creatorEmail === 'operations@tasknera.com' || jobData.creatorEmail === 'admin@gmail.com';
+      if (!isJobAdminCreated) {
+        res.status(403).json({ error: 'Forbidden: Access restricted to job owner.' });
+        return;
+      }
     }
 
     const evaluation = await evaluateCandidateAgainstRequirements(candidateData, jobData, requirements);
@@ -721,6 +732,7 @@ export const getAllEvaluations = async (req: AuthRequest, res: Response): Promis
           { createdByUserId: user.userId },
           { candidate: { created_by: user.userId } },
           { job: { created_by: user.userId } },
+          { job: { user: { role: { in: ['SUPER_ADMIN', 'CLIENT_ADMIN', 'ADMIN'] } } } },
         ]
       });
     }
@@ -1126,7 +1138,15 @@ export const getCandidateEvaluationHistoryController = async (req: AuthRequest, 
         }
       }
       if (!isClientAdmin && !isSuperAdmin) {
-        jobWhere.created_by = req.user?.userId;
+        jobWhere.AND = [
+          ...(jobWhere.AND || []),
+          {
+            OR: [
+              { created_by: req.user?.userId },
+              { user: { role: { in: ['SUPER_ADMIN', 'CLIENT_ADMIN', 'ADMIN'] } } }
+            ]
+          }
+        ];
       }
       if (Object.keys(jobWhere).length > 0) {
         appWhere.job = jobWhere;
@@ -1302,7 +1322,15 @@ export const getAvailableJobsForCandidateController = async (req: AuthRequest, r
       }
     }
     if (!isClientAdmin && !isSuperAdmin) {
-      jobWhere.created_by = req.user?.userId;
+      jobWhere.AND = [
+        ...(jobWhere.AND || []),
+        {
+          OR: [
+            { created_by: req.user?.userId },
+            { user: { role: { in: ['SUPER_ADMIN', 'CLIENT_ADMIN', 'ADMIN'] } } }
+          ]
+        }
+      ];
     }
 
     // Fetch active jobs (filtered by creator for members, all for admin)
