@@ -65,6 +65,7 @@ app.use('/jobs', jobRoutes);
 app.use('/api/candidates', candidateRoutes);
 app.use('/candidates', candidateRoutes);
 app.use('/api/super-admin', superAdminRoutes);
+app.use('/super-admin', superAdminRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 

@@ -1,4 +1,19 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+export function getApiBaseUrl(): string {
+  const envUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (envUrl && envUrl.trim() !== '') {
+    return envUrl.replace(/\/+$/, '');
+  }
+  if (
+    typeof window !== 'undefined' &&
+    window.location.hostname !== 'localhost' &&
+    window.location.hostname !== '127.0.0.1'
+  ) {
+    return '/api';
+  }
+  return 'http://localhost:5000/api';
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 export type UserRole = 'SUPER_ADMIN' | 'CLIENT_ADMIN' | 'RECRUITER' | 'ADMIN' | 'MEMBER' | 'TEAM_LEADER' | 'USER' | 'TEAM_LEAD' | 'RECRUITER_MEMBER';
 
@@ -96,15 +111,68 @@ export async function fetchApi<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  const baseUrl = getApiBaseUrl();
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 
-  const data = await response.json();
+  // Avoid duplicate /api/api if baseUrl ends with /api
+  const primaryUrl =
+    baseUrl.endsWith('/api') && cleanEndpoint.startsWith('/api/')
+      ? `${baseUrl}${cleanEndpoint.slice(4)}`
+      : `${baseUrl}${cleanEndpoint}`;
+
+  let response: Response;
+  try {
+    response = await fetch(primaryUrl, {
+      ...options,
+      headers,
+    });
+  } catch (err: any) {
+    // If remote connection fails and we are running in browser, fallback to same-origin /api
+    if (
+      typeof window !== 'undefined' &&
+      !primaryUrl.startsWith('/api') &&
+      !primaryUrl.startsWith(window.location.origin + '/api')
+    ) {
+      const fallbackUrl = cleanEndpoint.startsWith('/api') ? cleanEndpoint : `/api${cleanEndpoint}`;
+      response = await fetch(fallbackUrl, {
+        ...options,
+        headers,
+      });
+    } else {
+      throw err;
+    }
+  }
+
+  // If external server returned 404 and wasn't already same-origin /api, fallback to Next.js same-origin API
+  if (
+    response.status === 404 &&
+    typeof window !== 'undefined' &&
+    !primaryUrl.startsWith('/api') &&
+    !primaryUrl.startsWith(window.location.origin + '/api')
+  ) {
+    try {
+      const fallbackUrl = cleanEndpoint.startsWith('/api') ? cleanEndpoint : `/api${cleanEndpoint}`;
+      const fallbackRes = await fetch(fallbackUrl, {
+        ...options,
+        headers,
+      });
+      if (fallbackRes.ok || fallbackRes.status !== 404) {
+        response = fallbackRes;
+      }
+    } catch {
+      // Keep original response if fallback fails
+    }
+  }
+
+  let data: any = {};
+  try {
+    data = await response.json();
+  } catch {
+    data = {};
+  }
 
   if (!response.ok) {
-    throw new Error(data.error || 'An unexpected error occurred');
+    throw new Error(data.error || `Request failed with status ${response.status}`);
   }
 
   return data as T;
