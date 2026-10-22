@@ -84,7 +84,7 @@ export interface EvaluationData {
   evaluator: string;
 }
 
-export default function CandidateEvaluationDetailPage() {
+function CandidateEvaluationDetailContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   
@@ -1074,5 +1074,19 @@ export default function CandidateEvaluationDetailPage() {
 
       <Footer />
     </div>
+  );
+}
+
+export default function CandidateEvaluationDetailPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="min-h-screen bg-[#EEF2F6] flex items-center justify-center">
+          <div className="w-8 h-8 border-4 border-brand-orange border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <CandidateEvaluationDetailContent />
+    </React.Suspense>
   );
 }

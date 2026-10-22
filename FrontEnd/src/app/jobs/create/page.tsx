@@ -31,7 +31,7 @@ interface DocumentMetrics {
   lineCount: number;
 }
 
-export default function CreateJobPage() {
+function CreateJobContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, isAuthenticated, token } = useAuth();
@@ -1097,3 +1097,16 @@ export default function CreateJobPage() {
   );
 }
 
+export default function CreateJobPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="min-h-screen bg-[#EEF2F6] flex items-center justify-center">
+          <div className="w-8 h-8 border-4 border-brand-orange border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <CreateJobContent />
+    </React.Suspense>
+  );
+}
