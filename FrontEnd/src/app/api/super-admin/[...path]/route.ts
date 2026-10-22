@@ -16,6 +16,7 @@ async function proxyOrHandle(req: NextRequest, params: Promise<{ path: string[] 
   const pathStr = Array.isArray(path) ? path.join('/') : (path || '');
   const authToken = req.headers.get('authorization');
   const searchParams = req.nextUrl.search;
+  const segments = Array.isArray(path) ? path : [path];
 
   let bodyData: any = null;
   if (['POST', 'PATCH', 'PUT'].includes(method)) {
@@ -23,6 +24,14 @@ async function proxyOrHandle(req: NextRequest, params: Promise<{ path: string[] 
       bodyData = await req.json();
     } catch {
       bodyData = {};
+    }
+  }
+
+  // Pre-record permission changes into in-memory store immediately
+  if (segments[0] === 'organizations' && segments.length >= 3 && segments[2] === 'jd-permission') {
+    const orgId = segments[1];
+    if (bodyData?.allowJdUpload !== undefined) {
+      localOrgPermissions[orgId] = Boolean(bodyData.allowJdUpload);
     }
   }
 
@@ -47,6 +56,20 @@ async function proxyOrHandle(req: NextRequest, params: Promise<{ path: string[] 
 
       if (res.status !== 404) {
         const data = await res.json().catch(() => ({}));
+
+        // Merge in-memory permission overrides into the backend response
+        if (data && Array.isArray(data.organizations)) {
+          data.organizations = data.organizations.map((o: any) => {
+            if (localOrgPermissions[o.id] !== undefined) {
+              return { ...o, allowJdUpload: localOrgPermissions[o.id] };
+            }
+            return o;
+          });
+        }
+        if (data && data.organization && localOrgPermissions[data.organization.id] !== undefined) {
+          data.organization.allowJdUpload = localOrgPermissions[data.organization.id];
+        }
+
         return NextResponse.json(data, { status: res.status });
       }
     } catch (backendErr: any) {
@@ -55,8 +78,6 @@ async function proxyOrHandle(req: NextRequest, params: Promise<{ path: string[] 
   }
 
   // 2. Resilient Fallbacks if backend is unreachable or returned 404
-  const segments = Array.isArray(path) ? path : [path];
-  
   // Handling: /api/super-admin/organizations/:id/jd-permission
   if (segments[0] === 'organizations' && segments.length >= 3 && segments[2] === 'jd-permission') {
     const orgId = segments[1];

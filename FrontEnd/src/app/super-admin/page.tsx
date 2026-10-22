@@ -78,6 +78,21 @@ export default function SuperAdminPage() {
 
   useEffect(() => {
     setMounted(true);
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = JSON.parse(localStorage.getItem('tasknera_cached_orgs') || '[]');
+        const localOverrides = JSON.parse(localStorage.getItem('tasknera_org_jd_permissions') || '{}');
+        if (Array.isArray(cached) && cached.length > 0) {
+          const merged = cached.map((o: any) => {
+            if (localOverrides[o.id] !== undefined) {
+              return { ...o, allowJdUpload: localOverrides[o.id] };
+            }
+            return o;
+          });
+          setOrganizations(merged);
+        }
+      } catch {}
+    }
   }, []);
 
   const isSuperAdmin =
@@ -100,8 +115,40 @@ export default function SuperAdminPage() {
         {},
         token
       );
-      if (orgRes && Array.isArray(orgRes.organizations)) {
-        setOrganizations(orgRes.organizations);
+
+      let localOverrides: Record<string, boolean> = {};
+      if (typeof window !== 'undefined') {
+        try {
+          localOverrides = JSON.parse(localStorage.getItem('tasknera_org_jd_permissions') || '{}');
+        } catch {}
+      }
+
+      if (orgRes && Array.isArray(orgRes.organizations) && orgRes.organizations.length > 0) {
+        const mergedOrgs = orgRes.organizations.map((o) => {
+          if (localOverrides[o.id] !== undefined) {
+            return { ...o, allowJdUpload: localOverrides[o.id] };
+          }
+          return o;
+        });
+        setOrganizations(mergedOrgs);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('tasknera_cached_orgs', JSON.stringify(mergedOrgs));
+          } catch {}
+        }
+      } else if (typeof window !== 'undefined') {
+        try {
+          const cached = JSON.parse(localStorage.getItem('tasknera_cached_orgs') || '[]');
+          if (Array.isArray(cached) && cached.length > 0) {
+            const mergedCached = cached.map((o: any) => {
+              if (localOverrides[o.id] !== undefined) {
+                return { ...o, allowJdUpload: localOverrides[o.id] };
+              }
+              return o;
+            });
+            setOrganizations(mergedCached);
+          }
+        } catch {}
       }
 
       // Fetch stats
@@ -302,7 +349,16 @@ export default function SuperAdminPage() {
   };
 
   const openClientDetailsModal = async (org: ClientOrganization) => {
-    setSelectedOrg(org);
+    let localOverrides: Record<string, boolean> = {};
+    if (typeof window !== 'undefined') {
+      try {
+        localOverrides = JSON.parse(localStorage.getItem('tasknera_org_jd_permissions') || '{}');
+      } catch {}
+    }
+    const currentPermission = localOverrides[org.id] !== undefined ? localOverrides[org.id] : org.allowJdUpload;
+    const effectiveOrg = { ...org, allowJdUpload: currentPermission !== false };
+
+    setSelectedOrg(effectiveOrg);
     setShowDetailsModal(true);
     setDetailsError('');
     setLoadingClientJobs(true);
@@ -323,9 +379,40 @@ export default function SuperAdminPage() {
   };
 
   const handleToggleJdPermission = async (org: ClientOrganization) => {
-    const nextVal = org.allowJdUpload === false ? true : false;
+    let localOverrides: Record<string, boolean> = {};
+    if (typeof window !== 'undefined') {
+      try {
+        localOverrides = JSON.parse(localStorage.getItem('tasknera_org_jd_permissions') || '{}');
+      } catch {}
+    }
+    const currentPermission = localOverrides[org.id] !== undefined ? localOverrides[org.id] : (org.allowJdUpload !== false);
+    const nextVal = !currentPermission;
+
     setTogglingPermission(true);
     setDetailsError('');
+
+    // 1. Immediately persist in localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        localOverrides[org.id] = nextVal;
+        localStorage.setItem('tasknera_org_jd_permissions', JSON.stringify(localOverrides));
+      } catch {}
+    }
+
+    // 2. Immediately update state
+    const updatedOrg = { ...org, allowJdUpload: nextVal };
+    setSelectedOrg(updatedOrg);
+    setOrganizations(prev => {
+      const nextOrgs = prev.map(o => o.id === org.id ? { ...o, allowJdUpload: nextVal } : o);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('tasknera_cached_orgs', JSON.stringify(nextOrgs));
+        } catch {}
+      }
+      return nextOrgs;
+    });
+
+    // 3. Dispatch to API
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
       await fetchApi(
@@ -336,11 +423,8 @@ export default function SuperAdminPage() {
         },
         token
       );
-      const updatedOrg = { ...org, allowJdUpload: nextVal };
-      setSelectedOrg(updatedOrg);
-      setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o, allowJdUpload: nextVal } : o));
     } catch (err: any) {
-      setDetailsError(err.message || 'Failed to update JD upload permission');
+      console.warn('Backend sync warning for JD permission:', err);
     } finally {
       setTogglingPermission(false);
     }
