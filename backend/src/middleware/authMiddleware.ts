@@ -94,7 +94,7 @@ export const protect = async (req: AuthRequest, res: Response, next: NextFunctio
     // Check organization subscription & status if not super admin
     if (decoded.role !== 'SUPER_ADMIN' && !isSuperAdminEmail) {
       const orgId = decoded.organizationId;
-      if (orgId && orgId !== 'org-tasknera') {
+      if (orgId) {
         try {
           const org = await prisma.organization.findUnique({
             where: { id: orgId },
@@ -106,17 +106,19 @@ export const protect = async (req: AuthRequest, res: Response, next: NextFunctio
               decoded.allowJdUpload = false;
               if (req.user) req.user.allowJdUpload = false;
             }
-            if (org.status === 'SUSPENDED') {
-              res.status(403).json({
-                error: 'Your organization account has been suspended. Please contact your platform administrator.'
-              });
-              return;
-            }
-            if (org.status === 'EXPIRED' || (org.subscriptionExpiry && new Date(org.subscriptionExpiry) < new Date())) {
-              res.status(403).json({
-                error: 'Your organization subscription has expired. Please contact your platform administrator to renew.'
-              });
-              return;
+            if (orgId !== 'org-tasknera') {
+              if (org.status === 'SUSPENDED') {
+                res.status(403).json({
+                  error: 'Your organization account has been suspended. Please contact your platform administrator.'
+                });
+                return;
+              }
+              if (org.status === 'EXPIRED' || (org.subscriptionExpiry && new Date(org.subscriptionExpiry) < new Date())) {
+                res.status(403).json({
+                  error: 'Your organization subscription has expired. Please contact your platform administrator to renew.'
+                });
+                return;
+              }
             }
           }
         } catch (orgErr) {
@@ -237,7 +239,7 @@ export const checkJdUploadPermission = async (req: AuthRequest, res: Response, n
   let allowed = req.user.allowJdUpload !== false;
 
   const orgId = req.user.organizationId;
-  if (allowed && orgId && orgId !== 'org-tasknera') {
+  if (allowed && orgId) {
     try {
       const org = await prisma.organization.findUnique({
         where: { id: orgId },

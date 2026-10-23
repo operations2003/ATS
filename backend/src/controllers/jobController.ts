@@ -18,12 +18,25 @@ export const parseJobDescriptionController = async (req: AuthRequest, res: Respo
   try {
     const callerRole = req.user?.role || 'MEMBER';
     const isSuperAdmin = callerRole === 'SUPER_ADMIN' || req.user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || req.user?.email?.toLowerCase().trim() === 'admin@gmail.com';
-    if (!isSuperAdmin && req.user?.allowJdUpload === false) {
-      res.status(403).json({
-        error: 'JD Upload Permission is disabled for your client account. Only the Super Admin is authorized to upload and manage Job Descriptions for this organization.',
-        code: 'JD_UPLOAD_PERMISSION_DENIED'
-      });
-      return;
+    if (!isSuperAdmin) {
+      if (req.user?.allowJdUpload === false) {
+        res.status(403).json({
+          error: 'JD Upload Permission is disabled for your client account. Only the Super Admin is authorized to upload and manage Job Descriptions for this organization.',
+          code: 'JD_UPLOAD_PERMISSION_DENIED'
+        });
+        return;
+      }
+      const callerOrgId = req.user?.organizationId || 'org-tasknera';
+      try {
+        const orgCheck = await prisma.organization.findUnique({ where: { id: callerOrgId }, select: { allowJdUpload: true } });
+        if (orgCheck && orgCheck.allowJdUpload === false) {
+          res.status(403).json({
+            error: 'JD Upload Permission is disabled for your client account. Only the Super Admin is authorized to upload and manage Job Descriptions for this organization.',
+            code: 'JD_UPLOAD_PERMISSION_DENIED'
+          });
+          return;
+        }
+      } catch (e) {}
     }
 
     let rawText = '';

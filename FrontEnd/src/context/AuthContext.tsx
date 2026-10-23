@@ -62,7 +62,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
     const cachedRole = (localStorage.getItem('tasknera_role') as UserRole) || 'MEMBER';
     const cachedName = localStorage.getItem('tasknera_name') || '';
     const cachedUserId = localStorage.getItem('tasknera_user_id') || 'cached';
-    const cachedAllowJdUpload = localStorage.getItem('tasknera_allow_jd_upload') !== 'false';
+    let cachedAllowJdUpload = localStorage.getItem('tasknera_allow_jd_upload') !== 'false';
+    if (cachedEmail && typeof window !== 'undefined') {
+      try {
+        const overrides = JSON.parse(localStorage.getItem('tasknera_org_jd_permissions') || '{}');
+        const cleanCachedEmail = cachedEmail.toLowerCase().trim();
+        if (overrides[cleanCachedEmail] !== undefined) {
+          cachedAllowJdUpload = overrides[cleanCachedEmail] === true;
+        }
+      } catch {}
+    }
 
     if (cachedEmail) {
       const cleanEmail = cachedEmail.toLowerCase().trim();
@@ -116,7 +125,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
             resolvedPassword = TASKNERA_CLIENT_ADMIN_PASSWORD;
           }
 
-          const allowJd = isSuperAdmin ? true : (data.user.allowJdUpload !== false);
+          let allowJd = isSuperAdmin ? true : (data.user.allowJdUpload !== false);
+          if (!isSuperAdmin && typeof window !== 'undefined') {
+            try {
+              const overrides = JSON.parse(localStorage.getItem('tasknera_org_jd_permissions') || '{}');
+              const orgId = data.user.organizationId;
+              const uEmail = cleanEmail.toLowerCase();
+              if (orgId && overrides[orgId] !== undefined) {
+                allowJd = overrides[orgId] === true;
+              } else if (overrides[uEmail] !== undefined) {
+                allowJd = overrides[uEmail] === true;
+              }
+            } catch {}
+          }
           localStorage.setItem('tasknera_allow_jd_upload', String(allowJd));
           const fullUser = { 
             ...data.user, 
@@ -235,7 +256,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
     if (resolvedUserId) localStorage.setItem('tasknera_user_id', resolvedUserId);
 
     setToken(data.token);
-    const allowJd = isSuperAdmin ? true : (data.user?.allowJdUpload !== false);
+    let allowJd = isSuperAdmin ? true : (data.user?.allowJdUpload !== false);
+    if (!isSuperAdmin && typeof window !== 'undefined') {
+      try {
+        const overrides = JSON.parse(localStorage.getItem('tasknera_org_jd_permissions') || '{}');
+        const orgId = data.user?.organizationId;
+        const uEmail = cleanEmail.toLowerCase();
+        if (orgId && overrides[orgId] !== undefined) {
+          allowJd = overrides[orgId] === true;
+        } else if (overrides[uEmail] !== undefined) {
+          allowJd = overrides[uEmail] === true;
+        }
+      } catch {}
+    }
     localStorage.setItem('tasknera_allow_jd_upload', String(allowJd));
     const signedUser = {
       ...data.user,
@@ -430,7 +463,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
           key.includes('pool') ||
           key.includes('eval')
         )) {
-          if (key !== 'tasknera_credential_registry' && !key.startsWith('tasknera_user_pwd_')) {
+          if (key !== 'tasknera_credential_registry' && key !== 'tasknera_org_jd_permissions' && key !== 'tasknera_cached_orgs' && !key.startsWith('tasknera_user_pwd_')) {
             keysToRemove.push(key);
           }
         }

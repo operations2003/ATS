@@ -84,8 +84,14 @@ export default function SuperAdminPage() {
         const localOverrides = JSON.parse(localStorage.getItem('tasknera_org_jd_permissions') || '{}');
         if (Array.isArray(cached) && cached.length > 0) {
           const merged = cached.map((o: any) => {
+            const adminEmail = (o.clientAdmin?.email || '').toLowerCase().trim();
+            const orgName = (o.name || '').toLowerCase().trim();
             if (localOverrides[o.id] !== undefined) {
               return { ...o, allowJdUpload: localOverrides[o.id] };
+            } else if (adminEmail && localOverrides[adminEmail] !== undefined) {
+              return { ...o, allowJdUpload: localOverrides[adminEmail] };
+            } else if (orgName && localOverrides[orgName] !== undefined) {
+              return { ...o, allowJdUpload: localOverrides[orgName] };
             }
             return o;
           });
@@ -125,8 +131,14 @@ export default function SuperAdminPage() {
 
       if (orgRes && Array.isArray(orgRes.organizations) && orgRes.organizations.length > 0) {
         const mergedOrgs = orgRes.organizations.map((o) => {
+          const adminEmail = (o.clientAdmin?.email || '').toLowerCase().trim();
+          const orgName = (o.name || '').toLowerCase().trim();
           if (localOverrides[o.id] !== undefined) {
             return { ...o, allowJdUpload: localOverrides[o.id] };
+          } else if (adminEmail && localOverrides[adminEmail] !== undefined) {
+            return { ...o, allowJdUpload: localOverrides[adminEmail] };
+          } else if (orgName && localOverrides[orgName] !== undefined) {
+            return { ...o, allowJdUpload: localOverrides[orgName] };
           }
           return o;
         });
@@ -355,7 +367,16 @@ export default function SuperAdminPage() {
         localOverrides = JSON.parse(localStorage.getItem('tasknera_org_jd_permissions') || '{}');
       } catch {}
     }
-    const currentPermission = localOverrides[org.id] !== undefined ? localOverrides[org.id] : org.allowJdUpload;
+    const adminEmail = (org.clientAdmin?.email || '').toLowerCase().trim();
+    const orgName = (org.name || '').toLowerCase().trim();
+    const currentPermission =
+      localOverrides[org.id] !== undefined
+        ? localOverrides[org.id]
+        : (adminEmail && localOverrides[adminEmail] !== undefined
+            ? localOverrides[adminEmail]
+            : (orgName && localOverrides[orgName] !== undefined
+                ? localOverrides[orgName]
+                : org.allowJdUpload));
     const effectiveOrg = { ...org, allowJdUpload: currentPermission !== false };
 
     setSelectedOrg(effectiveOrg);
@@ -385,7 +406,16 @@ export default function SuperAdminPage() {
         localOverrides = JSON.parse(localStorage.getItem('tasknera_org_jd_permissions') || '{}');
       } catch {}
     }
-    const currentPermission = localOverrides[org.id] !== undefined ? localOverrides[org.id] : (org.allowJdUpload !== false);
+    const adminEmail = (org.clientAdmin?.email || '').toLowerCase().trim();
+    const orgName = (org.name || '').toLowerCase().trim();
+    const currentPermission =
+      localOverrides[org.id] !== undefined
+        ? localOverrides[org.id]
+        : (adminEmail && localOverrides[adminEmail] !== undefined
+            ? localOverrides[adminEmail]
+            : (orgName && localOverrides[orgName] !== undefined
+                ? localOverrides[orgName]
+                : (org.allowJdUpload !== false)));
     const nextVal = !currentPermission;
 
     setTogglingPermission(true);
@@ -395,6 +425,8 @@ export default function SuperAdminPage() {
     if (typeof window !== 'undefined') {
       try {
         localOverrides[org.id] = nextVal;
+        if (adminEmail) localOverrides[adminEmail] = nextVal;
+        if (orgName) localOverrides[orgName] = nextVal;
         localStorage.setItem('tasknera_org_jd_permissions', JSON.stringify(localOverrides));
       } catch {}
     }

@@ -41,7 +41,19 @@ function CreateJobContent() {
   const clientParam = searchParams.get('client') || searchParams.get('clientName') || '';
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN' || user?.email?.toLowerCase().trim() === 'operations@tasknera.com' || user?.email?.toLowerCase().trim() === 'admin@gmail.com';
-  const canUploadJd = isSuperAdmin || user?.allowJdUpload !== false;
+  let canUploadJd = isSuperAdmin || user?.allowJdUpload !== false;
+  if (!isSuperAdmin && typeof window !== 'undefined') {
+    try {
+      const overrides = JSON.parse(localStorage.getItem('tasknera_org_jd_permissions') || '{}');
+      const orgId = user?.organizationId;
+      const uEmail = user?.email?.toLowerCase().trim();
+      if (orgId && overrides[orgId] !== undefined) {
+        canUploadJd = overrides[orgId] === true;
+      } else if (uEmail && overrides[uEmail] !== undefined) {
+        canUploadJd = overrides[uEmail] === true;
+      }
+    } catch {}
+  }
 
   // Form State
   const [client, setClient] = useState(clientParam || '');
@@ -84,6 +96,10 @@ function CreateJobContent() {
 
   // Backend Parsing API Integration
   const sendToBackendParseApi = async (fileOrText: File | string) => {
+    if (!canUploadJd) {
+      setErrorMsg('JD Upload Permission is disabled for your client account. Only the Super Admin is authorized to upload and manage Job Descriptions for this organization.');
+      return;
+    }
     setIsScanning(true);
     setScanComplete(false);
     setErrorMsg('');
@@ -285,6 +301,10 @@ function CreateJobContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+    if (!canUploadJd) {
+      setErrorMsg('JD Upload Permission is disabled for your client account. Only the Super Admin is authorized to upload and manage Job Descriptions for this organization.');
+      return;
+    }
 
     if (isSubmitting) {
       return;
@@ -440,6 +460,32 @@ function CreateJobContent() {
                 <span>Uploading JD on behalf of client: <strong>{clientParam || orgParam}</strong></span>
               </div>
               <span className="text-[11px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded font-mono">Org ID: {orgParam}</span>
+            </div>
+          )}
+
+          {/* JD Upload Restricted Banner */}
+          {!canUploadJd && (
+            <div className="mb-6 p-5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 shadow-sm flex items-start gap-4">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0 text-amber-600">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-base text-amber-900 mb-1">JD Upload Restricted</h3>
+                <p className="text-sm text-amber-800 leading-relaxed">
+                  Only the Super Admin is authorized to upload and create Job Descriptions for this organization. You can view, evaluate candidates, and manage applications for existing jobs from the Jobs Dashboard.
+                </p>
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => router.push('/jobs')}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors"
+                  >
+                    View Existing Jobs & Candidates →
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1061,7 +1107,7 @@ function CreateJobContent() {
 
             <button
               type="submit"
-              disabled={isSubmitting || isScanning}
+              disabled={isSubmitting || isScanning || !canUploadJd}
               className="px-8 py-3.5 bg-brand-orange hover:bg-brand-orange-hover disabled:bg-slate-300 disabled:text-slate-500 text-white text-sm font-bold rounded-xl transition-all shadow-orange hover:shadow-orange-lg flex items-center gap-2 cursor-pointer"
             >
               {isSubmitting ? (
