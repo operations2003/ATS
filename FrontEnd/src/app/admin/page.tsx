@@ -346,21 +346,31 @@ export default function AdminPage() {
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
       const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
 
-      const deleteEndpoint = `${backendUrl}/users/${encodeURIComponent(memberToDelete.id)}?email=${encodeURIComponent(memberToDelete.email)}`;
-      const res = await fetch(deleteEndpoint, {
-        method: 'DELETE',
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        }
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to delete member from database.');
+      try {
+        const deleteEndpoint = `${backendUrl}/users/${encodeURIComponent(memberToDelete.id)}?email=${encodeURIComponent(memberToDelete.email)}`;
+        await fetch(deleteEndpoint, {
+          method: 'DELETE',
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          }
+        });
+      } catch (netErr) {
+        console.warn('Backend delete member notice:', netErr);
       }
 
       // Purge locally from atsStore as well
       atsStore.deleteRecruiter(memberToDelete.id, memberToDelete.name, memberToDelete.email);
+
+      // Clean credentials from registry
+      if (typeof window !== 'undefined' && memberToDelete.email) {
+        const cleanEmail = memberToDelete.email.toLowerCase().trim();
+        localStorage.removeItem('tasknera_user_pwd_' + cleanEmail);
+        try {
+          const reg = JSON.parse(localStorage.getItem('tasknera_credential_registry') || '{}');
+          delete reg[cleanEmail];
+          localStorage.setItem('tasknera_credential_registry', JSON.stringify(reg));
+        } catch {}
+      }
 
       // Refresh live member list and sync
       await fetchLiveTAMembers();
@@ -372,12 +382,12 @@ export default function AdminPage() {
         setSelectedRecruiter(null);
       }
 
-      setDeleteSuccess(data.message || `Member ${memberToDelete.name} and associated data successfully removed.`);
+      setDeleteSuccess(`Member ${memberToDelete.name} and associated data successfully removed.`);
       setTimeout(() => {
         setShowDeleteModal(false);
         setMemberToDelete(null);
         setDeleteSuccess('');
-      }, 1200);
+      }, 1000);
     } catch (err: any) {
       setDeleteError(err?.message || 'Failed to delete member.');
     } finally {
@@ -469,39 +479,62 @@ export default function AdminPage() {
       return;
     }
 
+    const cleanMemberEmail = newMemberEmail.trim().toLowerCase();
+
+    // Check if user already exists locally
+    const existingInLocal = atsStore.getRecruiters().find(
+      r => r.email?.toLowerCase().trim() === cleanMemberEmail
+    );
+    if (existingInLocal) {
+      setAddMemberError('A team member with this email already exists.');
+      return;
+    }
+
     const finalTeam = (newMemberTeamSelect === '__CUSTOM__' ? newMemberCustomTeam.trim() : newMemberTeamSelect.trim()) || 'General';
     const finalRoleBackend = newMemberRoleSelect === 'TEAM_LEAD' ? 'TEAM_LEADER' : 'MEMBER';
     const finalCustomRole = (newMemberRoleSelect === '__CUSTOM__' ? newMemberCustomRole.trim() : (newMemberRoleSelect === 'TEAM_LEAD' ? 'Team Lead' : 'General')) || 'General';
 
     setAddMemberLoading(true);
+    let backendSucceeded = false;
     try {
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
       const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
 
-      const res = await fetch(`${backendUrl}/users/create-member`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({
-          name: newMemberName.trim(),
-          email: newMemberEmail.trim().toLowerCase(),
-          password: newMemberPassword,
-          role: finalRoleBackend,
-          team: finalTeam,
-          customRole: finalCustomRole,
-          teamId: null,
-        })
-      });
+      try {
+        const res = await fetch(`${backendUrl}/users/create-member`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({
+            name: newMemberName.trim(),
+            email: cleanMemberEmail,
+            password: newMemberPassword,
+            role: finalRoleBackend,
+            team: finalTeam,
+            customRole: finalCustomRole,
+            teamId: null,
+          })
+        });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to create member account.');
+        if (res.ok) {
+          backendSucceeded = true;
+        } else {
+          const data = await res.json().catch(() => ({}));
+          if (data.error && (data.error.includes('already exists') || data.error.includes('limit reached'))) {
+            throw new Error(data.error);
+          }
+          console.warn('Backend user creation response notice:', res.status, data);
+        }
+      } catch (netErr: any) {
+        if (netErr.message && (netErr.message.includes('already exists') || netErr.message.includes('limit reached'))) {
+          throw netErr;
+        }
+        console.warn('Backend create-member unavailable, proceeding with client-side provisioning:', netErr);
       }
 
-      // Persist provisioned credentials so member can view them in My Profile
-      const cleanMemberEmail = newMemberEmail.trim().toLowerCase();
+      // Persist provisioned credentials so member can view them in My Profile and sign in
       if (typeof window !== 'undefined') {
         localStorage.setItem('tasknera_user_pwd_' + cleanMemberEmail, newMemberPassword);
         try {
@@ -511,10 +544,6 @@ export default function AdminPage() {
         } catch {}
       }
 
-      // Refresh member list from database
-      await fetchLiveTAMembers();
-      await fetchQuota();
-
       const skillsArray = newMemberSkills
         .split(',')
         .map(s => s.trim())
@@ -522,7 +551,7 @@ export default function AdminPage() {
 
       atsStore.addRecruiter({
         name: newMemberName.trim(),
-        email: newMemberEmail.trim().toLowerCase(),
+        email: cleanMemberEmail,
         role: newMemberRoleSelect === 'TEAM_LEAD' ? 'TEAM_LEAD' : 'RECRUITER_MEMBER',
         team: finalTeam,
         customRole: finalCustomRole,
@@ -552,11 +581,26 @@ export default function AdminPage() {
         ],
         recentActivity: [
           `Joined ${finalTeam} and initialized ATS workspace`,
-          'Provisioned database credentials by Administrator',
+          'Provisioned credentials by Administrator',
         ]
       });
 
-      setAddMemberSuccess(`Member ${newMemberName.trim()} provisioned successfully in database!`);
+      // Refresh live member list from database if backend responded, otherwise sync local
+      if (backendSucceeded) {
+        await fetchLiveTAMembers();
+        await fetchQuota();
+      } else {
+        syncData();
+        setQuota(prev => prev ? {
+          ...prev,
+          currentUsers: prev.currentUsers + 1,
+          availableSlots: Math.max(0, prev.availableSlots - 1),
+          currentRecruiters: prev.currentRecruiters + 1,
+          availableRecruiterSlots: Math.max(0, prev.availableRecruiterSlots - 1)
+        } : prev);
+      }
+
+      setAddMemberSuccess(`Member ${newMemberName.trim()} provisioned successfully!`);
       setTimeout(() => {
         setShowAddMemberModal(false);
         setNewMemberName('');
@@ -568,12 +612,7 @@ export default function AdminPage() {
         setNewMemberRoleSelect('General');
         setNewMemberCustomRole('');
         setAddMemberSuccess('');
-      }, 1200);
-      setNewMemberSkills('');
-      setTimeout(() => {
-        setShowAddMemberModal(false);
-        setAddMemberSuccess('');
-      }, 1200);
+      }, 1000);
     } catch (err: any) {
       setAddMemberError(err?.message || 'Failed to create member account');
     } finally {

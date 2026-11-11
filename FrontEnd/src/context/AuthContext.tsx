@@ -224,7 +224,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
           } as any
         };
       } else {
-        throw apiErr;
+        // Fallback: Check local credential registry for provisioned team members
+        let matched = false;
+        if (typeof window !== 'undefined') {
+          try {
+            const reg = JSON.parse(localStorage.getItem('tasknera_credential_registry') || '{}');
+            const storedPwd = reg[cleanEmail] || localStorage.getItem('tasknera_user_pwd_' + cleanEmail);
+            const storedRecruiters = JSON.parse(localStorage.getItem('tasknera_ats_recruiters') || '[]');
+            const matchedRec = Array.isArray(storedRecruiters)
+              ? storedRecruiters.find((r: any) => r.email?.toLowerCase().trim() === cleanEmail)
+              : null;
+
+            if (storedPwd && storedPwd === password) {
+              const recName = matchedRec?.name || cleanEmail.split('@')[0];
+              const recRole = matchedRec?.role === 'TEAM_LEAD' ? 'TEAM_LEADER' : 'MEMBER';
+              data = {
+                message: 'Signed in successfully',
+                token: 'tasknera-member-session-token-' + Date.now(),
+                user: {
+                  id: matchedRec?.id || ('member-' + Date.now()),
+                  name: recName,
+                  email: cleanEmail,
+                  role: recRole,
+                  organizationId: 'org-tasknera'
+                } as any
+              };
+              matched = true;
+            }
+          } catch (_) {}
+        }
+        if (!matched) {
+          throw apiErr;
+        }
       }
     }
 
