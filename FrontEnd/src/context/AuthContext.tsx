@@ -180,7 +180,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
     }
     const resolvedRole: UserRole = newRole === 'ADMIN' && isDesignatedAdmin ? 'ADMIN' : 'MEMBER';
     localStorage.setItem('tasknera_role', resolvedRole);
-    setUser(prev => {
+    setUser((prev: User | null) => {
       if (!prev) return null;
       const updated = { ...prev, role: resolvedRole };
       atsStore.ensureMember(updated);
@@ -191,7 +191,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
   const signin = async (email: string, password: string): Promise<UserRole> => {
     const cleanEmail = email.trim().toLowerCase();
 
-    let data: AuthResponse;
+    let data!: AuthResponse;
     try {
       // Authenticate with backend API
       data = await fetchApi<AuthResponse>('/auth/signin', {
@@ -478,7 +478,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
       } catch {}
     }
 
-    setUser(prev => prev ? { ...prev, password: newPassword } : null);
+    setUser((prev: User | null) => prev ? { ...prev, password: newPassword } : null);
   };
 
   const logout = (): void => {
